@@ -16,6 +16,7 @@ html {
     font-size: 100%;
 }
 
+
 .container {
     width: 100%;
     display: flex;
@@ -42,8 +43,8 @@ html {
 }
 
 .header .content .logo {
-    font-size: 3rem;
     cursor: pointer;
+    width: 50px;
 }
 
 .header .content ul {
