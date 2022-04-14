@@ -705,7 +705,7 @@ html {
         display: block;
         position: fixed;
         width: 100%;
-        top: 50px;
+        top: 70px;
         right: 0;
         background-color: rgb(178, 221, 223);
         transition: .5s;
@@ -723,7 +723,7 @@ html {
      }
 
      #nav.active #menu {
-        height: calc(100vh - 50px);
+        height: calc(100vh - 70px);
         visibility: visible;
 
 
