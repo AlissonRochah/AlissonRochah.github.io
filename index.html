@@ -32,6 +32,10 @@
             border-radius: 5px;
         }
 
+        .green {
+            background-color: green;
+        }
+
         button:hover {
             background-color: #0056b3;
         }
@@ -56,8 +60,8 @@
     <div class="button-container">
         <button onclick="processarClipboard(1)">Rental 6%</button>
         <button onclick="processarClipboard(2)">Cleaning 6%</button>
-        <button onclick="processarClipboard(3)">Rental 5%</button>
-        <button onclick="processarClipboard(4)">Cleaning 5%</button>
+        <button onclick="processarClipboard(3)" class="green">Rental 5%</button>
+        <button onclick="processarClipboard(4)" class="green">Cleaning 5%</button>
     </div>
 
     <p id="mensagem"></p>
@@ -71,7 +75,7 @@
                 let texto = await navigator.clipboard.readText();
                 
                 // Converte para número
-                let numero = parseFloat(texto);
+                let numero = parseFloat(texto.replace(/,/g, ""));
 
                 // Se não for um número válido, exibe uma mensagem de erro
                 if (isNaN(numero)) {
