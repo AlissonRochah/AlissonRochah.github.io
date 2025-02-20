@@ -58,6 +58,62 @@
 
 <body>
 
+    <div id="login-container">
+        <input type="email" id="email" placeholder="Enter your email">
+        <input type="password" id="password" placeholder="Enter your password">
+        <button onclick="login()">Login</button>
+        <button onclick="register()">Register</button>
+    </div>
+    <button onclick="logout()" id="logout-btn" style="display: none;">Logout</button>
+
+    <script>
+        // Função para Login
+        function login() {
+            let email = document.getElementById("email").value;
+            let password = document.getElementById("password").value;
+    
+            firebase.auth().signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    alert("Logged in!");
+                    document.getElementById("login-container").style.display = "none";
+                    document.getElementById("logout-btn").style.display = "block";
+                    loadTemplates(userCredential.user.uid); // Carregar templates do usuário
+                })
+                .catch(error => alert(error.message));
+        }
+    
+        // Função para Registrar
+        function register() {
+            let email = document.getElementById("email").value;
+            let password = document.getElementById("password").value;
+    
+            firebase.auth().createUserWithEmailAndPassword(email, password)
+                .then(() => alert("Account created!"))
+                .catch(error => alert(error.message));
+        }
+    
+        // Função para Logout
+        function logout() {
+            firebase.auth().signOut().then(() => {
+                alert("Logged out!");
+                document.getElementById("login-container").style.display = "block";
+                document.getElementById("logout-btn").style.display = "none";
+            });
+        }
+    
+        // Verifica se o usuário já está logado
+        firebase.auth().onAuthStateChanged(user => {
+            if (user) {
+                console.log("User logged in:", user.email);
+                document.getElementById("login-container").style.display = "none";
+                document.getElementById("logout-btn").style.display = "block";
+            } else {
+                console.log("No user logged in.");
+            }
+        });
+    </script>
+    
+
     <h2>Message Generator</h2>
 
     <label>Your Name:</label>
