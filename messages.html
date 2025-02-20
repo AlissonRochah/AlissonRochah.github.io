@@ -66,8 +66,10 @@
     </div>
     <button onclick="logout()" id="logout-btn" style="display: none;">Logout</button>
 
-
-
+    <div id="templates-container"></div>
+    <input type="text" id="templateName" placeholder="Template Name">
+    <textarea id="templateMessage" placeholder="Enter your template message"></textarea>
+    <button onclick="saveTemplate()">Save Template</button>
 
     <h2>Message Generator</h2>
 
@@ -201,6 +203,26 @@
                     document.getElementById("logout-btn").style.display = "block";
                 })
                 .catch(error => alert(error.message));
+
+            firebase.auth().onAuthStateChanged(user => {
+                if (user) {
+                    console.log("User logged in:", user.email);
+                    document.getElementById("login-container").style.display = "none";
+                    document.getElementById("logout-btn").style.display = "block";
+                    loadTemplates(user.uid); // 🔥 Carrega os templates do usuário
+                } else {
+                    console.log("No user logged in.");
+                }
+            });
+        }
+
+        function deleteTemplate(templateName) {
+            let user = firebase.auth().currentUser;
+            if (!user) return;
+
+            firebase.firestore().collection("templates").doc(user.uid).collection("userTemplates").doc(templateName).delete()
+                .then(() => alert("Template deleted!"))
+                .catch(error => console.error("Error deleting template:", error));
         }
 
         function register() {
@@ -230,6 +252,63 @@
             }
         });
     </script>
+
+    <script>
+        function saveTemplate() {
+            let user = firebase.auth().currentUser;
+            if (!user) {
+                alert("You must be logged in to save templates.");
+                return;
+            }
+
+            let templateName = document.getElementById("templateName").value;
+            let templateMessage = document.getElementById("templateMessage").value;
+
+            firebase.firestore().collection("templates").doc(user.uid).collection("userTemplates").doc(templateName).set({
+                message: templateMessage
+            }).then(() => alert("Template saved!"))
+                .catch(error => console.error("Error saving template:", error));
+        }
+    </script>
+
+    <script>
+        function loadTemplates(userId) {
+            let templatesContainer = document.getElementById("templates-container");
+            templatesContainer.innerHTML = ""; // Limpa os templates anteriores
+
+            firebase.firestore().collection("templates").doc(userId).collection("userTemplates").get()
+                .then(querySnapshot => {
+                    querySnapshot.forEach(doc => {
+                        let template = doc.data();
+
+                        let div = document.createElement("div");
+                        div.style.display = "flex";
+                        div.style.alignItems = "center";
+                        div.style.gap = "10px";
+
+                        let button = document.createElement("button");
+                        button.innerText = doc.id; // Nome do template
+                        button.onclick = () => loadMessage(template.message);
+
+                        let deleteButton = document.createElement("button");
+                        deleteButton.innerText = "X";
+                        deleteButton.style.color = "red";
+                        deleteButton.onclick = () => deleteTemplate(doc.id);
+
+                        div.appendChild(button);
+                        div.appendChild(deleteButton);
+                        templatesContainer.appendChild(div);
+                    });
+                })
+                .catch(error => console.error("Error loading templates:", error));
+        }
+
+        function loadMessage(message) {
+            document.getElementById("templateMessage").value = message;
+        }
+    </script>
+
+
 
 </body>
 
