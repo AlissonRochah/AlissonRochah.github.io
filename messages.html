@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Message Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+        }
+
+        input,
+        button {
+            margin: 5px;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        .checkbox-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            margin-top: 10px;
+        }
+
+        textarea {
+            width: 80%;
+            height: 150px;
+            margin-top: 10px;
+            font-size: 16px;
+            padding: 10px;
+            resize: none;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Message Generator</h2>
+
+    <label>Your Name:</label>
+    <input type="text" id="yourName" placeholder="Enter your name" value="Alisson">
+
+    <label>Guest's Name:</label>
+    <input type="text" id="guestName" placeholder="Guest Name">
+    <h3>Select Services:</h3>
+    <div class="checkbox-container">
+        <label><input type="checkbox" id="pool35" class="service pool-option" value="pool35"> PH $35</label>
+        <label><input type="checkbox" id="pool75" class="service pool-option" value="pool75"> PH $75</label>
+        <label><input type="checkbox" value="grill" class="service"> BBQ</label>
+        <label><input type="checkbox" value="early-checkin" class="service"> EC</label>
+        <label><input type="checkbox" value="late-checkout" class="service"> LC</label>
+        <label><input type="checkbox" value="early-checkin-not-available" class="service"> EC N/A</label>
+        <label><input type="checkbox" value="late-checkout-not-available" class="service"> LC N/A</label>
+        <label><input type="checkbox" value="high-pnp" class="service"> HC PnP</label>
+    </div>
+
+    <button onclick="generateMessage()">Generate Message</button>
+
+    <textarea id="generatedMessage" readonly></textarea>
+
+    <script>
+
+        async function generateMessage() {
+            let yourName = document.getElementById("yourName").value.trim();
+            let guestName = document.getElementById("guestName").value.trim();
+            let selectedServices = document.querySelectorAll(".service:checked");
+
+            if (!yourName) {
+                alert("Please enter your name.");
+                return;
+            }
+
+            if (!guestName) {
+                alert("Please enter the guest's name.");
+                return;
+            }
+
+            let messages = [];
+
+            // Messages for each service
+            let serviceMessages = {
+                "grill": "We offer a grill rental for a one-time fee of $75, allowing you to enjoy it throughout your entire stay. This fee includes a propane tank and all the necessary utensils for a great barbecue experience.",
+                "early-checkin": "Early check-in is available for an additional fee of $50, allowing you to enter the house at 10 AM instead of the standard 4 PM.\n\nThis option can only be requested within 48 hours of your arrival, and we’ll be happy to check if it’s available. Let us know if you're interested!",
+                "late-checkout": "We don’t offer late check-out, but if you’d like to check out later, the best option would be to book an additional night. This way, you’ll have the house until the following day, with check-out at 10 AM. Let us know if you'd like to proceed with this option!",
+                "early-checkin-not-available": "Thank you for your interest in early check-in! Unfortunately, we won’t be able to offer it this time, as we have another guest checking out on the same day.\n\nWe need this time frame to properly clean and prepare the house, ensuring everything is perfect for your arrival. We appreciate your understanding and look forward to hosting you!",
+                "late-checkout-not-available": "Thank you for your interest in late check-out! Unfortunately, we won’t be able to offer it this time, as we have another guest checking in later that day.\n\nWe need this time to properly clean and prepare the house to ensure a great experience for their arrival, just as we did for yours. We appreciate your understanding and hope you had a wonderful stay!",
+                "high-pnp": "We provide one high chair and one pack and play in the house, which can be found in one of the closets.\n\nIf you need an additional high chair or pack and play, you can add them for an extra fee of $10 each for your entire stay. Let us know if you'd like to add this to your reservation!"
+            };
+
+            // Handle Pool Heating options
+            let pool35Selected = document.getElementById("pool35").checked;
+            let pool75Selected = document.getElementById("pool75").checked;
+
+            if (pool35Selected && pool75Selected) {
+                alert("Please select only one Pool Heating option.");
+                return;
+            }
+
+            if (pool35Selected) {
+                messages.push("Pool heating is available for an additional charge of $35 per day, with a minimum requirement of 2 consecutive days. This service allows you to enjoy a comfortably heated pool on the days of your choice.\n\nSince heating a pool takes time, we kindly ask you to let us know in advance which dates you would like this service to be activated.This way, we can ensure the water reaches the perfect temperature before your arrival. Let us know which dates do you want to have the pool heated.");
+            } else if (pool75Selected) {
+                messages.push("Pool heating is available for an additional charge of $35 per day, with a minimum requirement of 2 consecutive days. This service allows you to enjoy a comfortably heated pool on the days of your choice.\n\nSince heating a pool takes time, we kindly ask you to let us know in advance which dates you would like this service to be activated.This way, we can ensure the water reaches the perfect temperature before your arrival. Let us know which dates do you want to have the pool heated.");
+            }
+
+            // Collect selected messages for other services
+            selectedServices.forEach(service => {
+                if (serviceMessages[service.value]) {
+                    messages.push(serviceMessages[service.value]);
+                }
+            });
+
+            // Construct the final message
+            let finalMessage = `Hello ${guestName},\n\n`;
+
+            if (messages.length > 0) {
+                finalMessage += messages.join("\n\n") + "\n\n";
+            }
+
+            finalMessage += `Let us know if you have any other questions!\n\nBest regards,\n\n${yourName}`;
+
+            // Display the message
+            document.getElementById("generatedMessage").value = finalMessage;
+
+            // Copy message to clipboard
+            try {
+                await navigator.clipboard.writeText(finalMessage);
+            } catch (error) {
+                alert("Error copying message to clipboard.");
+            }
+
+            // Uncheck all checkboxes
+            document.querySelectorAll(".service").forEach(checkbox => checkbox.checked = false);
+        }
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
+
+    <script>
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
+            authDomain: "templatemaster-a2d6e.firebaseapp.com",
+            projectId: "templatemaster-a2d6e",
+            storageBucket: "templatemaster-a2d6e.appspot.com",
+            messagingSenderId: "208432538664",
+            appId: "1:208432538664:web:10a29a55efbb824ae1411d",
+            measurementId: "G-LLVT6XW024"
+        };
+
+        // Inicializa o Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Teste se o Firebase está funcionando
+        console.log("Firebase loaded successfully!");
+    </script>
+</body>
+
+</html>
