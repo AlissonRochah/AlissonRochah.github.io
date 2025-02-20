@@ -82,15 +82,6 @@
                 .catch(error => alert(error.message));
         }
     
-        // Função para Registrar
-        function register() {
-            let email = document.getElementById("email").value;
-            let password = document.getElementById("password").value;
-    
-            firebase.auth().createUserWithEmailAndPassword(email, password)
-                .then(() => alert("Account created!"))
-                .catch(error => alert(error.message));
-        }
     
         // Função para Logout
         function logout() {
