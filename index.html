@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -55,6 +56,7 @@
         }
     </style>
 </head>
+
 <body>
 
     <div class="button-container">
@@ -73,7 +75,10 @@
             try {
                 // Obtém o texto copiado (Ctrl+C)
                 let texto = await navigator.clipboard.readText();
-                
+
+                // Remove qualquer vírgula no número (ex: "1,000" -> "1000")
+                texto = texto.replace(/,/g, '');
+
                 // Converte para número
                 let numero = parseFloat(texto);
 
@@ -89,16 +94,16 @@
                 // Aplica a fórmula correspondente ao botão clicado
                 switch (operacao) {
                     case 1:
-                        resultado = ((((numero-65)*(1-0.03))/1.06))-0.8-1.04;
+                        resultado = ((((numero - 65) * (1 - 0.03)) / 1.06)) - 0.8 - 1.04;
                         break;
                     case 2:
-                        resultado = (numero*(1-0.03))/1.06;
+                        resultado = (numero * (1 - 0.03)) / 1.06;
                         break;
                     case 3:
-                        resultado = (((numero-65)*(1-0.03)))-0.8-1.15;
+                        resultado = (((numero - 65) * (1 - 0.03))) - 0.8 - 1.15;
                         break;
                     case 4:
-                        resultado = (numero*(1-0.03));
+                        resultado = (numero * (1 - 0.03));
                         break;
                     default:
                         mensagemElemento.textContent = "Erro: Operação inválida.";
@@ -124,4 +129,5 @@
     </script>
 
 </body>
+
 </html>
