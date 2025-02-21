@@ -48,8 +48,16 @@
             onAuthStateChanged(auth, (user) => {
                 if (user) {
                     console.log("Usuário autenticado no dashboard:", user);
+                    document.body.innerHTML = `
+                        <div class='dashboard-container'>
+                            <h2>Bem-vindo, ${user.email}</h2>
+                            <button onclick="window.location.href='formulas.html'">Ir para Formulários</button>
+                            <button onclick="window.location.href='template.html'">Ir para Templates</button>
+                            <button onclick="window.location.href='messages.html'">Ir para Mensagens</button>
+                        </div>`;
                 } else {
                     console.log("Nenhum usuário autenticado.");
+                    window.location.href = "index.html"; // Redireciona para login caso não esteja autenticado
                 }
             });
         });
