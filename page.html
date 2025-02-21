@@ -33,9 +33,11 @@
             
             signInWithEmailAndPassword(auth, email, password)
                 .then((userCredential) => {
+                    console.log("Usuário logado:", userCredential.user);
                     window.location.href = "dashboard.html"; // Redireciona após login
                 })
                 .catch((error) => {
+                    console.error("Erro no login:", error);
                     errorMessage.innerText = "Erro: " + error.message;
                 });
         }
