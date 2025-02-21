@@ -32,7 +32,7 @@
             }
         });
 
-        async function addTemplate() {
+        window.addTemplate = async function() {
             const name = document.getElementById("template-name").value;
             const description = document.getElementById("template-description").value;
             const user = auth.currentUser;
@@ -67,7 +67,7 @@
             });
         }
 
-        async function deleteTemplate(id) {
+        window.deleteTemplate = async function(id) {
             await deleteDoc(doc(db, "templates", id));
             loadTemplates(auth.currentUser.uid);
         }
@@ -77,8 +77,6 @@
                 window.location.href = "page.html";
             });
         }
-
-        window.deleteTemplate = deleteTemplate;
     </script>
 </head>
 <body>
