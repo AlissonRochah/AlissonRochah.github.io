@@ -7,7 +7,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+        import { getFirestore, collection, setDoc, getDocs, deleteDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
         
         const firebaseConfig = {
             apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
@@ -33,43 +33,49 @@
         });
 
         window.addTemplate = async function() {
-            const name = document.getElementById("template-name").value;
-            const description = document.getElementById("template-description").value;
+            const name = document.getElementById("template-name").value.trim();
+            const description = document.getElementById("template-description").value.trim();
             const user = auth.currentUser;
             
-            if (user && name.trim() && description.trim()) {
-                await addDoc(collection(db, "templates"), {
-                    userId: user.uid,
+            if (user && name && description) {
+                const userDocRef = doc(db, "templates", user.uid);
+                const userTemplatesRef = doc(userDocRef, "userTemplates", name);
+                
+                await setDoc(userTemplatesRef, {
                     name: name,
                     description: description
                 });
+                
                 loadTemplates(user.uid);
             }
         }
 
         async function loadTemplates(userId) {
-            const querySnapshot = await getDocs(collection(db, "templates"));
+            const userDocRef = doc(db, "templates", userId);
+            const userTemplatesCollection = collection(userDocRef, "userTemplates");
+            const querySnapshot = await getDocs(userTemplatesCollection);
+            
             const list = document.getElementById("template-list");
             list.innerHTML = "";
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                if (data.userId === userId) {
-                    const item = document.createElement("div");
-                    item.innerHTML = `
-                        <p><strong>${data.name}</strong></p>
-                        <p>${data.description}</p>
-                        <button onclick="deleteTemplate('${doc.id}')">Excluir</button>
-                        <button>Editar</button>
-                    `;
-                    list.appendChild(item);
-                }
+                const item = document.createElement("div");
+                item.innerHTML = `
+                    <p><strong>${data.name}</strong></p>
+                    <p>${data.description}</p>
+                    <button onclick="deleteTemplate('${userId}', '${doc.id}')">Excluir</button>
+                    <button>Editar</button>
+                `;
+                list.appendChild(item);
             });
         }
 
-        window.deleteTemplate = async function(id) {
-            await deleteDoc(doc(db, "templates", id));
-            loadTemplates(auth.currentUser.uid);
+        window.deleteTemplate = async function(userId, templateName) {
+            const userDocRef = doc(db, "templates", userId);
+            const templateRef = doc(userDocRef, "userTemplates", templateName);
+            await deleteDoc(templateRef);
+            loadTemplates(userId);
         }
 
         window.logout = function() {
