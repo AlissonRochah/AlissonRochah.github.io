@@ -87,7 +87,6 @@
             
             // Copy to clipboard
             navigator.clipboard.writeText(finalMessage).then(() => {
-                alert("Message copied to clipboard!");
             }).catch(err => {
                 console.error("Error copying text: ", err);
             });
