@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Templates - Master Vacation Homes</title>
+    <title>Message Generator</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-        import { getFirestore, collection, setDoc, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
-        
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+        import { getFirestore, collection, getDocs, doc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+
         const firebaseConfig = {
             apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
             authDomain: "templatemaster-a2d6e.firebaseapp.com",
@@ -25,7 +26,7 @@
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                document.getElementById("user-email").innerText = `Logado como: ${user.email}`;
+                document.getElementById("user-email").innerText = `Logged in as: ${user.email}`;
                 loadTemplates(user.uid);
             } else {
                 window.location.href = "page.html";
@@ -36,58 +37,73 @@
             const userDocRef = doc(db, "templates", userId);
             const userTemplatesCollection = collection(userDocRef, "userTemplates");
             const querySnapshot = await getDocs(userTemplatesCollection);
-            
-            const list = document.getElementById("template-list");
+
+            const list = document.querySelector(".checkbox-container");
             list.innerHTML = "";
             
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
                 const item = document.createElement("label");
                 item.innerHTML = `
-                    <input type="checkbox" value="${doc.id}" class="service"> ${data.name}
+                    <input type="checkbox" value="${doc.id}" class="service" data-description="${data.description}"> ${data.name}
                 `;
                 list.appendChild(item);
             });
         }
 
-        async function generateServiceMessages() {
+        window.generateMessage = async function() {
+            let yourName = document.getElementById("yourName").value.trim();
+            let guestName = document.getElementById("guestName").value.trim();
             let selectedServices = document.querySelectorAll(".service:checked");
+
+            if (!yourName) {
+                alert("Please enter your name.");
+                return;
+            }
+
+            if (!guestName) {
+                alert("Please enter the guest's name.");
+                return;
+            }
+
             let messages = [];
 
-            for (let service of selectedServices) {
-                let templateId = service.value;
-                let userId = auth.currentUser.uid;
-                const userDocRef = doc(db, "templates", userId);
-                const templateRef = doc(userDocRef, "userTemplates", templateId);
-                const templateSnap = await getDoc(templateRef);
-                
-                if (templateSnap.exists()) {
-                    const templateData = templateSnap.data();
-                    messages.push(templateData.description);
+            selectedServices.forEach(service => {
+                let description = service.getAttribute("data-description");
+                if (description) {
+                    messages.push(description);
                 }
-            }
-            
-            document.getElementById("generatedMessage").value = messages.join("\n\n");
-        }
-
-        window.logout = function() {
-            signOut(auth).then(() => {
-                window.location.href = "page.html";
             });
+
+            let finalMessage = `Hello ${guestName},\n\n`;
+
+            if (messages.length > 0) {
+                finalMessage += messages.join("\n\n") + "\n\n";
+            }
+
+            finalMessage += `Let us know if you have any other questions!\n\nBest regards,\n\n${yourName}`;
+
+            document.getElementById("generatedMessage").value = finalMessage;
         }
     </script>
 </head>
+
 <body>
-    <h2>Gerenciar Templates</h2>
+    <h2>Message Generator</h2>
     <p id="user-email"></p>
+
+    <label>Your Name:</label>
+    <input type="text" id="yourName" placeholder="Enter your name" value="Alisson">
+
+    <label>Guest's Name:</label>
+    <input type="text" id="guestName" placeholder="Guest Name">
     
-    <h3>Selecionar Templates:</h3>
-    <div id="template-list" class="checkbox-container"></div>
-    
-    <button onclick="generateServiceMessages()">Gerar Mensagem</button>
-    
+    <h3>Select Services:</h3>
+    <div class="checkbox-container"></div>
+
+    <button onclick="generateMessage()">Generate Message</button>
+
     <textarea id="generatedMessage" readonly></textarea>
-    
-    <button onclick="logout()">Sair</button>
 </body>
+
 </html>
