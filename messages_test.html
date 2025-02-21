@@ -84,6 +84,13 @@
             finalMessage += `Let us know if you have any other questions!\n\nBest regards,\n\n${yourName}`;
 
             document.getElementById("generatedMessage").value = finalMessage;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(finalMessage).then(() => {
+                alert("Message copied to clipboard!");
+            }).catch(err => {
+                console.error("Error copying text: ", err);
+            });
         }
     </script>
 </head>
