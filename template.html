@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Formulários</title>
+    <title>Templates - Master Vacation Homes</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+        
         const firebaseConfig = {
             apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
             authDomain: "templatemaster-a2d6e.firebaseapp.com",
@@ -20,32 +21,76 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth();
+        const db = getFirestore(app);
 
-        // Verifica se o usuário está autenticado
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
-                console.log("Usuário autenticado:", user.email);
                 document.getElementById("user-email").innerText = user.email;
+                loadTemplates(user.uid);
             } else {
-                console.log("Nenhum usuário autenticado. Redirecionando para login.");
                 window.location.href = "page.html";
             }
         });
 
-        // Função de logout
-        window.logout = function() {
-            signOut(auth).then(() => {
-                console.log("Usuário deslogado.");
-                window.location.href = "page.html";
-            }).catch((error) => {
-                console.error("Erro ao deslogar:", error);
+        async function addTemplate() {
+            const name = document.getElementById("template-name").value;
+            const description = document.getElementById("template-description").value;
+            const user = auth.currentUser;
+            
+            if (user && name.trim() && description.trim()) {
+                await addDoc(collection(db, "templates"), {
+                    userId: user.uid,
+                    name: name,
+                    description: description
+                });
+                loadTemplates(user.uid);
+            }
+        }
+
+        async function loadTemplates(userId) {
+            const querySnapshot = await getDocs(collection(db, "templates"));
+            const list = document.getElementById("template-list");
+            list.innerHTML = "";
+            
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.userId === userId) {
+                    const item = document.createElement("div");
+                    item.innerHTML = `
+                        <p><strong>${data.name}</strong></p>
+                        <p>${data.description}</p>
+                        <button onclick="deleteTemplate('${doc.id}')">Excluir</button>
+                        <button>Editar</button>
+                    `;
+                    list.appendChild(item);
+                }
             });
         }
+
+        async function deleteTemplate(id) {
+            await deleteDoc(doc(db, "templates", id));
+            loadTemplates(auth.currentUser.uid);
+        }
+
+        window.logout = function() {
+            signOut(auth).then(() => {
+                window.location.href = "page.html";
+            });
+        }
+
+        window.deleteTemplate = deleteTemplate;
     </script>
 </head>
 <body>
-    <h2>Bem-vindo à página de Formulários</h2>
+    <h2>Gerenciar Templates</h2>
     <p>Usuário logado: <span id="user-email"></span></p>
+    
+    <input type="text" id="template-name" placeholder="Nome do Template">
+    <input type="text" id="template-description" placeholder="Descrição do Template">
+    <button onclick="addTemplate()">Adicionar Template</button>
+    
+    <div id="template-list"></div>
+    
     <button onclick="logout()">Sair</button>
 </body>
 </html>
