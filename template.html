@@ -28,7 +28,7 @@
                 document.getElementById("user-email").innerText = user.email;
             } else {
                 console.log("Nenhum usuário autenticado. Redirecionando para login.");
-                window.location.href = "index.html";
+                window.location.href = "page.html";
             }
         });
 
@@ -36,7 +36,7 @@
         window.logout = function() {
             signOut(auth).then(() => {
                 console.log("Usuário deslogado.");
-                window.location.href = "index.html";
+                window.location.href = "page.html";
             }).catch((error) => {
                 console.error("Erro ao deslogar:", error);
             });
