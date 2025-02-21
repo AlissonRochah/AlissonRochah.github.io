@@ -8,7 +8,7 @@
         // Import the functions you need from the SDKs you need
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-analytics.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
         
         // Your web app's Firebase configuration
         const firebaseConfig = {
@@ -35,7 +35,7 @@
                 .then((userCredential) => {
                     console.log("Usuário logado:", userCredential.user);
                     localStorage.setItem("user", JSON.stringify(userCredential.user));
-                    window.location.href = "dashboard.html";
+                    renderDashboard(userCredential.user);
                 })
                 .catch((error) => {
                     console.error("Erro no login:", error);
@@ -43,21 +43,35 @@
                 });
         }
 
-        // Confirmação de login na página do dashboard
+        function logout() {
+            signOut(auth).then(() => {
+                console.log("Usuário deslogado.");
+                localStorage.removeItem("user");
+                window.location.reload();
+            }).catch((error) => {
+                console.error("Erro ao deslogar:", error);
+            });
+        }
+
+        function renderDashboard(user) {
+            document.body.innerHTML = `
+                <div class='dashboard-container'>
+                    <h2>Bem-vindo, ${user.email}</h2>
+                    <button onclick="window.location.href='formulas.html'">Ir para Formulários</button>
+                    <button onclick="window.location.href='template.html'">Ir para Templates</button>
+                    <button onclick="window.location.href='messages.html'">Ir para Mensagens</button>
+                    <button onclick="logout()">Sair</button>
+                </div>`;
+        }
+
+        // Confirmação de login ao carregar a página
         window.addEventListener("load", () => {
             onAuthStateChanged(auth, (user) => {
                 if (user) {
-                    console.log("Usuário autenticado no dashboard:", user);
-                    document.body.innerHTML = `
-                        <div class='dashboard-container'>
-                            <h2>Bem-vindo, ${user.email}</h2>
-                            <button onclick="window.location.href='formulas.html'">Ir para Formulários</button>
-                            <button onclick="window.location.href='template.html'">Ir para Templates</button>
-                            <button onclick="window.location.href='messages.html'">Ir para Mensagens</button>
-                        </div>`;
+                    console.log("Usuário autenticado:", user);
+                    renderDashboard(user);
                 } else {
                     console.log("Nenhum usuário autenticado.");
-                    window.location.href = "index.html"; // Redireciona para login caso não esteja autenticado
                 }
             });
         });
