@@ -26,7 +26,7 @@
         const analytics = getAnalytics(app);
         const auth = getAuth();
 
-        window.login = function() {
+        function login() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const errorMessage = document.getElementById('error-message');
@@ -60,7 +60,7 @@
                     <button onclick="window.location.href='formulas.html'">Ir para Formulários</button>
                     <button onclick="window.location.href='template.html'">Ir para Templates</button>
                     <button onclick="window.location.href='messages.html'">Ir para Mensagens</button>
-                    <button onclick="logout()">Sair</button>
+                    <button onclick="window.logout()">Sair</button>
                 </div>`;
         }
 
@@ -75,6 +75,10 @@
                 }
             });
         });
+
+        // Tornando funções acessíveis no escopo global
+        window.login = login;
+        window.logout = logout;
     </script>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -83,7 +87,7 @@
         <h2>Login</h2>
         <input type="email" id="email" placeholder="Email">
         <input type="password" id="password" placeholder="Senha">
-        <button onclick="login()">Entrar</button>
+        <button onclick="window.login()">Entrar</button>
         <p id="error-message"></p>
     </div>
 </body>
