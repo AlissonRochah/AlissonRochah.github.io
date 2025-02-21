@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulários</title>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
+            authDomain: "templatemaster-a2d6e.firebaseapp.com",
+            projectId: "templatemaster-a2d6e",
+            storageBucket: "templatemaster-a2d6e.firebasestorage.app",
+            messagingSenderId: "208432538664",
+            appId: "1:208432538664:web:10a29a55efbb824ae1411d",
+            measurementId: "G-LLVT6XW024"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth();
+
+        // Verifica se o usuário está autenticado
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log("Usuário autenticado:", user.email);
+                document.getElementById("user-email").innerText = user.email;
+            } else {
+                console.log("Nenhum usuário autenticado. Redirecionando para login.");
+                window.location.href = "index.html";
+            }
+        });
+
+        // Função de logout
+        window.logout = function() {
+            signOut(auth).then(() => {
+                console.log("Usuário deslogado.");
+                window.location.href = "index.html";
+            }).catch((error) => {
+                console.error("Erro ao deslogar:", error);
+            });
+        }
+    </script>
+</head>
+<body>
+    <h2>Bem-vindo à página de Formulários</h2>
+    <p>Usuário logado: <span id="user-email"></span></p>
+    <button onclick="logout()">Sair</button>
+</body>
+</html>
