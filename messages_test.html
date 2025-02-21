@@ -91,6 +91,9 @@
             }).catch(err => {
                 console.error("Error copying text: ", err);
             });
+
+            // Uncheck all checkboxes
+            document.querySelectorAll(".service").forEach(checkbox => checkbox.checked = false);
         }
     </script>
 </head>
