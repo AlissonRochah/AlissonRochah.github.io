@@ -5,6 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Templates - Master Vacation Homes</title>
+
+    <link rel="stylesheet" href="style/template.css">
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/reset.css">
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
@@ -29,7 +34,7 @@
                 document.getElementById("user-email").innerText = user.email;
                 loadTemplates(user.uid);
             } else {
-                window.location.href = "page.html";
+                window.location.href = "index.html";
             }
         });
 
@@ -63,11 +68,9 @@
                 const data = doc.data();
                 const item = document.createElement("div");
                 item.innerHTML = `
-                    <p><strong>${data.name}</strong></p>
-                    <p>${data.description}</p>
-                    <button onclick="deleteTemplate('${userId}', '${doc.id}')">Excluir</button>
-                    <button>Editar</button>
-                `;
+                    <p class="template-show-title"><strong>${data.name}</strong></p>
+                    <p class="template-show-desc">${data.description}</p>
+                    <button onclick="deleteTemplate('${userId}', '${doc.id}')" class="delete-btn">Excluir</button>`;
                 list.appendChild(item);
             });
         }
@@ -81,23 +84,29 @@
 
         window.logout = function () {
             signOut(auth).then(() => {
-                window.location.href = "page.html";
+                window.location.href = "index.html";
             });
         }
     </script>
 </head>
 
 <body>
-    <h2>Gerenciar Templates</h2>
-    <p>Usuário logado: <span id="user-email"></span></p>
-
-    <input type="text" id="template-name" placeholder="Nome do Template">
-    <input type="text" id="template-description" placeholder="Descrição do Template">
-    <button onclick="addTemplate()">Adicionar Template</button>
-
-    <div id="template-list"></div>
-
-    <button onclick="logout()">Sair</button>
+    <div class="template">
+        <div class="template-header">
+            <img src="img/MasterLogo.jpg" alt="Master Logo">
+            <p id="user-email"></p>
+            <a class="logout-btn" href="/index.html">Home</a>
+        </div>
+        <div class="template-wrapper">
+            <h2>Gerenciar Templates</h2>
+            <div class="template-input-wrapper">
+            <input type="text" id="template-name" placeholder="Template Title">
+            <input type="text" id="template-description" placeholder="Template">
+            <button onclick="addTemplate()" class="add-template-btn">Adicionar Template</button>
+        </div>
+            <div id="template-list" class="template-list"></div>
+        </div>
+    </div>
 </body>
 
 </html>

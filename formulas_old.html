@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clipboard Fórmulas</title>
+
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+    <style>
+        body {
+            padding: 30px;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            justify-content: center;
+            background-color: #0f172a;
+        }
+
+        .button-container {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100vh;
+            background-color: #0f172a;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        button {
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #6338f0;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        .green {
+            background-color: #9e80ff;
+        }
+
+        .green:hover {
+            background-color: #7660c0;
+        }
+
+        button:hover {
+            background-color: #4a29b8;
+        }
+
+        #mensagem {
+            margin-top: 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .sucesso {
+            color: green;
+        }
+
+        .erro {
+            color: red;
+        }
+
+        .logout-btn {
+            background-color: #6338f0;
+            color: #ffffff;
+            font-size: 700;
+            font-size: 1.2rem;
+            padding: 10px 20px;
+            border-radius: 15px;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .logout-btn:hover {
+            background-color: #4a29b8;
+        }
+    </style>
+</head>
+
+<body>
+    <a class="logout-btn" href="/page.html">Home</a>
+    <div class="button-container">
+        <button onclick="processarClipboard(1)">Rental 6%</button>
+        <button onclick="processarClipboard(2)">Cleaning 6%</button>
+        <button onclick="processarClipboard(3)" class="green">Rental 5%</button>
+        <button onclick="processarClipboard(4)" class="green">Cleaning 5%</button>
+        
+    </div>
+
+    <p id="mensagem"></p>
+
+    <script>
+        async function processarClipboard(operacao) {
+            let mensagemElemento = document.getElementById("mensagem");
+
+            try {
+                // Obtém o texto copiado (Ctrl+C)
+                let texto = await navigator.clipboard.readText();
+
+                // Remove qualquer vírgula no número (ex: "1,000" -> "1000")
+                texto = texto.replace(/,/g, '');
+
+                // Converte para número
+                let numero = parseFloat(texto);
+
+                // Se não for um número válido, exibe uma mensagem de erro
+                if (isNaN(numero)) {
+                    mensagemElemento.textContent = "Erro: O conteúdo copiado não é um número válido.";
+                    mensagemElemento.className = "erro";
+                    return;
+                }
+
+                let resultado;
+
+                // Aplica a fórmula correspondente ao botão clicado
+                switch (operacao) {
+                    case 1:
+                        resultado = ((((numero - 65) * (1 - 0.03)) / 1.06)) - 0.8 - 1.04;
+                        break;
+                    case 2:
+                        resultado = (numero * (1 - 0.03)) / 1.06;
+                        break;
+                    case 3:
+                        resultado = (((numero - 65) * (1 - 0.03))) - 0.8 - 1.15;
+                        break;
+                    case 4:
+                        resultado = (numero * (1 - 0.03));
+                        break;
+                    default:
+                        mensagemElemento.textContent = "Erro: Operação inválida.";
+                        mensagemElemento.className = "erro";
+                        return;
+                }
+
+                // Formata o resultado para ter 2 casas decimais
+                resultado = resultado.toFixed(2);
+
+                // Copia o novo valor para o clipboard
+                await navigator.clipboard.writeText(resultado);
+
+                // Exibe mensagem de sucesso
+                mensagemElemento.textContent = "Sucesso: " + resultado;
+                mensagemElemento.className = "sucesso";
+            } catch (error) {
+                console.error("Erro ao acessar o clipboard:", error);
+                mensagemElemento.textContent = "Erro ao acessar o clipboard.";
+                mensagemElemento.className = "erro";
+            }
+        }
+    </script>
+
+</body>
+
+</html>

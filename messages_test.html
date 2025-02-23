@@ -5,6 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Message Generator</title>
+
+    <link rel="stylesheet" href="style/message.css">
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
@@ -26,10 +31,10 @@
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                document.getElementById("user-email").innerText = `Logged in as: ${user.email}`;
+                document.getElementById("user-email").innerText = `${user.email}`;
                 loadTemplates(user.uid);
             } else {
-                window.location.href = "page.html";
+                window.location.href = "index.html";
             }
         });
 
@@ -40,7 +45,7 @@
 
             const list = document.querySelector(".checkbox-container");
             list.innerHTML = "";
-            
+
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
                 const item = document.createElement("label");
@@ -51,7 +56,7 @@
             });
         }
 
-        window.generateMessage = async function() {
+        window.generateMessage = async function () {
             let yourName = document.getElementById("yourName").value.trim();
             let guestName = document.getElementById("guestName").value.trim();
             let selectedServices = document.querySelectorAll(".service:checked");
@@ -84,7 +89,7 @@
             finalMessage += `Let us know if you have any other questions!\n\nBest regards,\n\n${yourName}`;
 
             document.getElementById("generatedMessage").value = finalMessage;
-            
+
             // Copy to clipboard
             navigator.clipboard.writeText(finalMessage).then(() => {
             }).catch(err => {
@@ -98,21 +103,36 @@
 </head>
 
 <body>
-    <h2>Message Generator</h2>
-    <p id="user-email"></p>
 
-    <label>Your Name:</label>
-    <input type="text" id="yourName" placeholder="Enter your name" value="Alisson">
 
-    <label>Guest's Name:</label>
-    <input type="text" id="guestName" placeholder="Guest Name">
-    
-    <h3>Select Services:</h3>
-    <div class="checkbox-container"></div>
+    <div class="message-generator">
+        <div class="message-header">
+            <img src="img/MasterLogo.jpg" alt="Master Logo">
+            <p id="user-email"></p>
+            <a class="logout-btn" href="/index.html">Home</a>
+        </div>
 
-    <button onclick="generateMessage()">Generate Message</button>
+        <div class="message-wrapper">
+            <h2>Message Generator</h2>
 
-    <textarea id="generatedMessage" readonly></textarea>
+            <div class="input-wrapper">
+                <label>Your Name:</label>
+                <input type="text" id="yourName" placeholder="Enter your name">
+            </div>
+
+            <div class="input-wrapper">
+                <label>Guest's Name:</label>
+                <input type="text" id="guestName" placeholder="Guest Name">
+            </div>
+            <h3>Select Services:</h3>
+            <div class="checkbox-container"></div>
+
+            <button onclick="generateMessage()" class="generate-message-btn">Generate Message</button>
+
+            
+        </div>
+        <textarea id="generatedMessage" readonly></textarea>
+    </div>
 </body>
 
 </html>

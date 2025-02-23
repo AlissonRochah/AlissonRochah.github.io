@@ -1,0 +1,151 @@
+body {
+    background-color: #0f172a;
+}
+
+.template {
+    width: 100%;
+    height: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #0f172a;
+    align-items: center;
+    color: #94a3b8;
+    padding-bottom: 50px;
+}
+
+.template-header {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    padding: 15px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.template-header {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    padding: 15px;
+    justify-content: space-between;
+}
+
+.template-header h2 {
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+.template-header img {
+    width: 70px;
+    border-radius: 50%;
+}
+
+.logout-btn {
+    background-color: #6338f0;
+    color: #ffffff;
+    font-size: 700;
+    font-size: 1.2rem;
+    padding: 10px 20px;
+    border-radius: 15px;
+    cursor: pointer;
+}
+
+.logout-btn:hover {
+    background-color: #4a29b8;
+}
+
+.menu-btn {
+    background-color: #6338f0;
+    color: #ffffff;
+    font-size: 700;
+    font-size: 1.2rem;
+    padding: 10px 20px;
+    border-radius: 15px;
+    cursor: pointer;
+}
+
+.menu-btn:hover {
+    background-color: #4a29b8;
+}
+
+.template-wrapper {
+    width: 90%;
+}
+
+.template-wrapper h2 {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.5rem;
+    margin-bottom: 50px;
+}
+
+.template-input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.template-input-wrapper input {
+    width: 100%;
+    background-color: transparent;
+    padding: 13px;
+    border: 1px solid #94a3b8b4;
+    border-radius: 15px;
+    color: #94a3b8;
+}
+
+.add-template-btn {
+    background-color: #6338f0;
+    color: #ffffff;
+    font-size: 700;
+    font-size: 1.2rem;
+    padding: 10px 20px;
+    border-radius: 15px;
+    cursor: pointer;
+}
+
+.add-template-btn:hover {
+    background-color: #4a29b8;
+}
+
+.template-list {
+    border: 1px solid #94a3b8b4;
+    margin-top: 50px;
+    border-radius: 20px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.template-list div {
+    display: flex;
+    justify-content: space-between;
+    border: 1px solid #94a3b8b4;
+    border-radius: 10px;
+    padding: 10px;
+    align-items: center;
+}
+
+.template-show-title {
+    flex-basis: 150px;
+    color: #ffffff;
+    font-size: 1.4rem;
+    font-size: 700;
+}
+
+.template-show-desc {
+    flex-basis: calc(100% - 150px - 90px - 40px);
+    text-align: start;
+}
+
+.delete-btn {
+    background-color: #6338f0;
+    color: #ffffff;
+    font-size: 700;
+    padding: 10px 20px;
+    border-radius: 15px;
+    cursor: pointer;
+    width: 90px;
+}

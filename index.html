@@ -1,133 +1,129 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-BR">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clipboard Fórmulas</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            background-color: #f4f4f4;
+    <title>Login - Master Vacation Homes</title>
+
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+
+    <link rel="stylesheet" href="style/login.css">
+
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-analytics.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
+            authDomain: "templatemaster-a2d6e.firebaseapp.com",
+            projectId: "templatemaster-a2d6e",
+            storageBucket: "templatemaster-a2d6e.firebasestorage.app",
+            messagingSenderId: "208432538664",
+            appId: "1:208432538664:web:10a29a55efbb824ae1411d",
+            measurementId: "G-LLVT6XW024"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const auth = getAuth();
+
+        function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorMessage = document.getElementById('error-message');
+
+            signInWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    console.log("Usuário logado:", userCredential.user);
+                    localStorage.setItem("user", JSON.stringify(userCredential.user));
+                    renderDashboard(userCredential.user);
+                })
+                .catch((error) => {
+                    console.error("Erro no login:", error);
+                    errorMessage.innerText = "Erro: " + error.message;
+                });
         }
 
-        .button-container {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 10px;
+        function logout() {
+            signOut(auth).then(() => {
+                console.log("Usuário deslogado.");
+                localStorage.removeItem("user");
+                window.location.reload();
+            }).catch((error) => {
+                console.error("Erro ao deslogar:", error);
+            });
         }
 
-        button {
-            padding: 10px 15px;
-            font-size: 16px;
-            cursor: pointer;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
+        function renderDashboard(user) {
+            document.body.innerHTML = `
+                <div class='dashboard-container'>
+                    <div class="dashboard-header">
+                        <img src="img/MasterLogo.jpg" alt="Master Logo">
+                        <h2>${user.email}</h2>
+                        <button onclick="window.logout()" class="logout-btn">Sair</button>
+                    </div>
+                    <div class="button-wrapper">
+                        <button onclick="window.location.href='formulas.html'" class="menu-btn">Ir para Formulários</button>
+                        <button onclick="window.location.href='template.html'" class="menu-btn">Ir para Templates</button>
+                        <button onclick="window.location.href='messages_test.html'" class="menu-btn">Ir para Mensagens</button>
+                    </div>
+                </div>`;
         }
 
-        .green {
-            background-color: #00ff95;
-        }
+        // Confirmação de login ao carregar a página
+        window.addEventListener("load", () => {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    console.log("Usuário autenticado:", user);
+                    renderDashboard(user);
+                } else {
+                    console.log("Nenhum usuário autenticado.");
+                }
+            });
+        });
 
-        button:hover {
-            background-color: #0056b3;
-        }
-
-        #mensagem {
-            margin-top: 15px;
-            font-size: 16px;
-            font-weight: bold;
-        }
-
-        .sucesso {
-            color: green;
-        }
-
-        .erro {
-            color: red;
-        }
-    </style>
+        // Tornando funções acessíveis no escopo global
+        window.login = login;
+        window.logout = logout;
+    </script>
+    <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
 
-    <div class="button-container">
-        <button onclick="processarClipboard(1)">Rental 6%</button>
-        <button onclick="processarClipboard(2)">Cleaning 6%</button>
-        <button onclick="processarClipboard(3)" class="green">Rental 5%</button>
-        <button onclick="processarClipboard(4)" class="green">Cleaning 5%</button>
+    
+
+
+    <div class="login-page">
+        <div class="logo-div">
+            <img src="img/line.webp" class="background-img">
+            <div class="logo-wrapper">
+                <img src="img/MasterLogo.jpg" alt="Master Logo">
+            </div>
+        </div>
+        <div class="login-container">
+            <div class="login-wrapper">
+                <img src="img/MasterLogo.jpg" alt="Master Logo">
+                <h2>Master Vacation - Reservation 👋</h2>
+                <div class="login-input">
+                    <p>Email</p>
+                    <input type="email" id="email" placeholder="name@gmail.com">
+                </div>
+                <div class="login-input">
+                    <p>Password</p>
+                    <input type="password" id="password" placeholder="Password">
+                </div>
+                <button onclick="window.login()" class="login-btn">Sign In</button>
+                <p id="error-message"></p>
+            </div>
+        </div>
     </div>
-
-    <p id="mensagem"></p>
-
-    <script>
-        async function processarClipboard(operacao) {
-            let mensagemElemento = document.getElementById("mensagem");
-
-            try {
-                // Obtém o texto copiado (Ctrl+C)
-                let texto = await navigator.clipboard.readText();
-
-                // Remove qualquer vírgula no número (ex: "1,000" -> "1000")
-                texto = texto.replace(/,/g, '');
-
-                // Converte para número
-                let numero = parseFloat(texto);
-
-                // Se não for um número válido, exibe uma mensagem de erro
-                if (isNaN(numero)) {
-                    mensagemElemento.textContent = "Erro: O conteúdo copiado não é um número válido.";
-                    mensagemElemento.className = "erro";
-                    return;
-                }
-
-                let resultado;
-
-                // Aplica a fórmula correspondente ao botão clicado
-                switch (operacao) {
-                    case 1:
-                        resultado = ((((numero - 65) * (1 - 0.03)) / 1.06)) - 0.8 - 1.04;
-                        break;
-                    case 2:
-                        resultado = (numero * (1 - 0.03)) / 1.06;
-                        break;
-                    case 3:
-                        resultado = (((numero - 65) * (1 - 0.03))) - 0.8 - 1.15;
-                        break;
-                    case 4:
-                        resultado = (numero * (1 - 0.03));
-                        break;
-                    default:
-                        mensagemElemento.textContent = "Erro: Operação inválida.";
-                        mensagemElemento.className = "erro";
-                        return;
-                }
-
-                // Formata o resultado para ter 2 casas decimais
-                resultado = resultado.toFixed(2);
-
-                // Copia o novo valor para o clipboard
-                await navigator.clipboard.writeText(resultado);
-
-                // Exibe mensagem de sucesso
-                mensagemElemento.textContent = "Sucesso: " + resultado;
-                mensagemElemento.className = "sucesso";
-            } catch (error) {
-                console.error("Erro ao acessar o clipboard:", error);
-                mensagemElemento.textContent = "Erro ao acessar o clipboard.";
-                mensagemElemento.className = "erro";
-            }
-        }
-    </script>
-
 </body>
 
 </html>
