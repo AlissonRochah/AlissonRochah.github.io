@@ -50,6 +50,8 @@
                 const userDocRef = doc(db, "templates", user.uid);
                 const userTemplatesRef = doc(collection(userDocRef, "userTemplates"), name);
 
+                const sanitizedName = name.replace(/\//g, "-"); // Substitui "/" por "-"
+
                 // Substituir `\n` por `\\n` antes de salvar
                 const formattedDescription = description.replace(/\n/g, "\\n");
 
