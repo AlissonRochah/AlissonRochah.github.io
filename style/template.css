@@ -95,6 +95,21 @@ body {
     color: #94a3b8;
 }
 
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+    border: 1px solid #94a3b8b4;
+  -webkit-text-fill-color: #94a3b8;
+  -webkit-box-shadow: 0 0 0px 1000px #090e1a inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 .add-template-btn {
     background-color: #6338f0;
     color: #ffffff;
