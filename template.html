@@ -50,7 +50,8 @@
                 const userDocRef = doc(db, "templates", user.uid);
                 const userTemplatesRef = doc(collection(userDocRef, "userTemplates"), name);
 
-                const formattedDescription = description.replace(/\n/g, "\\n"); // Salva a quebra de linha
+                // Substituir `\n` por `\\n` antes de salvar
+                const formattedDescription = description.replace(/\n/g, "\\n");
 
                 await setDoc(userTemplatesRef, {
                     name: name,
@@ -72,8 +73,8 @@
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
 
-                // Converte quebras de linha `\n` para `<br>` no HTML
-                const formattedDescription = data.description.replace(/\n/g, "<br>");
+                // Converter `\\n` de volta para `<br>` para manter a formatação correta
+                const formattedDescription = data.description.replace(/\\n/g, "<br>");
 
                 const item = document.createElement("div");
                 item.innerHTML = `

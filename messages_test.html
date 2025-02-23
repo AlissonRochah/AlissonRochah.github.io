@@ -50,10 +50,14 @@
 
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
+
+                // Converte `\n` para `<br>` para preservar quebras de linha na descrição
+                const formattedDescription = data.description.replace(/\\n/g, "\n");
+
                 const item = document.createElement("label");
                 item.innerHTML = `
-                    <input type="checkbox" value="${doc.id}" class="service" data-description="${data.description}"> ${data.name}
-                `;
+            <input type="checkbox" value="${doc.id}" class="service" data-description="${formattedDescription}"> ${data.name}
+        `;
                 list.appendChild(item);
             });
         }
@@ -131,7 +135,7 @@
 
             <button onclick="generateMessage()" class="generate-message-btn">Generate Message</button>
 
-            
+
         </div>
         <textarea id="generatedMessage" readonly></textarea>
     </div>
