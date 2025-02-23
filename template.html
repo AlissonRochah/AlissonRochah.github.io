@@ -8,7 +8,7 @@
 
     <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
 
-    
+
     <link rel="stylesheet" href="style/template.css">
     <link rel="stylesheet" href="style/style.css">
     <link rel="stylesheet" href="style/reset.css">
@@ -50,9 +50,11 @@
                 const userDocRef = doc(db, "templates", user.uid);
                 const userTemplatesRef = doc(collection(userDocRef, "userTemplates"), name);
 
+                const formattedDescription = description.replace(/\n/g, "\\n"); // Salva a quebra de linha
+
                 await setDoc(userTemplatesRef, {
                     name: name,
-                    description: description
+                    description: formattedDescription
                 });
 
                 loadTemplates(user.uid);
@@ -69,11 +71,16 @@
 
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
+
+                // Converte quebras de linha `\n` para `<br>` no HTML
+                const formattedDescription = data.description.replace(/\n/g, "<br>");
+
                 const item = document.createElement("div");
                 item.innerHTML = `
-                    <p class="template-show-title"><strong>${data.name}</strong></p>
-                    <p class="template-show-desc">${data.description}</p>
-                    <button onclick="deleteTemplate('${userId}', '${doc.id}')" class="delete-btn">Excluir</button>`;
+            <p class="template-show-title"><strong>${data.name}</strong></p>
+            <p class="template-show-desc">${formattedDescription}</p>
+            <button onclick="deleteTemplate('${userId}', '${doc.id}')" class="delete-btn">Excluir</button>`;
+
                 list.appendChild(item);
             });
         }
@@ -103,10 +110,10 @@
         <div class="template-wrapper">
             <h2>Gerenciar Templates</h2>
             <div class="template-input-wrapper">
-            <input type="text" id="template-name" placeholder="Template Title">
-            <input type="text" id="template-description" placeholder="Template">
-            <button onclick="addTemplate()" class="add-template-btn">Adicionar Template</button>
-        </div>
+                <input type="text" id="template-name" placeholder="Template Title">
+                <input type="text" id="template-description" placeholder="Template">
+                <button onclick="addTemplate()" class="add-template-btn">Adicionar Template</button>
+            </div>
             <div id="template-list" class="template-list"></div>
         </div>
     </div>
