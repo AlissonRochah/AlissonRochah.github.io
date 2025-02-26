@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Copiar Templates para Múltiplos Usuários</title>
+    <title>Copiar Dados do Firestore</title>
     
     <!-- Firebase compatível com navegador (v9 compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
@@ -12,7 +12,7 @@
 </head>
 <body>
 
-    <h1>Copiando Templates para Todos os Usuários...</h1>
+    <h1>Copiando Dados do Firestore...</h1>
 
     <script>
         // Configuração do Firebase
@@ -33,7 +33,7 @@
         // ID do usuário de origem
         const sourceUserId = "E8yFNF9FaiT62h0sMscAN1EAxRf2";
 
-        // Lista de usuários para copiar os templates
+        // Lista de usuários para copiar os dados
         const targetUserIds = [
             "2Byoe7VENCSDsDH1gD2AruQB4iht",
             "8EOn0nX4PpdQIKUF8Xy1PAoCZod2",
@@ -49,40 +49,38 @@
             "n1DUxRO1X6Q59TtuFaQo9NZBcfJ3"
         ];
 
-        async function copyTemplates() {
+        async function copyData() {
             try {
-                console.log("🔄 Iniciando cópia dos templates...");
+                console.log("🔄 Iniciando cópia dos dados...");
 
-                // Obtém os templates do usuário de origem
-                const sourceCollectionRef = db.collection(`templates/${sourceUserId}/userTemplates`);
+                // Obtém todos os documentos dentro de `templates/E8yFNF9FaiT62h0sMscAN1EAxRf2`
+                const sourceCollectionRef = db.collection(`templates`).doc(sourceUserId);
                 const sourceSnapshot = await sourceCollectionRef.get();
 
-                if (sourceSnapshot.empty) {
-                    console.log("❌ Nenhum template encontrado para copiar.");
+                if (!sourceSnapshot.exists) {
+                    console.log("❌ Nenhum dado encontrado para copiar.");
                     return;
                 }
+
+                const sourceData = sourceSnapshot.data(); // Obtém os dados do documento
 
                 let copiedTotal = 0;
 
                 // Copia para cada usuário na lista
                 for (const targetUserId of targetUserIds) {
-                    let copiedCount = 0;
-                    for (const doc of sourceSnapshot.docs) {
-                        await db.doc(`templates/${targetUserId}/userTemplates/${doc.id}`).set(doc.data());
-                        copiedCount++;
-                    }
-                    console.log(`✅ Copiados ${copiedCount} templates para ${targetUserId}`);
-                    copiedTotal += copiedCount;
+                    await db.collection("templates").doc(targetUserId).set(sourceData);
+                    console.log(`✅ Dados copiados para ${targetUserId}`);
+                    copiedTotal++;
                 }
 
-                console.log(`🚀 Copiados ${copiedTotal} templates no total!`);
+                console.log(`🚀 Copiados ${copiedTotal} documentos no total!`);
             } catch (error) {
-                console.error("❌ Erro ao copiar os templates:", error);
+                console.error("❌ Erro ao copiar os dados:", error);
             }
         }
 
         // Executa a cópia automaticamente ao carregar a página
-        copyTemplates();
+        copyData();
     </script>
 
 </body>
