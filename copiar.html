@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copiar Templates para Múltiplos Usuários</title>
+    
+    <!-- Firebase compatível com navegador (v9 compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
+</head>
+<body>
+
+    <h1>Copiando Templates para Todos os Usuários...</h1>
+
+    <script>
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
+            authDomain: "templatemaster-a2d6e.firebaseapp.com",
+            projectId: "templatemaster-a2d6e",
+            storageBucket: "templatemaster-a2d6e.appspot.com",
+            messagingSenderId: "208432538664",
+            appId: "1:208432538664:web:10a29a55efbb824ae1411d",
+            measurementId: "G-LLVT6XW024"
+        };
+
+        // Inicializa Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // ID do usuário de origem
+        const sourceUserId = "E8yFNF9FaiT62h0sMscAN1EAxRf2";
+
+        // Lista de usuários para copiar os templates
+        const targetUserIds = [
+            "2Byoe7VENCSDsDH1gD2AruQB4iht",
+            "8EOn0nX4PpdQIKUF8Xy1PAoCZod2",
+            "FwavUj1kAWQAnq2V611UuzImgE3",
+            "Lhi2xJFjMme5tUcRSogMtgCKqz32",
+            "ONZ06TGWtpPDHvs7xWUVUKZbrDj2",
+            "Sj69fa5vQeTrLFrCy8XknIF9MeY2",
+            "YPSSPHmCKXSWk08izCdPRV4ieWOT",
+            "cc4jWH6VV5e0PHk1z8m898wDA592",
+            "hTnsbqyGYhdd655VPrecwRJwOZF2",
+            "kEKyWxb7PcQkpvzt0zKsBOLEqGq1",
+            "ldCDssPSi1S3UjRCBLVSKYfw1Y2",
+            "n1DUxRO1X6Q59TtuFaQo9NZBcfJ3"
+        ];
+
+        async function copyTemplates() {
+            try {
+                console.log("🔄 Iniciando cópia dos templates...");
+
+                // Obtém os templates do usuário de origem
+                const sourceCollectionRef = db.collection(`templates/${sourceUserId}/userTemplates`);
+                const sourceSnapshot = await sourceCollectionRef.get();
+
+                if (sourceSnapshot.empty) {
+                    console.log("❌ Nenhum template encontrado para copiar.");
+                    return;
+                }
+
+                let copiedTotal = 0;
+
+                // Copia para cada usuário na lista
+                for (const targetUserId of targetUserIds) {
+                    let copiedCount = 0;
+                    for (const doc of sourceSnapshot.docs) {
+                        await db.doc(`templates/${targetUserId}/userTemplates/${doc.id}`).set(doc.data());
+                        copiedCount++;
+                    }
+                    console.log(`✅ Copiados ${copiedCount} templates para ${targetUserId}`);
+                    copiedTotal += copiedCount;
+                }
+
+                console.log(`🚀 Copiados ${copiedTotal} templates no total!`);
+            } catch (error) {
+                console.error("❌ Erro ao copiar os templates:", error);
+            }
+        }
+
+        // Executa a cópia automaticamente ao carregar a página
+        copyTemplates();
+    </script>
+
+</body>
+</html>
