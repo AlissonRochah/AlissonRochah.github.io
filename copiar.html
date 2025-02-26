@@ -37,8 +37,8 @@
             try {
                 console.log("🔄 Iniciando cópia dos templates...");
 
-                // Obtém os templates do usuário de origem
-                const sourceCollectionRef = db.collection(`users/${sourceUserId}/userTemplates`);
+                // Obtém os templates do Firestore no caminho correto
+                const sourceCollectionRef = db.collection(`templates/${sourceUserId}/userTemplates`);
                 const sourceSnapshot = await sourceCollectionRef.get();
 
                 if (sourceSnapshot.empty) {
@@ -55,7 +55,7 @@
                     if (userId === sourceUserId) continue; // Pula o usuário de origem
 
                     for (const doc of sourceSnapshot.docs) {
-                        await db.doc(`users/${userId}/userTemplates/${doc.id}`).set(doc.data());
+                        await db.doc(`templates/${userId}/userTemplates/${doc.id}`).set(doc.data());
                     }
                     copiedCount++;
                 }
