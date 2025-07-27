@@ -118,7 +118,7 @@ select:-webkit-autofill:focus {
     flex-direction: column;
     flex-wrap: wrap;
     gap: 5px;
-    max-height: 400px;
+    max-height: 550px;
 }
 
 .checkbox-container input[type="checkbox"] {
