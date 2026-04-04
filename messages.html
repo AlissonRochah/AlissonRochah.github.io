@@ -128,7 +128,7 @@
                     label.innerHTML = `
                         <input type="checkbox" class="service" value="${t.id}" data-description="${t.description.replace(/"/g, '&quot;')}">
                         <span class="checkmark"></span>
-                        <span class="checkbox-label">${t.name}</span>
+                        <span class="checkbox-label" title="${t.name}">${t.name}</span>
                     `;
                     list.appendChild(label);
                 });
