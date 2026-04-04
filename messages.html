@@ -31,7 +31,7 @@
         const auth = getAuth();
         const db = getFirestore(app);
 
-        let userSignature = { enabled: false, text: "" };
+        let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
         let allTemplates = [];
 
         onAuthStateChanged(auth, async (user) => {
@@ -52,7 +52,9 @@
                 if (snap.exists()) {
                     const data = snap.data();
                     userSignature.enabled = data.signatureEnabled || false;
+                    userSignature.mode = data.signatureMode || "fixed";
                     userSignature.text = data.signatureText || "";
+                    userSignature.randomList = data.randomSignatures || [];
                 }
             } catch (e) {
                 console.error("Error loading signature:", e);
@@ -135,36 +137,37 @@
         window.filterByCategory = renderCheckboxes;
         window.filterServices = renderCheckboxes;
 
-        window.generateMessage = function () {
-            const yourName = document.getElementById("yourName").value.trim();
-            const guestName = document.getElementById("guestName").value.trim();
-            const selectedServices = document.querySelectorAll(".service:checked");
-
-            if (!yourName) {
-                showToast("Please enter your name.", "error");
-                return;
+        function getSignatureText() {
+            if (!userSignature.enabled) return "";
+            if (userSignature.mode === "random" && userSignature.randomList.length > 0) {
+                const i = Math.floor(Math.random() * userSignature.randomList.length);
+                return userSignature.randomList[i];
             }
+            return userSignature.text || "";
+        }
 
-            if (!guestName) {
-                showToast("Please enter the guest's name.", "error");
-                return;
-            }
-
+        function getSelectedMessages() {
             let messages = [];
-            selectedServices.forEach(service => {
+            document.querySelectorAll(".service:checked").forEach(service => {
                 const description = service.getAttribute("data-description");
                 if (description) messages.push(description);
             });
+            return messages;
+        }
+
+        window.generateMessage = function () {
+            const yourName = document.getElementById("yourName").value.trim();
+            const guestName = document.getElementById("guestName").value.trim();
+
+            if (!yourName) { showToast("Please enter your name.", "error"); return; }
+            if (!guestName) { showToast("Please enter the guest's name.", "error"); return; }
+
+            const messages = getSelectedMessages();
+            const sig = getSignatureText();
 
             let finalMessage = `Hello ${guestName},\n\n`;
-            if (messages.length > 0) {
-                finalMessage += messages.join("\n\n") + "\n\n";
-            }
-
-            if (userSignature.enabled && userSignature.text) {
-                finalMessage += userSignature.text + "\n";
-            }
-
+            if (messages.length > 0) finalMessage += messages.join("\n\n") + "\n\n";
+            if (sig) finalMessage += sig + "\n";
             finalMessage += yourName;
 
             document.getElementById("generatedMessage").value = finalMessage;
@@ -180,31 +183,19 @@
 
         window.copyRaw = function () {
             const yourName = document.getElementById("yourName").value.trim();
-            const selectedServices = document.querySelectorAll(".service:checked");
 
-            if (!yourName) {
-                showToast("Please enter your name.", "error");
-                return;
-            }
+            if (!yourName) { showToast("Please enter your name.", "error"); return; }
 
-            if (selectedServices.length === 0) {
-                showToast("Select at least one template.", "error");
-                return;
-            }
+            const messages = getSelectedMessages();
+            if (messages.length === 0) { showToast("Select at least one template.", "error"); return; }
 
-            let messages = [];
-            selectedServices.forEach(service => {
-                const description = service.getAttribute("data-description");
-                if (description) messages.push(description);
-            });
+            const sig = getSignatureText();
 
             let raw = messages.join("\n\n") + "\n\n";
-
-            if (userSignature.enabled && userSignature.text) {
-                raw += userSignature.text + "\n";
-            }
-
+            if (sig) raw += sig + "\n";
             raw += yourName;
+
+            document.getElementById("generatedMessage").value = raw;
 
             navigator.clipboard.writeText(raw).then(() => {
                 showToast("Copied without greeting!");

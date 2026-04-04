@@ -32,8 +32,9 @@
         const db = getFirestore(app);
 
         let categories = [];
+        let randomSignatures = [];
 
-        const signatureOptions = [
+        const signaturePresets = [
             "Regards,",
             "Best Regards,",
             "Kind Regards,",
@@ -51,7 +52,6 @@
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById("user-email").innerText = user.email;
-                renderSignatureOptions();
                 loadSettings(user.uid);
             } else {
                 window.location.href = "index.html";
@@ -60,73 +60,111 @@
 
         // ========== SIGNATURE ==========
 
-        function renderSignatureOptions() {
-            const container = document.getElementById("signature-options");
-            container.innerHTML = "";
+        window.toggleSignature = function () {
+            const enabled = document.getElementById("signature-toggle").checked;
+            document.getElementById("signature-config").style.display = enabled ? "block" : "none";
+            previewSignature();
+        };
 
-            signatureOptions.forEach(sig => {
-                const option = document.createElement("label");
-                option.className = "signature-option";
-                option.innerHTML = `
-                    <input type="radio" name="signature" value="${sig}" onchange="onSignatureChange()">
-                    <span class="signature-radio"></span>
-                    <span>${sig}</span>
-                `;
-                container.appendChild(option);
-            });
+        window.setSignatureMode = function (mode) {
+            document.getElementById("fixed-config").style.display = mode === "fixed" ? "block" : "none";
+            document.getElementById("random-config").style.display = mode === "random" ? "block" : "none";
 
-            const custom = document.createElement("label");
-            custom.className = "signature-option signature-option-custom";
-            custom.innerHTML = `
-                <input type="radio" name="signature" value="__custom__" onchange="onSignatureChange()">
-                <span class="signature-radio"></span>
-                <span>Custom signature...</span>
-            `;
-            container.appendChild(custom);
-        }
-
-        window.onSignatureChange = function () {
-            const selected = document.querySelector('input[name="signature"]:checked');
-            const customWrapper = document.getElementById("custom-input-wrapper");
-
-            if (selected && selected.value === "__custom__") {
-                customWrapper.style.display = "block";
-                document.getElementById("custom-signature").focus();
-            } else {
-                customWrapper.style.display = "none";
-            }
+            document.getElementById("mode-fixed").classList.toggle("active", mode === "fixed");
+            document.getElementById("mode-random").classList.toggle("active", mode === "random");
 
             previewSignature();
         };
 
-        window.toggleSignature = function () {
-            const enabled = document.getElementById("signature-toggle").checked;
-            document.getElementById("signature-config").style.display = enabled ? "block" : "none";
+        window.setFixedSignature = function (text) {
+            document.getElementById("fixed-signature-input").value = text;
+            previewSignature();
         };
 
+        // Random signatures
+        function renderRandomSignatures() {
+            const list = document.getElementById("random-sig-list");
+            list.innerHTML = "";
+
+            if (randomSignatures.length === 0) {
+                list.innerHTML = '<p class="empty-categories">No signatures added yet.</p>';
+                return;
+            }
+
+            randomSignatures.forEach((sig, index) => {
+                const item = document.createElement("div");
+                item.className = "category-item";
+                item.innerHTML = `
+                    <span class="category-name">${sig}</span>
+                    <button onclick="removeRandomSig(${index})" class="btn-icon btn-delete" title="Remove">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        window.addRandomSig = function () {
+            const input = document.getElementById("new-random-sig");
+            const name = input.value.trim();
+            if (!name) return;
+
+            if (randomSignatures.includes(name)) {
+                showToast("Signature already added.", "error");
+                return;
+            }
+
+            randomSignatures.push(name);
+            input.value = "";
+            renderRandomSignatures();
+            previewSignature();
+        };
+
+        window.addPresetToRandom = function (text) {
+            if (randomSignatures.includes(text)) {
+                showToast("Already added.", "error");
+                return;
+            }
+            randomSignatures.push(text);
+            renderRandomSignatures();
+            previewSignature();
+        };
+
+        window.removeRandomSig = function (index) {
+            randomSignatures.splice(index, 1);
+            renderRandomSignatures();
+            previewSignature();
+        };
+
+        window.handleRandomSigKeypress = function (e) {
+            if (e.key === "Enter") addRandomSig();
+        };
+
+        // Preview
         window.previewSignature = function () {
-            const signatureEnabled = document.getElementById("signature-toggle").checked;
+            const enabled = document.getElementById("signature-toggle").checked;
             const preview = document.getElementById("signature-preview");
 
-            if (!signatureEnabled) {
+            if (!enabled) {
                 preview.textContent = "Hello Guest,\n\n[message content]\n\nYour Name";
                 return;
             }
 
-            const selected = document.querySelector('input[name="signature"]:checked');
+            const mode = document.getElementById("mode-random").classList.contains("active") ? "random" : "fixed";
             let sig = "";
-            if (selected) {
-                sig = selected.value === "__custom__"
-                    ? document.getElementById("custom-signature").value.trim() || "Custom signature"
-                    : selected.value;
+
+            if (mode === "fixed") {
+                sig = document.getElementById("fixed-signature-input").value.trim() || "Regards,";
+            } else {
+                if (randomSignatures.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * randomSignatures.length);
+                    sig = randomSignatures[randomIndex] + "  (random)";
+                } else {
+                    sig = "[add signatures below]";
+                }
             }
 
             preview.textContent = `Hello Guest,\n\n[message content]\n\n${sig}\nYour Name`;
-        };
-
-        window.setCustom = function (text) {
-            document.getElementById("custom-signature").value = text;
-            previewSignature();
         };
 
         // ========== CATEGORIES ==========
@@ -156,7 +194,6 @@
         window.addCategory = function () {
             const input = document.getElementById("new-category");
             const name = input.value.trim();
-
             if (!name) return;
 
             if (categories.includes(name)) {
@@ -188,26 +225,23 @@
                 if (snap.exists()) {
                     const data = snap.data();
 
-                    // Signature
-                    document.getElementById("signature-toggle").checked = data.signatureEnabled || false;
-                    document.getElementById("signature-config").style.display = data.signatureEnabled ? "block" : "none";
+                    // Signature toggle
+                    const sigEnabled = data.signatureEnabled || false;
+                    document.getElementById("signature-toggle").checked = sigEnabled;
+                    document.getElementById("signature-config").style.display = sigEnabled ? "block" : "none";
 
+                    // Signature mode
+                    const mode = data.signatureMode || "fixed";
+                    setSignatureMode(mode);
+
+                    // Fixed signature
                     if (data.signatureText) {
-                        const radios = document.querySelectorAll('input[name="signature"]');
-                        let found = false;
-                        radios.forEach(radio => {
-                            if (radio.value === data.signatureText) {
-                                radio.checked = true;
-                                found = true;
-                            }
-                        });
+                        document.getElementById("fixed-signature-input").value = data.signatureText;
+                    }
 
-                        if (!found) {
-                            const customRadio = document.querySelector('input[name="signature"][value="__custom__"]');
-                            if (customRadio) customRadio.checked = true;
-                            document.getElementById("custom-signature").value = data.signatureText;
-                            document.getElementById("custom-input-wrapper").style.display = "block";
-                        }
+                    // Random signatures
+                    if (data.randomSignatures && Array.isArray(data.randomSignatures)) {
+                        randomSignatures = data.randomSignatures;
                     }
 
                     // Categories
@@ -217,6 +251,8 @@
                 }
 
                 renderCategories();
+                renderRandomSignatures();
+                previewSignature();
 
             } catch (error) {
                 console.error("Error loading settings:", error);
@@ -229,31 +265,26 @@
             if (!user) return;
 
             const signatureEnabled = document.getElementById("signature-toggle").checked;
-            let signatureText = "";
+            const signatureMode = document.getElementById("mode-random").classList.contains("active") ? "random" : "fixed";
+            const signatureText = document.getElementById("fixed-signature-input").value.trim();
 
-            if (signatureEnabled) {
-                const selected = document.querySelector('input[name="signature"]:checked');
-                if (!selected) {
-                    showToast("Please select a signature style.", "error");
-                    return;
-                }
+            if (signatureEnabled && signatureMode === "fixed" && !signatureText) {
+                showToast("Please enter a signature.", "error");
+                return;
+            }
 
-                if (selected.value === "__custom__") {
-                    signatureText = document.getElementById("custom-signature").value.trim();
-                    if (!signatureText) {
-                        showToast("Please enter your custom signature.", "error");
-                        return;
-                    }
-                } else {
-                    signatureText = selected.value;
-                }
+            if (signatureEnabled && signatureMode === "random" && randomSignatures.length === 0) {
+                showToast("Please add at least one random signature.", "error");
+                return;
             }
 
             try {
                 const settingsRef = doc(db, "settings", user.uid);
                 await setDoc(settingsRef, {
                     signatureEnabled: signatureEnabled,
+                    signatureMode: signatureMode,
                     signatureText: signatureText,
+                    randomSignatures: randomSignatures,
                     categories: categories
                 });
                 showToast("Settings saved!");
@@ -303,7 +334,6 @@
                     <p>Create categories to organize your templates.</p>
                 </div>
             </div>
-
             <div class="category-config">
                 <div class="category-add">
                     <input type="text" id="new-category" placeholder="e.g. Check-in, Maintenance, General..." onkeypress="handleCategoryKeypress(event)">
@@ -321,31 +351,58 @@
                     <p>Add a closing signature before your name in generated messages.</p>
                 </div>
                 <label class="toggle">
-                    <input type="checkbox" id="signature-toggle" onchange="toggleSignature(); previewSignature()">
+                    <input type="checkbox" id="signature-toggle" onchange="toggleSignature()">
                     <span class="toggle-slider"></span>
                 </label>
             </div>
 
             <div id="signature-config" style="display: none;">
-                <div class="signature-options-wrapper">
-                    <h3>Choose a style</h3>
-                    <div id="signature-options" class="signature-options"></div>
+                <!-- Mode Tabs -->
+                <div class="mode-tabs">
+                    <button id="mode-fixed" class="mode-tab active" onclick="setSignatureMode('fixed')">Fixed</button>
+                    <button id="mode-random" class="mode-tab" onclick="setSignatureMode('random')">Random</button>
+                </div>
 
-                    <div id="custom-input-wrapper" class="custom-input-wrapper" style="display: none;">
-                        <div class="form-group">
-                            <label for="custom-signature">Type your custom signature</label>
-                            <input type="text" id="custom-signature" placeholder="e.g. With appreciation," oninput="previewSignature()">
+                <!-- Fixed Mode -->
+                <div id="fixed-config" class="sig-mode-config">
+                    <div class="form-group">
+                        <label for="fixed-signature-input">Signature text</label>
+                        <input type="text" id="fixed-signature-input" placeholder="e.g. Best Regards," oninput="previewSignature()">
+                    </div>
+                    <div class="preset-chips">
+                        <p>Quick pick:</p>
+                        <div class="idea-chips">
+                            <button type="button" class="chip" onclick="setFixedSignature('Regards,')">Regards,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Best Regards,')">Best Regards,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Kind Regards,')">Kind Regards,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Thank you,')">Thank you,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Best,')">Best,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Cheers,')">Cheers,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Sincerely,')">Sincerely,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Have a great stay!')">Have a great stay!</button>
                         </div>
-                        <div class="custom-ideas">
-                            <p>Ideas:</p>
-                            <div class="idea-chips">
-                                <button type="button" class="chip" onclick="setCustom('With appreciation,')">With appreciation,</button>
-                                <button type="button" class="chip" onclick="setCustom('Looking forward to hosting you,')">Looking forward to hosting you,</button>
-                                <button type="button" class="chip" onclick="setCustom('Welcome to your home away from home,')">Welcome to your home away from home,</button>
-                                <button type="button" class="chip" onclick="setCustom('At your service,')">At your service,</button>
-                                <button type="button" class="chip" onclick="setCustom('Enjoy your stay,')">Enjoy your stay,</button>
-                                <button type="button" class="chip" onclick="setCustom('See you soon,')">See you soon,</button>
-                            </div>
+                    </div>
+                </div>
+
+                <!-- Random Mode -->
+                <div id="random-config" class="sig-mode-config" style="display: none;">
+                    <p class="random-desc">Add multiple signatures. One will be randomly picked each time you generate a message.</p>
+                    <div class="category-add">
+                        <input type="text" id="new-random-sig" placeholder="Type a signature..." onkeypress="handleRandomSigKeypress(event)">
+                        <button onclick="addRandomSig()" class="btn btn-primary btn-sm">Add</button>
+                    </div>
+                    <div id="random-sig-list" class="category-list"></div>
+                    <div class="preset-chips" style="margin-top: 12px;">
+                        <p>Quick add:</p>
+                        <div class="idea-chips">
+                            <button type="button" class="chip" onclick="addPresetToRandom('Regards,')">Regards,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Best Regards,')">Best Regards,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Kind Regards,')">Kind Regards,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Thank you,')">Thank you,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Best,')">Best,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Cheers,')">Cheers,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Have a great stay!')">Have a great stay!</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Warm Regards,')">Warm Regards,</button>
                         </div>
                     </div>
                 </div>
