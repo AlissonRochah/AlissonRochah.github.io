@@ -11,8 +11,8 @@
 body {
   font-family: "Inter", sans-serif;
   line-height: 1.5;
-  background-color: #0c0f1a;
-  color: #cbd5e1;
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
   cursor: default;
   -webkit-font-smoothing: antialiased;
 }

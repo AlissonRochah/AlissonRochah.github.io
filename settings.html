@@ -7,6 +7,7 @@
     <title>Settings - Master Vacation Homes</title>
 
     <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+    <script src="style/theme.js"></script>
 
     <link rel="stylesheet" href="style/reset.css">
     <link rel="stylesheet" href="style/style.css">
@@ -52,11 +53,31 @@
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById("user-email").innerText = user.email;
+                loadTheme();
                 loadSettings(user.uid);
             } else {
                 window.location.href = "index.html";
             }
         });
+
+        // ========== THEME ==========
+
+        window.setTheme = function (theme) {
+            localStorage.setItem("theme", theme);
+            if (theme === "light") {
+                document.documentElement.classList.add("light");
+            } else {
+                document.documentElement.classList.remove("light");
+            }
+            document.getElementById("theme-dark").classList.toggle("active", theme === "dark");
+            document.getElementById("theme-light").classList.toggle("active", theme === "light");
+        };
+
+        function loadTheme() {
+            const theme = localStorage.getItem("theme") || "dark";
+            document.getElementById("theme-dark").classList.toggle("active", theme === "dark");
+            document.getElementById("theme-light").classList.toggle("active", theme === "light");
+        }
 
         // ========== SIGNATURE ==========
 
@@ -325,6 +346,26 @@
     <!-- Main Content -->
     <main class="settings-main">
         <h1>Settings</h1>
+
+        <!-- Appearance Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Appearance</h2>
+                    <p>Choose your preferred theme.</p>
+                </div>
+            </div>
+            <div class="theme-switcher">
+                <button id="theme-dark" class="theme-option active" onclick="setTheme('dark')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    Dark
+                </button>
+                <button id="theme-light" class="theme-option" onclick="setTheme('light')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    Light
+                </button>
+            </div>
+        </section>
 
         <!-- Categories Section -->
         <section class="settings-section">

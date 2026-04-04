@@ -7,6 +7,7 @@
     <title>Templates - Master Vacation Homes</title>
 
     <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+    <script src="style/theme.js"></script>
 
     <link rel="stylesheet" href="style/reset.css">
     <link rel="stylesheet" href="style/style.css">
@@ -261,6 +262,70 @@
             renderTemplates(currentUserId);
         };
 
+        // Export templates
+        window.exportTemplates = function () {
+            if (allTemplates.length === 0) {
+                showToast("No templates to export.", "error");
+                return;
+            }
+            const data = allTemplates.map(t => ({
+                name: t.name,
+                description: t.description,
+                category: t.category || ""
+            }));
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "templates.json";
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast("Templates exported!");
+        };
+
+        // Import templates
+        window.triggerImport = function () {
+            document.getElementById("import-file").click();
+        };
+
+        window.handleImport = async function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const user = auth.currentUser;
+            if (!user) return;
+
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+
+                if (!Array.isArray(data)) {
+                    showToast("Invalid file format.", "error");
+                    return;
+                }
+
+                let count = 0;
+                for (const t of data) {
+                    if (!t.name || !t.description) continue;
+                    const userDocRef = doc(db, "templates", user.uid);
+                    const ref = doc(collection(userDocRef, "userTemplates"), t.name);
+                    await setDoc(ref, {
+                        name: t.name,
+                        description: t.description,
+                        category: t.category || ""
+                    });
+                    count++;
+                }
+
+                showToast(count + " templates imported!");
+                loadTemplates(user.uid);
+            } catch (e) {
+                console.error("Import error:", e);
+                showToast("Error importing: " + e.message, "error");
+            }
+
+            event.target.value = "";
+        };
+
         // Toast notification
         function showToast(message, type = "success") {
             const toast = document.getElementById("toast");
@@ -304,7 +369,14 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="text" id="search-input" placeholder="Search templates..." oninput="filterTemplates()">
             </div>
-<button onclick="openModal()" class="btn btn-primary">
+            <button onclick="exportTemplates()" class="btn btn-outline btn-sm" title="Export templates">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button onclick="triggerImport()" class="btn btn-outline btn-sm" title="Import templates">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </button>
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="handleImport(event)">
+            <button onclick="openModal()" class="btn btn-primary">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 Add
             </button>

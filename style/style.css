@@ -35,6 +35,25 @@
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.4);
 }
 
+/* Light Theme */
+html.light {
+  --bg-primary: #f5f7fa;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #f0f2f5;
+  --bg-input: #f5f7fa;
+
+  --border: #e2e8f0;
+  --border-focus: #3b82f6;
+
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.12);
+}
+
 /* ========================================
    BUTTONS
    ======================================== */
