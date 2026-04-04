@@ -346,7 +346,7 @@
     <!-- Header -->
     <header class="app-header">
         <div class="header-left">
-            <a href="index.html" class="header-logo">
+            <a href="messages.html" class="header-logo">
                 <img src="img/MasterLogo.jpg" alt="Logo">
             </a>
             <nav class="header-nav">
@@ -357,7 +357,7 @@
         </div>
         <div class="header-right">
             <span id="user-email" class="header-email"></span>
-            <a href="index.html" class="btn btn-sm btn-outline">Home</a>
+            <button onclick="window.logout()" class="btn btn-sm btn-outline">Sign Out</button>
         </div>
     </header>
 
@@ -370,10 +370,10 @@
                 <input type="text" id="search-input" placeholder="Search templates..." oninput="filterTemplates()">
             </div>
             <button onclick="exportTemplates()" class="btn btn-outline btn-sm" title="Export templates">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </button>
             <button onclick="triggerImport()" class="btn btn-outline btn-sm" title="Import templates">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
             <input type="file" id="import-file" accept=".json" style="display:none" onchange="handleImport(event)">
             <button onclick="openModal()" class="btn btn-primary">

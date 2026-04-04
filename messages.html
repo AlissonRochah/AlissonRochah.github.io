@@ -15,7 +15,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
         import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -242,6 +242,12 @@
             toast.className = "toast " + type + " show";
             setTimeout(() => toast.classList.remove("show"), 2500);
         }
+
+        window.logout = function () {
+            signOut(auth).then(() => {
+                window.location.href = "index.html";
+            });
+        };
     </script>
 </head>
 
@@ -249,7 +255,7 @@
     <!-- Header -->
     <header class="app-header">
         <div class="header-left">
-            <a href="index.html" class="header-logo">
+            <a href="messages.html" class="header-logo">
                 <img src="img/MasterLogo.jpg" alt="Logo">
             </a>
             <nav class="header-nav">
@@ -260,7 +266,7 @@
         </div>
         <div class="header-right">
             <span id="user-email" class="header-email"></span>
-            <a href="index.html" class="btn btn-sm btn-outline">Home</a>
+            <button onclick="window.logout()" class="btn btn-sm btn-outline">Sign Out</button>
         </div>
     </header>
 
