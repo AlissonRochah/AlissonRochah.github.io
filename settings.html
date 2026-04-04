@@ -97,6 +97,7 @@
         };
 
         async function loadSettings(userId) {
+            try {
             const settingsRef = doc(db, "settings", userId);
             const snap = await getDoc(settingsRef);
 
@@ -128,6 +129,10 @@
                 }
             }
 
+            } catch (error) {
+                console.error("Error loading settings:", error);
+                showToast("Error loading settings: " + error.message, "error");
+            }
         }
 
         function updateSignatureVisibility(enabled) {
@@ -164,13 +169,17 @@
                 }
             }
 
-            const settingsRef = doc(db, "settings", user.uid);
-            await setDoc(settingsRef, {
-                signatureEnabled: signatureEnabled,
-                signatureText: signatureText
-            });
-
-            showToast("Settings saved!");
+            try {
+                const settingsRef = doc(db, "settings", user.uid);
+                await setDoc(settingsRef, {
+                    signatureEnabled: signatureEnabled,
+                    signatureText: signatureText
+                });
+                showToast("Settings saved!");
+            } catch (error) {
+                console.error("Error saving settings:", error);
+                showToast("Error: " + error.message, "error");
+            }
         };
 
         // Preview
