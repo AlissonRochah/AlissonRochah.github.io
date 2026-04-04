@@ -16,7 +16,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-        import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
@@ -34,9 +34,12 @@
 
         let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
         let allTemplates = [];
+        let favorites = [];
+        let currentUserId = null;
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
+                currentUserId = user.uid;
                 document.getElementById("user-email").innerText = user.email;
                 await loadCategories(user.uid);
                 await loadTemplates(user.uid);
@@ -68,18 +71,22 @@
                 const snap = await getDoc(settingsRef);
                 const select = document.getElementById("category-filter");
 
-                select.innerHTML = '<option value="all">All</option>';
+                select.innerHTML = '<option value="all">All</option><option value="__favorites__">⭐ Favorites</option>';
 
-                if (snap.exists() && snap.data().categories) {
-                    snap.data().categories.forEach(cat => {
-                        const opt = document.createElement("option");
-                        opt.value = cat;
-                        opt.textContent = cat;
-                        select.appendChild(opt);
-                    });
+                if (snap.exists()) {
+                    const data = snap.data();
+                    favorites = data.favorites || [];
+
+                    if (data.categories) {
+                        data.categories.forEach(cat => {
+                            const opt = document.createElement("option");
+                            opt.value = cat;
+                            opt.textContent = cat;
+                            select.appendChild(opt);
+                        });
+                    }
                 }
 
-                // Add "Uncategorized" option
                 const uncatOpt = document.createElement("option");
                 uncatOpt.value = "__uncategorized__";
                 uncatOpt.textContent = "Uncategorized";
@@ -119,24 +126,48 @@
             allTemplates
                 .filter(t => {
                     if (categoryFilter === "all") return true;
+                    if (categoryFilter === "__favorites__") return favorites.includes(t.id);
                     if (categoryFilter === "__uncategorized__") return !t.category;
                     return t.category === categoryFilter;
                 })
                 .filter(t => t.name.toLowerCase().includes(textFilter))
                 .forEach(t => {
-                    const label = document.createElement("label");
-                    label.className = "checkbox-item";
-                    label.innerHTML = `
-                        <input type="checkbox" class="service" value="${t.id}" data-description="${t.description.replace(/"/g, '&quot;')}" onchange="onTemplateToggle(this)">
-                        <span class="checkmark"></span>
-                        <span class="checkbox-label" title="${t.name}">${t.name}</span>
+                    const isFav = favorites.includes(t.id);
+                    const item = document.createElement("div");
+                    item.className = "checkbox-item";
+                    item.innerHTML = `
+                        <label class="checkbox-inner">
+                            <input type="checkbox" class="service" value="${t.id}" data-description="${t.description.replace(/"/g, '&quot;')}" onchange="onTemplateToggle(this)">
+                            <span class="checkmark"></span>
+                            <span class="checkbox-label" title="${t.name}">${t.name}</span>
+                        </label>
+                        <button class="btn-fav ${isFav ? 'active' : ''}" onclick="toggleFavorite('${t.id}')" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        </button>
                     `;
-                    list.appendChild(label);
+                    list.appendChild(item);
                 });
         }
 
         window.filterByCategory = renderCheckboxes;
         window.filterServices = renderCheckboxes;
+
+        window.toggleFavorite = async function (templateId) {
+            if (favorites.includes(templateId)) {
+                favorites = favorites.filter(id => id !== templateId);
+            } else {
+                favorites.push(templateId);
+            }
+            renderCheckboxes();
+            try {
+                const settingsRef = doc(db, "settings", currentUserId);
+                const snap = await getDoc(settingsRef);
+                const existing = snap.exists() ? snap.data() : {};
+                await setDoc(settingsRef, { ...existing, favorites }, { merge: true });
+            } catch (e) {
+                console.error("Error saving favorites:", e);
+            }
+        };
 
         // Track selection order
         let selectionOrder = [];
