@@ -137,6 +137,18 @@
         window.filterByCategory = renderCheckboxes;
         window.filterServices = renderCheckboxes;
 
+        // Save/load name from localStorage
+        const savedName = localStorage.getItem("yourName");
+        if (savedName) {
+            window.addEventListener("DOMContentLoaded", () => {
+                document.getElementById("yourName").value = savedName;
+            });
+        }
+
+        window.saveName = function () {
+            localStorage.setItem("yourName", document.getElementById("yourName").value.trim());
+        };
+
         function getSignatureText() {
             if (!userSignature.enabled) return "";
             if (userSignature.mode === "random" && userSignature.randomList.length > 0) {
@@ -240,7 +252,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label for="yourName">Your Name</label>
-                    <input type="text" id="yourName" placeholder="Your name">
+                    <input type="text" id="yourName" placeholder="Your name" onchange="saveName()">
                 </div>
                 <div class="form-group">
                     <label for="guestName">Guest Name</label>

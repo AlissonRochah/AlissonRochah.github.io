@@ -44,6 +44,18 @@
   color: var(--text-muted);
 }
 
+.btn-sort {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  gap: 4px;
+}
+
+.template-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
 /* Template List */
 .template-list {
   display: flex;
