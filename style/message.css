@@ -166,10 +166,20 @@
   color: var(--text-primary);
 }
 
-/* Generate Button */
+/* Button Row */
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .btn-generate {
   padding: 12px;
   font-size: 0.9rem;
+}
+
+.btn-copy-raw {
+  padding: 12px 14px;
   flex-shrink: 0;
 }
 

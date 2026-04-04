@@ -178,6 +178,43 @@
             document.querySelectorAll(".service").forEach(cb => cb.checked = false);
         };
 
+        window.copyRaw = function () {
+            const yourName = document.getElementById("yourName").value.trim();
+            const selectedServices = document.querySelectorAll(".service:checked");
+
+            if (!yourName) {
+                showToast("Please enter your name.", "error");
+                return;
+            }
+
+            if (selectedServices.length === 0) {
+                showToast("Select at least one template.", "error");
+                return;
+            }
+
+            let messages = [];
+            selectedServices.forEach(service => {
+                const description = service.getAttribute("data-description");
+                if (description) messages.push(description);
+            });
+
+            let raw = messages.join("\n\n") + "\n\n";
+
+            if (userSignature.enabled && userSignature.text) {
+                raw += userSignature.text + "\n";
+            }
+
+            raw += yourName;
+
+            navigator.clipboard.writeText(raw).then(() => {
+                showToast("Copied without greeting!");
+            }).catch(() => {
+                showToast("Failed to copy.", "error");
+            });
+
+            document.querySelectorAll(".service").forEach(cb => cb.checked = false);
+        };
+
         function showToast(message, type = "success") {
             const toast = document.getElementById("toast");
             toast.textContent = message;
@@ -237,10 +274,15 @@
             <div id="checkbox-list" class="checkbox-list"></div>
         </div>
 
-        <button onclick="generateMessage()" class="btn btn-primary btn-full btn-generate">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            Generate Message
-        </button>
+        <div class="btn-row">
+            <button onclick="generateMessage()" class="btn btn-primary btn-full btn-generate">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                Generate Message
+            </button>
+            <button onclick="copyRaw()" class="btn btn-outline btn-copy-raw" title="Copy without guest greeting">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+        </div>
 
         <div class="msg-output">
             <label for="generatedMessage" class="output-label">Generated Message</label>
