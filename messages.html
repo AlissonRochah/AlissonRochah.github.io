@@ -4,13 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Message Generator</title>
+    <title>Message Generator - Master Vacation Homes</title>
 
     <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
 
-    <link rel="stylesheet" href="style/message.css">
     <link rel="stylesheet" href="style/reset.css">
     <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/message.css">
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
@@ -33,7 +33,7 @@
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                document.getElementById("user-email").innerText = `${user.email}`;
+                document.getElementById("user-email").innerText = user.email;
                 loadTemplates(user.uid);
             } else {
                 window.location.href = "index.html";
@@ -45,100 +45,142 @@
             const userTemplatesCollection = collection(userDocRef, "userTemplates");
             const querySnapshot = await getDocs(userTemplatesCollection);
 
-            const list = document.querySelector(".checkbox-container");
+            const list = document.getElementById("checkbox-list");
             list.innerHTML = "";
 
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-
-                // Converte `\n` para `<br>` para preservar quebras de linha na descrição
+            querySnapshot.forEach((docSnap) => {
+                const data = docSnap.data();
                 const formattedDescription = data.description.replace(/\\n/g, "\n");
 
-                const item = document.createElement("label");
-                item.innerHTML = `
-            <input type="checkbox" value="${doc.id}" class="service" data-description="${formattedDescription}"> ${data.name}
-        `;
-                list.appendChild(item);
+                const label = document.createElement("label");
+                label.className = "checkbox-item";
+                label.innerHTML = `
+                    <input type="checkbox" class="service" value="${docSnap.id}" data-description="${formattedDescription.replace(/"/g, '&quot;')}">
+                    <span class="checkmark"></span>
+                    <span class="checkbox-label">${data.name}</span>
+                `;
+                list.appendChild(label);
             });
         }
 
-        window.generateMessage = async function () {
-            let yourName = document.getElementById("yourName").value.trim();
-            let guestName = document.getElementById("guestName").value.trim();
-            let selectedServices = document.querySelectorAll(".service:checked");
+        // Search/filter templates
+        window.filterServices = function () {
+            const query = document.getElementById("filter-input").value.toLowerCase();
+            const items = document.querySelectorAll(".checkbox-item");
+            items.forEach(item => {
+                const label = item.querySelector(".checkbox-label").textContent.toLowerCase();
+                item.style.display = label.includes(query) ? "" : "none";
+            });
+        };
+
+        window.generateMessage = function () {
+            const yourName = document.getElementById("yourName").value.trim();
+            const guestName = document.getElementById("guestName").value.trim();
+            const selectedServices = document.querySelectorAll(".service:checked");
 
             if (!yourName) {
-                alert("Please enter your name.");
+                showToast("Please enter your name.", "error");
                 return;
             }
 
             if (!guestName) {
-                alert("Please enter the guest's name.");
+                showToast("Please enter the guest's name.", "error");
                 return;
             }
 
             let messages = [];
-
             selectedServices.forEach(service => {
-                let description = service.getAttribute("data-description");
-                if (description) {
-                    messages.push(description);
-                }
+                const description = service.getAttribute("data-description");
+                if (description) messages.push(description);
             });
 
             let finalMessage = `Hello ${guestName},\n\n`;
-
             if (messages.length > 0) {
                 finalMessage += messages.join("\n\n") + "\n\n";
             }
-
-            finalMessage += `${yourName}`;
+            finalMessage += yourName;
 
             document.getElementById("generatedMessage").value = finalMessage;
 
-            // Copy to clipboard
             navigator.clipboard.writeText(finalMessage).then(() => {
-            }).catch(err => {
-                console.error("Error copying text: ", err);
+                showToast("Message copied to clipboard!");
+            }).catch(() => {
+                showToast("Message generated. Copy it manually.", "error");
             });
 
-            // Uncheck all checkboxes
-            document.querySelectorAll(".service").forEach(checkbox => checkbox.checked = false);
+            document.querySelectorAll(".service").forEach(cb => cb.checked = false);
+        };
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "toast " + type + " show";
+            setTimeout(() => toast.classList.remove("show"), 2500);
         }
     </script>
 </head>
 
 <body>
-
-
-    <div class="message-generator">
-        <div class="message-header">
-            <img src="img/MasterLogo.jpg" alt="Master Logo">
-            <p id="user-email"></p>
-            <a class="logout-btn" href="/index.html">Home</a>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <a href="index.html" class="header-logo">
+                <img src="img/MasterLogo.jpg" alt="Logo">
+            </a>
+            <nav class="header-nav">
+                <a href="template.html" class="nav-link">Templates</a>
+                <a href="messages.html" class="nav-link active">Messages</a>
+            </nav>
         </div>
+        <div class="header-right">
+            <span id="user-email" class="header-email"></span>
+            <a href="index.html" class="btn btn-sm btn-outline">Home</a>
+        </div>
+    </header>
 
-        <div class="message-wrapper">
-            <h2>Message Generator</h2>
-
-            <div class="input-wrapper">
-                <label>Your Name:</label>
-                <input type="text" id="yourName" placeholder="Enter your name">
+    <!-- Main Content -->
+    <main class="msg-main">
+        <!-- Left Panel: Form + Checkboxes -->
+        <div class="msg-panel-left">
+            <div class="msg-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="yourName">Your Name</label>
+                        <input type="text" id="yourName" placeholder="Your name">
+                    </div>
+                    <div class="form-group">
+                        <label for="guestName">Guest Name</label>
+                        <input type="text" id="guestName" placeholder="Guest name">
+                    </div>
+                </div>
             </div>
 
-            <div class="input-wrapper">
-                <label>Guest's Name:</label>
-                <input type="text" id="guestName" placeholder="Guest Name">
+            <div class="services-section">
+                <div class="services-header">
+                    <h3>Select Templates</h3>
+                    <div class="filter-box">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="filter-input" placeholder="Filter..." oninput="filterServices()">
+                    </div>
+                </div>
+                <div id="checkbox-list" class="checkbox-list"></div>
             </div>
-            <h3>Select Services:</h3>
-            <div class="checkbox-container"></div>
 
-            <button onclick="generateMessage()" class="generate-message-btn">Generate Message</button>
-
-
+            <button onclick="generateMessage()" class="btn btn-primary btn-full btn-generate">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                Generate Message
+            </button>
         </div>
-        <textarea id="generatedMessage" readonly></textarea>
-    </div>
+
+        <!-- Right Panel: Output -->
+        <div class="msg-panel-right">
+            <label for="generatedMessage" class="output-label">Generated Message</label>
+            <textarea id="generatedMessage" readonly placeholder="Your generated message will appear here..."></textarea>
+        </div>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
 </body>
 
 </html>
