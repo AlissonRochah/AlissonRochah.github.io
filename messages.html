@@ -126,7 +126,7 @@
                     const label = document.createElement("label");
                     label.className = "checkbox-item";
                     label.innerHTML = `
-                        <input type="checkbox" class="service" value="${t.id}" data-description="${t.description.replace(/"/g, '&quot;')}">
+                        <input type="checkbox" class="service" value="${t.id}" data-description="${t.description.replace(/"/g, '&quot;')}" onchange="onTemplateToggle(this)">
                         <span class="checkmark"></span>
                         <span class="checkbox-label" title="${t.name}">${t.name}</span>
                     `;
@@ -136,6 +136,18 @@
 
         window.filterByCategory = renderCheckboxes;
         window.filterServices = renderCheckboxes;
+
+        // Track selection order
+        let selectionOrder = [];
+
+        window.onTemplateToggle = function (checkbox) {
+            const id = checkbox.value;
+            if (checkbox.checked) {
+                selectionOrder.push(id);
+            } else {
+                selectionOrder = selectionOrder.filter(v => v !== id);
+            }
+        };
 
         // Save/load name from localStorage
         const savedName = localStorage.getItem("yourName");
@@ -160,9 +172,12 @@
 
         function getSelectedMessages() {
             let messages = [];
-            document.querySelectorAll(".service:checked").forEach(service => {
-                const description = service.getAttribute("data-description");
-                if (description) messages.push(description);
+            selectionOrder.forEach(id => {
+                const cb = document.querySelector(`.service[value="${id}"]:checked`);
+                if (cb) {
+                    const desc = cb.getAttribute("data-description");
+                    if (desc) messages.push(desc);
+                }
             });
             return messages;
         }
@@ -191,6 +206,7 @@
             });
 
             document.querySelectorAll(".service").forEach(cb => cb.checked = false);
+            selectionOrder = [];
         };
 
         window.copyRaw = function () {
@@ -216,6 +232,7 @@
             });
 
             document.querySelectorAll(".service").forEach(cb => cb.checked = false);
+            selectionOrder = [];
         };
 
         function showToast(message, type = "success") {
