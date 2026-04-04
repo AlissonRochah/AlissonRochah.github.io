@@ -34,12 +34,16 @@
         const signatureOptions = [
             "Regards,",
             "Best Regards,",
+            "Kind Regards,",
+            "Warm Regards,",
             "Thank you,",
             "Thanks,",
-            "Warm Regards,",
-            "Kind Regards,",
             "Best,",
-            "Sincerely,"
+            "Sincerely,",
+            "Cheers,",
+            "With gratitude,",
+            "Talk soon,",
+            "Have a great stay!"
         ];
 
         onAuthStateChanged(auth, async (user) => {
@@ -60,7 +64,7 @@
                 const option = document.createElement("label");
                 option.className = "signature-option";
                 option.innerHTML = `
-                    <input type="radio" name="signature" value="${sig}">
+                    <input type="radio" name="signature" value="${sig}" onchange="onSignatureChange()">
                     <span class="signature-radio"></span>
                     <span>${sig}</span>
                 `;
@@ -69,14 +73,28 @@
 
             // Custom option
             const custom = document.createElement("label");
-            custom.className = "signature-option";
+            custom.className = "signature-option signature-option-custom";
             custom.innerHTML = `
-                <input type="radio" name="signature" value="__custom__">
+                <input type="radio" name="signature" value="__custom__" onchange="onSignatureChange()">
                 <span class="signature-radio"></span>
-                <span>Custom</span>
+                <span>Custom signature...</span>
             `;
             container.appendChild(custom);
         }
+
+        window.onSignatureChange = function () {
+            const selected = document.querySelector('input[name="signature"]:checked');
+            const customWrapper = document.getElementById("custom-input-wrapper");
+
+            if (selected && selected.value === "__custom__") {
+                customWrapper.style.display = "block";
+                document.getElementById("custom-signature").focus();
+            } else {
+                customWrapper.style.display = "none";
+            }
+
+            previewSignature();
+        };
 
         async function loadSettings(userId) {
             const settingsRef = doc(db, "settings", userId);
@@ -110,13 +128,6 @@
                 }
             }
 
-            // Listen for radio changes to show/hide custom input
-            document.querySelectorAll('input[name="signature"]').forEach(radio => {
-                radio.addEventListener("change", () => {
-                    document.getElementById("custom-input-wrapper").style.display =
-                        radio.value === "__custom__" && radio.checked ? "block" : "none";
-                });
-            });
         }
 
         function updateSignatureVisibility(enabled) {
@@ -183,6 +194,11 @@
             preview.textContent = `Hello Guest,\n\n[message content]\n\n${sig}\nYour Name`;
         };
 
+        window.setCustom = function (text) {
+            document.getElementById("custom-signature").value = text;
+            previewSignature();
+        };
+
         function showToast(message, type = "success") {
             const toast = document.getElementById("toast");
             toast.textContent = message;
@@ -231,12 +247,23 @@
             <div id="signature-config" style="display: none;">
                 <div class="signature-options-wrapper">
                     <h3>Choose a style</h3>
-                    <div id="signature-options" class="signature-options" onclick="setTimeout(previewSignature, 50)"></div>
+                    <div id="signature-options" class="signature-options"></div>
 
                     <div id="custom-input-wrapper" class="custom-input-wrapper" style="display: none;">
                         <div class="form-group">
-                            <label for="custom-signature">Your custom signature</label>
+                            <label for="custom-signature">Type your custom signature</label>
                             <input type="text" id="custom-signature" placeholder="e.g. With appreciation," oninput="previewSignature()">
+                        </div>
+                        <div class="custom-ideas">
+                            <p>Ideas:</p>
+                            <div class="idea-chips">
+                                <button type="button" class="chip" onclick="setCustom('With appreciation,')">With appreciation,</button>
+                                <button type="button" class="chip" onclick="setCustom('Looking forward to hosting you,')">Looking forward to hosting you,</button>
+                                <button type="button" class="chip" onclick="setCustom('Welcome to your home away from home,')">Welcome to your home away from home,</button>
+                                <button type="button" class="chip" onclick="setCustom('At your service,')">At your service,</button>
+                                <button type="button" class="chip" onclick="setCustom('Enjoy your stay,')">Enjoy your stay,</button>
+                                <button type="button" class="chip" onclick="setCustom('See you soon,')">See you soon,</button>
+                            </div>
                         </div>
                     </div>
                 </div>
