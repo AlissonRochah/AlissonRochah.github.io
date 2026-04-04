@@ -46,9 +46,9 @@ html.light {
   --border: #d1d5db;
   --border-focus: #3b82f6;
 
-  --text-primary: #111827;
-  --text-secondary: #1f2937;
-  --text-muted: #4b5563;
+  --text-primary: #0f172a;
+  --text-secondary: #1e293b;
+  --text-muted: #374151;
 
   --shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.14);
