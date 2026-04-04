@@ -42,6 +42,12 @@
   color: var(--text-primary);
 }
 
+.services-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .filter-box {
   display: flex;
   align-items: center;
@@ -68,12 +74,37 @@
   color: var(--text-muted);
 }
 
-/* Checkbox List */
+/* Checkbox List - flows top-to-bottom, then wraps to next column */
 .checkbox-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 2px;
-  align-content: start;
+  columns: 3;
+  column-gap: 8px;
+}
+
+/* Category Dropdown */
+.category-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-select {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.category-select:focus {
+  border-color: var(--accent);
+}
+
+.category-select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .checkbox-item {
@@ -85,6 +116,7 @@
   cursor: pointer;
   transition: background 0.15s ease;
   user-select: none;
+  break-inside: avoid;
 }
 
 .checkbox-item:hover {
@@ -174,12 +206,18 @@
 /* ========================================
    RESPONSIVE
    ======================================== */
+@media (max-width: 700px) {
+  .checkbox-list {
+    columns: 2;
+  }
+}
+
 @media (max-width: 500px) {
   .form-row {
     flex-direction: column;
   }
 
   .checkbox-list {
-    grid-template-columns: 1fr;
+    columns: 1;
   }
 }

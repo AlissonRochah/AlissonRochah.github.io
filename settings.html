@@ -31,6 +31,8 @@
         const auth = getAuth();
         const db = getFirestore(app);
 
+        let categories = [];
+
         const signatureOptions = [
             "Regards,",
             "Best Regards,",
@@ -56,6 +58,8 @@
             }
         });
 
+        // ========== SIGNATURE ==========
+
         function renderSignatureOptions() {
             const container = document.getElementById("signature-options");
             container.innerHTML = "";
@@ -71,7 +75,6 @@
                 container.appendChild(option);
             });
 
-            // Custom option
             const custom = document.createElement("label");
             custom.className = "signature-option signature-option-custom";
             custom.innerHTML = `
@@ -96,53 +99,130 @@
             previewSignature();
         };
 
+        window.toggleSignature = function () {
+            const enabled = document.getElementById("signature-toggle").checked;
+            document.getElementById("signature-config").style.display = enabled ? "block" : "none";
+        };
+
+        window.previewSignature = function () {
+            const signatureEnabled = document.getElementById("signature-toggle").checked;
+            const preview = document.getElementById("signature-preview");
+
+            if (!signatureEnabled) {
+                preview.textContent = "Hello Guest,\n\n[message content]\n\nYour Name";
+                return;
+            }
+
+            const selected = document.querySelector('input[name="signature"]:checked');
+            let sig = "";
+            if (selected) {
+                sig = selected.value === "__custom__"
+                    ? document.getElementById("custom-signature").value.trim() || "Custom signature"
+                    : selected.value;
+            }
+
+            preview.textContent = `Hello Guest,\n\n[message content]\n\n${sig}\nYour Name`;
+        };
+
+        window.setCustom = function (text) {
+            document.getElementById("custom-signature").value = text;
+            previewSignature();
+        };
+
+        // ========== CATEGORIES ==========
+
+        function renderCategories() {
+            const list = document.getElementById("category-list");
+            list.innerHTML = "";
+
+            if (categories.length === 0) {
+                list.innerHTML = '<p class="empty-categories">No categories yet. Add one above.</p>';
+                return;
+            }
+
+            categories.forEach((cat, index) => {
+                const item = document.createElement("div");
+                item.className = "category-item";
+                item.innerHTML = `
+                    <span class="category-name">${cat}</span>
+                    <button onclick="removeCategory(${index})" class="btn-icon btn-delete" title="Remove">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        window.addCategory = function () {
+            const input = document.getElementById("new-category");
+            const name = input.value.trim();
+
+            if (!name) return;
+
+            if (categories.includes(name)) {
+                showToast("Category already exists.", "error");
+                return;
+            }
+
+            categories.push(name);
+            input.value = "";
+            renderCategories();
+        };
+
+        window.removeCategory = function (index) {
+            categories.splice(index, 1);
+            renderCategories();
+        };
+
+        window.handleCategoryKeypress = function (e) {
+            if (e.key === "Enter") addCategory();
+        };
+
+        // ========== LOAD / SAVE ==========
+
         async function loadSettings(userId) {
             try {
-            const settingsRef = doc(db, "settings", userId);
-            const snap = await getDoc(settingsRef);
+                const settingsRef = doc(db, "settings", userId);
+                const snap = await getDoc(settingsRef);
 
-            if (snap.exists()) {
-                const data = snap.data();
+                if (snap.exists()) {
+                    const data = snap.data();
 
-                // Signature enabled
-                document.getElementById("signature-toggle").checked = data.signatureEnabled || false;
-                updateSignatureVisibility(data.signatureEnabled || false);
+                    // Signature
+                    document.getElementById("signature-toggle").checked = data.signatureEnabled || false;
+                    document.getElementById("signature-config").style.display = data.signatureEnabled ? "block" : "none";
 
-                // Signature value
-                if (data.signatureText) {
-                    const radios = document.querySelectorAll('input[name="signature"]');
-                    let found = false;
-                    radios.forEach(radio => {
-                        if (radio.value === data.signatureText) {
-                            radio.checked = true;
-                            found = true;
+                    if (data.signatureText) {
+                        const radios = document.querySelectorAll('input[name="signature"]');
+                        let found = false;
+                        radios.forEach(radio => {
+                            if (radio.value === data.signatureText) {
+                                radio.checked = true;
+                                found = true;
+                            }
+                        });
+
+                        if (!found) {
+                            const customRadio = document.querySelector('input[name="signature"][value="__custom__"]');
+                            if (customRadio) customRadio.checked = true;
+                            document.getElementById("custom-signature").value = data.signatureText;
+                            document.getElementById("custom-input-wrapper").style.display = "block";
                         }
-                    });
+                    }
 
-                    if (!found) {
-                        // It's a custom value
-                        const customRadio = document.querySelector('input[name="signature"][value="__custom__"]');
-                        if (customRadio) customRadio.checked = true;
-                        document.getElementById("custom-signature").value = data.signatureText;
-                        document.getElementById("custom-input-wrapper").style.display = "block";
+                    // Categories
+                    if (data.categories && Array.isArray(data.categories)) {
+                        categories = data.categories;
                     }
                 }
-            }
+
+                renderCategories();
 
             } catch (error) {
                 console.error("Error loading settings:", error);
                 showToast("Error loading settings: " + error.message, "error");
             }
         }
-
-        function updateSignatureVisibility(enabled) {
-            document.getElementById("signature-config").style.display = enabled ? "block" : "none";
-        }
-
-        window.toggleSignature = function () {
-            const enabled = document.getElementById("signature-toggle").checked;
-            updateSignatureVisibility(enabled);
-        };
 
         window.saveSettings = async function () {
             const user = auth.currentUser;
@@ -173,39 +253,14 @@
                 const settingsRef = doc(db, "settings", user.uid);
                 await setDoc(settingsRef, {
                     signatureEnabled: signatureEnabled,
-                    signatureText: signatureText
+                    signatureText: signatureText,
+                    categories: categories
                 });
                 showToast("Settings saved!");
             } catch (error) {
                 console.error("Error saving settings:", error);
                 showToast("Error: " + error.message, "error");
             }
-        };
-
-        // Preview
-        window.previewSignature = function () {
-            const signatureEnabled = document.getElementById("signature-toggle").checked;
-            const preview = document.getElementById("signature-preview");
-
-            if (!signatureEnabled) {
-                preview.textContent = "Hello Guest,\n\n[message content]\n\nYour Name";
-                return;
-            }
-
-            const selected = document.querySelector('input[name="signature"]:checked');
-            let sig = "";
-            if (selected) {
-                sig = selected.value === "__custom__"
-                    ? document.getElementById("custom-signature").value.trim() || "Custom signature"
-                    : selected.value;
-            }
-
-            preview.textContent = `Hello Guest,\n\n[message content]\n\n${sig}\nYour Name`;
-        };
-
-        window.setCustom = function (text) {
-            document.getElementById("custom-signature").value = text;
-            previewSignature();
         };
 
         function showToast(message, type = "success") {
@@ -239,6 +294,24 @@
     <!-- Main Content -->
     <main class="settings-main">
         <h1>Settings</h1>
+
+        <!-- Categories Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Template Categories</h2>
+                    <p>Create categories to organize your templates.</p>
+                </div>
+            </div>
+
+            <div class="category-config">
+                <div class="category-add">
+                    <input type="text" id="new-category" placeholder="e.g. Check-in, Maintenance, General..." onkeypress="handleCategoryKeypress(event)">
+                    <button onclick="addCategory()" class="btn btn-primary btn-sm">Add</button>
+                </div>
+                <div id="category-list" class="category-list"></div>
+            </div>
+        </section>
 
         <!-- Signature Section -->
         <section class="settings-section">

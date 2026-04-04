@@ -32,11 +32,13 @@
         const db = getFirestore(app);
 
         let userSignature = { enabled: false, text: "" };
+        let allTemplates = [];
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById("user-email").innerText = user.email;
-                loadTemplates(user.uid);
+                await loadCategories(user.uid);
+                await loadTemplates(user.uid);
                 loadSignature(user.uid);
             } else {
                 window.location.href = "index.html";
@@ -44,12 +46,43 @@
         });
 
         async function loadSignature(userId) {
-            const settingsRef = doc(db, "settings", userId);
-            const snap = await getDoc(settingsRef);
-            if (snap.exists()) {
-                const data = snap.data();
-                userSignature.enabled = data.signatureEnabled || false;
-                userSignature.text = data.signatureText || "";
+            try {
+                const settingsRef = doc(db, "settings", userId);
+                const snap = await getDoc(settingsRef);
+                if (snap.exists()) {
+                    const data = snap.data();
+                    userSignature.enabled = data.signatureEnabled || false;
+                    userSignature.text = data.signatureText || "";
+                }
+            } catch (e) {
+                console.error("Error loading signature:", e);
+            }
+        }
+
+        async function loadCategories(userId) {
+            try {
+                const settingsRef = doc(db, "settings", userId);
+                const snap = await getDoc(settingsRef);
+                const select = document.getElementById("category-filter");
+
+                select.innerHTML = '<option value="all">All</option>';
+
+                if (snap.exists() && snap.data().categories) {
+                    snap.data().categories.forEach(cat => {
+                        const opt = document.createElement("option");
+                        opt.value = cat;
+                        opt.textContent = cat;
+                        select.appendChild(opt);
+                    });
+                }
+
+                // Add "Uncategorized" option
+                const uncatOpt = document.createElement("option");
+                uncatOpt.value = "__uncategorized__";
+                uncatOpt.textContent = "Uncategorized";
+                select.appendChild(uncatOpt);
+            } catch (e) {
+                console.error("Error loading categories:", e);
             }
         }
 
@@ -58,33 +91,49 @@
             const userTemplatesCollection = collection(userDocRef, "userTemplates");
             const querySnapshot = await getDocs(userTemplatesCollection);
 
-            const list = document.getElementById("checkbox-list");
-            list.innerHTML = "";
+            allTemplates = [];
 
             querySnapshot.forEach((docSnap) => {
                 const data = docSnap.data();
-                const formattedDescription = data.description.replace(/\\n/g, "\n");
-
-                const label = document.createElement("label");
-                label.className = "checkbox-item";
-                label.innerHTML = `
-                    <input type="checkbox" class="service" value="${docSnap.id}" data-description="${formattedDescription.replace(/"/g, '&quot;')}">
-                    <span class="checkmark"></span>
-                    <span class="checkbox-label">${data.name}</span>
-                `;
-                list.appendChild(label);
+                allTemplates.push({
+                    id: docSnap.id,
+                    name: data.name,
+                    description: data.description.replace(/\\n/g, "\n"),
+                    category: data.category || ""
+                });
             });
+
+            renderCheckboxes();
         }
 
-        // Search/filter templates
-        window.filterServices = function () {
-            const query = document.getElementById("filter-input").value.toLowerCase();
-            const items = document.querySelectorAll(".checkbox-item");
-            items.forEach(item => {
-                const label = item.querySelector(".checkbox-label").textContent.toLowerCase();
-                item.style.display = label.includes(query) ? "" : "none";
-            });
-        };
+        function renderCheckboxes() {
+            const list = document.getElementById("checkbox-list");
+            const categoryFilter = document.getElementById("category-filter").value;
+            const textFilter = document.getElementById("filter-input").value.toLowerCase();
+
+            list.innerHTML = "";
+
+            allTemplates
+                .filter(t => {
+                    if (categoryFilter === "all") return true;
+                    if (categoryFilter === "__uncategorized__") return !t.category;
+                    return t.category === categoryFilter;
+                })
+                .filter(t => t.name.toLowerCase().includes(textFilter))
+                .forEach(t => {
+                    const label = document.createElement("label");
+                    label.className = "checkbox-item";
+                    label.innerHTML = `
+                        <input type="checkbox" class="service" value="${t.id}" data-description="${t.description.replace(/"/g, '&quot;')}">
+                        <span class="checkmark"></span>
+                        <span class="checkbox-label">${t.name}</span>
+                    `;
+                    list.appendChild(label);
+                });
+        }
+
+        window.filterByCategory = renderCheckboxes;
+        window.filterServices = renderCheckboxes;
 
         window.generateMessage = function () {
             const yourName = document.getElementById("yourName").value.trim();
@@ -112,7 +161,6 @@
                 finalMessage += messages.join("\n\n") + "\n\n";
             }
 
-            // Add signature if enabled
             if (userSignature.enabled && userSignature.text) {
                 finalMessage += userSignature.text + "\n";
             }
@@ -176,9 +224,14 @@
         <div class="services-section">
             <div class="services-header">
                 <h3>Select Templates</h3>
-                <div class="filter-box">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="filter-input" placeholder="Filter..." oninput="filterServices()">
+                <div class="services-filters">
+                    <select id="category-filter" class="category-select" onchange="filterByCategory()">
+                        <option value="all">All</option>
+                    </select>
+                    <div class="filter-box">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="filter-input" placeholder="Filter..." oninput="filterServices()">
+                    </div>
                 </div>
             </div>
             <div id="checkbox-list" class="checkbox-list"></div>

@@ -231,6 +231,66 @@
   font-family: "Inter", sans-serif;
 }
 
+/* ========================================
+   CATEGORIES
+   ======================================== */
+.category-config {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.category-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.category-add input {
+  flex: 1;
+  background: var(--bg-input);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.category-add input:focus {
+  border-color: var(--accent);
+}
+
+.category-add input::placeholder {
+  color: var(--text-muted);
+}
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.category-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+}
+
+.category-name {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.empty-categories {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 16px;
+}
+
 /* Save Button */
 .btn-save {
   padding: 12px 24px;
