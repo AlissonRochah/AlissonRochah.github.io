@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Master Vacation Homes</title>
+
+    <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/settings.css">
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
+            authDomain: "templatemaster-a2d6e.firebaseapp.com",
+            projectId: "templatemaster-a2d6e",
+            storageBucket: "templatemaster-a2d6e.firebasestorage.app",
+            messagingSenderId: "208432538664",
+            appId: "1:208432538664:web:10a29a55efbb824ae1411d",
+            measurementId: "G-LLVT6XW024"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth();
+        const db = getFirestore(app);
+
+        const signatureOptions = [
+            "Regards,",
+            "Best Regards,",
+            "Thank you,",
+            "Thanks,",
+            "Warm Regards,",
+            "Kind Regards,",
+            "Best,",
+            "Sincerely,"
+        ];
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                document.getElementById("user-email").innerText = user.email;
+                renderSignatureOptions();
+                loadSettings(user.uid);
+            } else {
+                window.location.href = "index.html";
+            }
+        });
+
+        function renderSignatureOptions() {
+            const container = document.getElementById("signature-options");
+            container.innerHTML = "";
+
+            signatureOptions.forEach(sig => {
+                const option = document.createElement("label");
+                option.className = "signature-option";
+                option.innerHTML = `
+                    <input type="radio" name="signature" value="${sig}">
+                    <span class="signature-radio"></span>
+                    <span>${sig}</span>
+                `;
+                container.appendChild(option);
+            });
+
+            // Custom option
+            const custom = document.createElement("label");
+            custom.className = "signature-option";
+            custom.innerHTML = `
+                <input type="radio" name="signature" value="__custom__">
+                <span class="signature-radio"></span>
+                <span>Custom</span>
+            `;
+            container.appendChild(custom);
+        }
+
+        async function loadSettings(userId) {
+            const settingsRef = doc(db, "settings", userId);
+            const snap = await getDoc(settingsRef);
+
+            if (snap.exists()) {
+                const data = snap.data();
+
+                // Signature enabled
+                document.getElementById("signature-toggle").checked = data.signatureEnabled || false;
+                updateSignatureVisibility(data.signatureEnabled || false);
+
+                // Signature value
+                if (data.signatureText) {
+                    const radios = document.querySelectorAll('input[name="signature"]');
+                    let found = false;
+                    radios.forEach(radio => {
+                        if (radio.value === data.signatureText) {
+                            radio.checked = true;
+                            found = true;
+                        }
+                    });
+
+                    if (!found) {
+                        // It's a custom value
+                        const customRadio = document.querySelector('input[name="signature"][value="__custom__"]');
+                        if (customRadio) customRadio.checked = true;
+                        document.getElementById("custom-signature").value = data.signatureText;
+                        document.getElementById("custom-input-wrapper").style.display = "block";
+                    }
+                }
+            }
+
+            // Listen for radio changes to show/hide custom input
+            document.querySelectorAll('input[name="signature"]').forEach(radio => {
+                radio.addEventListener("change", () => {
+                    document.getElementById("custom-input-wrapper").style.display =
+                        radio.value === "__custom__" && radio.checked ? "block" : "none";
+                });
+            });
+        }
+
+        function updateSignatureVisibility(enabled) {
+            document.getElementById("signature-config").style.display = enabled ? "block" : "none";
+        }
+
+        window.toggleSignature = function () {
+            const enabled = document.getElementById("signature-toggle").checked;
+            updateSignatureVisibility(enabled);
+        };
+
+        window.saveSettings = async function () {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            const signatureEnabled = document.getElementById("signature-toggle").checked;
+            let signatureText = "";
+
+            if (signatureEnabled) {
+                const selected = document.querySelector('input[name="signature"]:checked');
+                if (!selected) {
+                    showToast("Please select a signature style.", "error");
+                    return;
+                }
+
+                if (selected.value === "__custom__") {
+                    signatureText = document.getElementById("custom-signature").value.trim();
+                    if (!signatureText) {
+                        showToast("Please enter your custom signature.", "error");
+                        return;
+                    }
+                } else {
+                    signatureText = selected.value;
+                }
+            }
+
+            const settingsRef = doc(db, "settings", user.uid);
+            await setDoc(settingsRef, {
+                signatureEnabled: signatureEnabled,
+                signatureText: signatureText
+            });
+
+            showToast("Settings saved!");
+        };
+
+        // Preview
+        window.previewSignature = function () {
+            const signatureEnabled = document.getElementById("signature-toggle").checked;
+            const preview = document.getElementById("signature-preview");
+
+            if (!signatureEnabled) {
+                preview.textContent = "Hello Guest,\n\n[message content]\n\nYour Name";
+                return;
+            }
+
+            const selected = document.querySelector('input[name="signature"]:checked');
+            let sig = "";
+            if (selected) {
+                sig = selected.value === "__custom__"
+                    ? document.getElementById("custom-signature").value.trim() || "Custom signature"
+                    : selected.value;
+            }
+
+            preview.textContent = `Hello Guest,\n\n[message content]\n\n${sig}\nYour Name`;
+        };
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "toast " + type + " show";
+            setTimeout(() => toast.classList.remove("show"), 2500);
+        }
+    </script>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <a href="index.html" class="header-logo">
+                <img src="img/MasterLogo.jpg" alt="Logo">
+            </a>
+            <nav class="header-nav">
+                <a href="template.html" class="nav-link">Templates</a>
+                <a href="messages.html" class="nav-link">Messages</a>
+                <a href="settings.html" class="nav-link active">Settings</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span id="user-email" class="header-email"></span>
+            <a href="index.html" class="btn btn-sm btn-outline">Home</a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="settings-main">
+        <h1>Settings</h1>
+
+        <!-- Signature Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Message Signature</h2>
+                    <p>Add a closing signature before your name in generated messages.</p>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="signature-toggle" onchange="toggleSignature(); previewSignature()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div id="signature-config" style="display: none;">
+                <div class="signature-options-wrapper">
+                    <h3>Choose a style</h3>
+                    <div id="signature-options" class="signature-options" onclick="setTimeout(previewSignature, 50)"></div>
+
+                    <div id="custom-input-wrapper" class="custom-input-wrapper" style="display: none;">
+                        <div class="form-group">
+                            <label for="custom-signature">Your custom signature</label>
+                            <input type="text" id="custom-signature" placeholder="e.g. With appreciation," oninput="previewSignature()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="preview-section">
+                    <h3>Preview</h3>
+                    <pre id="signature-preview" class="preview-box">Hello Guest,
+
+[message content]
+
+Your Name</pre>
+                </div>
+            </div>
+        </section>
+
+        <button onclick="saveSettings()" class="btn btn-primary btn-save">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Settings
+        </button>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+</body>
+
+</html>

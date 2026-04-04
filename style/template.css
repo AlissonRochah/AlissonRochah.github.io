@@ -70,6 +70,16 @@
   margin-bottom: 8px;
 }
 
+.template-card-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-edit:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .template-card-title {
   font-size: 0.9rem;
   font-weight: 600;

@@ -15,7 +15,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-        import { getFirestore, collection, getDocs, doc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
@@ -31,14 +31,27 @@
         const auth = getAuth();
         const db = getFirestore(app);
 
+        let userSignature = { enabled: false, text: "" };
+
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById("user-email").innerText = user.email;
                 loadTemplates(user.uid);
+                loadSignature(user.uid);
             } else {
                 window.location.href = "index.html";
             }
         });
+
+        async function loadSignature(userId) {
+            const settingsRef = doc(db, "settings", userId);
+            const snap = await getDoc(settingsRef);
+            if (snap.exists()) {
+                const data = snap.data();
+                userSignature.enabled = data.signatureEnabled || false;
+                userSignature.text = data.signatureText || "";
+            }
+        }
 
         async function loadTemplates(userId) {
             const userDocRef = doc(db, "templates", userId);
@@ -98,6 +111,12 @@
             if (messages.length > 0) {
                 finalMessage += messages.join("\n\n") + "\n\n";
             }
+
+            // Add signature if enabled
+            if (userSignature.enabled && userSignature.text) {
+                finalMessage += userSignature.text + "\n";
+            }
+
             finalMessage += yourName;
 
             document.getElementById("generatedMessage").value = finalMessage;
@@ -130,6 +149,7 @@
             <nav class="header-nav">
                 <a href="template.html" class="nav-link">Templates</a>
                 <a href="messages.html" class="nav-link active">Messages</a>
+                <a href="settings.html" class="nav-link">Settings</a>
             </nav>
         </div>
         <div class="header-right">
