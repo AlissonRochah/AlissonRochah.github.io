@@ -33,7 +33,7 @@
         const db = getFirestore(app);
 
         let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
-        let userGreeting = "Hello";
+        let userGreeting = { text: "Hello", mode: "fixed", randomList: [] };
         let allTemplates = [];
         let favorites = [];
         let currentUserId = null;
@@ -60,7 +60,9 @@
                     userSignature.mode = data.signatureMode || "fixed";
                     userSignature.text = data.signatureText || "";
                     userSignature.randomList = data.randomSignatures || [];
-                    userGreeting = data.greeting || "Hello";
+                    userGreeting.text = data.greeting || "Hello";
+                    userGreeting.mode = data.greetingMode || "fixed";
+                    userGreeting.randomList = data.randomGreetings || [];
                 }
             } catch (e) {
                 console.error("Error loading signature:", e);
@@ -212,6 +214,14 @@
             localStorage.setItem("yourName", document.getElementById("yourName").value.trim());
         };
 
+        function getGreetingText() {
+            if (userGreeting.mode === "random" && userGreeting.randomList.length > 0) {
+                const i = Math.floor(Math.random() * userGreeting.randomList.length);
+                return userGreeting.randomList[i];
+            }
+            return userGreeting.text || "Hello";
+        }
+
         function getSignatureText() {
             if (!userSignature.enabled) return "";
             if (userSignature.mode === "random" && userSignature.randomList.length > 0) {
@@ -243,7 +253,7 @@
             const messages = getSelectedMessages();
             const sig = getSignatureText();
 
-            let finalMessage = `${userGreeting} ${guestName},\n\n`;
+            let finalMessage = `${getGreetingText()} ${guestName},\n\n`;
             if (messages.length > 0) finalMessage += messages.join("\n\n") + "\n\n";
             if (sig) finalMessage += sig + "\n";
             finalMessage += yourName;

@@ -34,7 +34,9 @@
 
         let categories = [];
         let randomSignatures = [];
+        let randomGreetings = [];
         let greetingText = "Hello";
+        let greetingMode = "fixed";
 
         const signaturePresets = [
             "Regards,",
@@ -82,6 +84,15 @@
 
         // ========== GREETING ==========
 
+        window.setGreetingMode = function (mode) {
+            greetingMode = mode;
+            document.getElementById("greeting-fixed-config").style.display = mode === "fixed" ? "block" : "none";
+            document.getElementById("greeting-random-config").style.display = mode === "random" ? "block" : "none";
+            document.getElementById("greeting-mode-fixed").classList.toggle("active", mode === "fixed");
+            document.getElementById("greeting-mode-random").classList.toggle("active", mode === "random");
+            previewSignature();
+        };
+
         window.setGreeting = function (text) {
             greetingText = text;
             document.getElementById("greeting-input").value = text;
@@ -91,6 +102,55 @@
         window.onGreetingInput = function () {
             greetingText = document.getElementById("greeting-input").value.trim() || "Hello";
             previewSignature();
+        };
+
+        // Random greetings
+        function renderRandomGreetings() {
+            const list = document.getElementById("random-greeting-list");
+            list.innerHTML = "";
+            if (randomGreetings.length === 0) {
+                list.innerHTML = '<p class="empty-categories">No greetings added yet.</p>';
+                return;
+            }
+            randomGreetings.forEach((g, index) => {
+                const item = document.createElement("div");
+                item.className = "category-item";
+                item.innerHTML = `
+                    <span class="category-name">${g}</span>
+                    <button onclick="removeRandomGreeting(${index})" class="btn-icon btn-delete" title="Remove">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        window.addRandomGreeting = function () {
+            const input = document.getElementById("new-random-greeting");
+            const val = input.value.trim();
+            if (!val) return;
+            if (randomGreetings.includes(val)) { showToast("Greeting already added.", "error"); return; }
+            randomGreetings.push(val);
+            input.value = "";
+            renderRandomGreetings();
+            previewSignature();
+        };
+
+        window.addPresetToRandomGreeting = function (text) {
+            if (randomGreetings.includes(text)) { showToast("Already added.", "error"); return; }
+            randomGreetings.push(text);
+            renderRandomGreetings();
+            previewSignature();
+        };
+
+        window.removeRandomGreeting = function (index) {
+            randomGreetings.splice(index, 1);
+            renderRandomGreetings();
+            previewSignature();
+        };
+
+        window.handleRandomGreetingKeypress = function (e) {
+            if (e.key === "Enter") addRandomGreeting();
         };
 
         // ========== SIGNATURE ==========
@@ -180,8 +240,15 @@
             const enabled = document.getElementById("signature-toggle").checked;
             const preview = document.getElementById("signature-preview");
 
+            // Greeting
+            let greet = greetingText;
+            if (greetingMode === "random" && randomGreetings.length > 0) {
+                const ri = Math.floor(Math.random() * randomGreetings.length);
+                greet = randomGreetings[ri] + "  (random)";
+            }
+
             if (!enabled) {
-                preview.textContent = `${greetingText} Guest,\n\n[message content]\n\nYour Name`;
+                preview.textContent = `${greet} Guest,\n\n[message content]\n\nYour Name`;
                 return;
             }
 
@@ -199,7 +266,7 @@
                 }
             }
 
-            preview.textContent = `${greetingText} Guest,\n\n[message content]\n\n${sig}\nYour Name`;
+            preview.textContent = `${greet} Guest,\n\n[message content]\n\n${sig}\nYour Name`;
         };
 
         // ========== CATEGORIES ==========
@@ -265,6 +332,13 @@
                         greetingText = data.greeting;
                         document.getElementById("greeting-input").value = data.greeting;
                     }
+                    if (data.greetingMode) {
+                        greetingMode = data.greetingMode;
+                        setGreetingMode(data.greetingMode);
+                    }
+                    if (data.randomGreetings && Array.isArray(data.randomGreetings)) {
+                        randomGreetings = data.randomGreetings;
+                    }
 
                     // Signature toggle
                     const sigEnabled = data.signatureEnabled || false;
@@ -293,6 +367,7 @@
 
                 renderCategories();
                 renderRandomSignatures();
+                renderRandomGreetings();
                 previewSignature();
 
             } catch (error) {
@@ -326,6 +401,8 @@
                 await setDoc(settingsRef, {
                     ...existing,
                     greeting: greetingText,
+                    greetingMode: greetingMode,
+                    randomGreetings: randomGreetings,
                     signatureEnabled: signatureEnabled,
                     signatureMode: signatureMode,
                     signatureText: signatureText,
@@ -405,7 +482,15 @@
                     <p>Customize the greeting used at the start of your messages.</p>
                 </div>
             </div>
-            <div class="greeting-config">
+
+            <!-- Mode Tabs -->
+            <div class="mode-tabs">
+                <button id="greeting-mode-fixed" class="mode-tab active" onclick="setGreetingMode('fixed')">Fixed</button>
+                <button id="greeting-mode-random" class="mode-tab" onclick="setGreetingMode('random')">Random</button>
+            </div>
+
+            <!-- Fixed Mode -->
+            <div id="greeting-fixed-config" class="sig-mode-config">
                 <div class="form-group">
                     <label for="greeting-input">Greeting text</label>
                     <input type="text" id="greeting-input" value="Hello" placeholder="e.g. Hello" oninput="onGreetingInput()">
@@ -421,6 +506,29 @@
                         <button type="button" class="chip" onclick="setGreeting('Good evening')">Good evening</button>
                         <button type="button" class="chip" onclick="setGreeting('Dear')">Dear</button>
                         <button type="button" class="chip" onclick="setGreeting('Welcome')">Welcome</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Random Mode -->
+            <div id="greeting-random-config" class="sig-mode-config" style="display: none;">
+                <p class="random-desc">Add multiple greetings. One will be randomly picked each time you generate a message.</p>
+                <div class="category-add">
+                    <input type="text" id="new-random-greeting" placeholder="Type a greeting..." onkeypress="handleRandomGreetingKeypress(event)">
+                    <button onclick="addRandomGreeting()" class="btn btn-primary btn-sm">Add</button>
+                </div>
+                <div id="random-greeting-list" class="category-list"></div>
+                <div class="preset-chips" style="margin-top: 12px;">
+                    <p>Quick add:</p>
+                    <div class="idea-chips">
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Hello')">Hello</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Hey')">Hey</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Hi')">Hi</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Good morning')">Good morning</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Good afternoon')">Good afternoon</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Good evening')">Good evening</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Dear')">Dear</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Welcome')">Welcome</button>
                     </div>
                 </div>
             </div>
