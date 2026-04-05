@@ -34,6 +34,7 @@
 
         let categories = [];
         let randomSignatures = [];
+        let greetingText = "Hello";
 
         const signaturePresets = [
             "Regards,",
@@ -78,6 +79,19 @@
             document.getElementById("theme-dark").classList.toggle("active", theme === "dark");
             document.getElementById("theme-light").classList.toggle("active", theme === "light");
         }
+
+        // ========== GREETING ==========
+
+        window.setGreeting = function (text) {
+            greetingText = text;
+            document.getElementById("greeting-input").value = text;
+            previewSignature();
+        };
+
+        window.onGreetingInput = function () {
+            greetingText = document.getElementById("greeting-input").value.trim() || "Hello";
+            previewSignature();
+        };
 
         // ========== SIGNATURE ==========
 
@@ -167,7 +181,7 @@
             const preview = document.getElementById("signature-preview");
 
             if (!enabled) {
-                preview.textContent = "Hello Guest,\n\n[message content]\n\nYour Name";
+                preview.textContent = `${greetingText} Guest,\n\n[message content]\n\nYour Name`;
                 return;
             }
 
@@ -185,7 +199,7 @@
                 }
             }
 
-            preview.textContent = `Hello Guest,\n\n[message content]\n\n${sig}\nYour Name`;
+            preview.textContent = `${greetingText} Guest,\n\n[message content]\n\n${sig}\nYour Name`;
         };
 
         // ========== CATEGORIES ==========
@@ -246,6 +260,12 @@
                 if (snap.exists()) {
                     const data = snap.data();
 
+                    // Greeting
+                    if (data.greeting) {
+                        greetingText = data.greeting;
+                        document.getElementById("greeting-input").value = data.greeting;
+                    }
+
                     // Signature toggle
                     const sigEnabled = data.signatureEnabled || false;
                     document.getElementById("signature-toggle").checked = sigEnabled;
@@ -301,7 +321,11 @@
 
             try {
                 const settingsRef = doc(db, "settings", user.uid);
+                const snap = await getDoc(settingsRef);
+                const existing = snap.exists() ? snap.data() : {};
                 await setDoc(settingsRef, {
+                    ...existing,
+                    greeting: greetingText,
                     signatureEnabled: signatureEnabled,
                     signatureMode: signatureMode,
                     signatureText: signatureText,
@@ -370,6 +394,35 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
                     Light
                 </button>
+            </div>
+        </section>
+
+        <!-- Greeting Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Greeting</h2>
+                    <p>Customize the greeting used at the start of your messages.</p>
+                </div>
+            </div>
+            <div class="greeting-config">
+                <div class="form-group">
+                    <label for="greeting-input">Greeting text</label>
+                    <input type="text" id="greeting-input" value="Hello" placeholder="e.g. Hello" oninput="onGreetingInput()">
+                </div>
+                <div class="preset-chips">
+                    <p>Quick pick:</p>
+                    <div class="idea-chips">
+                        <button type="button" class="chip" onclick="setGreeting('Hello')">Hello</button>
+                        <button type="button" class="chip" onclick="setGreeting('Hey')">Hey</button>
+                        <button type="button" class="chip" onclick="setGreeting('Hi')">Hi</button>
+                        <button type="button" class="chip" onclick="setGreeting('Good morning')">Good morning</button>
+                        <button type="button" class="chip" onclick="setGreeting('Good afternoon')">Good afternoon</button>
+                        <button type="button" class="chip" onclick="setGreeting('Good evening')">Good evening</button>
+                        <button type="button" class="chip" onclick="setGreeting('Dear')">Dear</button>
+                        <button type="button" class="chip" onclick="setGreeting('Welcome')">Welcome</button>
+                    </div>
+                </div>
             </div>
         </section>
 
