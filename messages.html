@@ -134,7 +134,10 @@
                     if (categoryFilter === "__uncategorized__") return !t.category;
                     return t.category === categoryFilter;
                 })
-                .filter(t => t.name.toLowerCase().includes(textFilter))
+                .filter(t => {
+                    const filter = textFilter;
+                    return t.name.toLowerCase().includes(filter) || t.description.toLowerCase().includes(filter);
+                })
                 .forEach(t => {
                     const isFav = favorites.includes(t.id);
                     const item = document.createElement("div");
@@ -145,6 +148,9 @@
                             <span class="checkmark"></span>
                             <span class="checkbox-label" title="${t.name}">${t.name}</span>
                         </label>
+                        <button class="btn-copy-single" onclick="copySingle('${t.id}')" title="Copy this template">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
                         <button class="btn-fav ${isFav ? 'active' : ''}" onclick="toggleFavorite('${t.id}')" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                         </button>
@@ -155,6 +161,16 @@
 
         window.filterByCategory = renderCheckboxes;
         window.filterServices = renderCheckboxes;
+
+        window.copySingle = function (templateId) {
+            const t = allTemplates.find(x => x.id === templateId);
+            if (!t) return;
+            navigator.clipboard.writeText(t.description).then(() => {
+                showToast("Copied: " + t.name);
+            }).catch(() => {
+                showToast("Failed to copy.", "error");
+            });
+        };
 
         window.toggleFavorite = async function (templateId) {
             if (favorites.includes(templateId)) {
