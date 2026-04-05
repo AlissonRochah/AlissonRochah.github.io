@@ -172,6 +172,18 @@
         // Track selection order
         let selectionOrder = [];
 
+        // Auto-focus filter when typing without any input focused
+        document.addEventListener("keydown", function (e) {
+            const active = document.activeElement;
+            const tag = active ? active.tagName : "";
+            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (e.key.length === 1) {
+                const filterInput = document.getElementById("filter-input");
+                filterInput.focus();
+            }
+        });
+
         window.onTemplateToggle = function (checkbox) {
             const id = checkbox.value;
             if (checkbox.checked) {
