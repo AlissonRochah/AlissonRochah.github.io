@@ -203,28 +203,6 @@
   color: #f59e0b;
 }
 
-/* Copy Single Button */
-.btn-copy-single {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  transition: all 0.15s ease;
-  opacity: 0;
-}
-
-.checkbox-item:hover .btn-copy-single {
-  opacity: 1;
-}
-
-.btn-copy-single:hover {
-  color: var(--accent);
-}
-
 /* Button Row */
 .btn-row {
   display: flex;
