@@ -167,8 +167,13 @@
             if (!cb) return;
             const desc = cb.getAttribute("data-description");
             if (!desc) return;
+            const yourName = document.getElementById("yourName").value.trim();
+            const sig = getSignatureText();
+            let text = desc + "\n\n";
+            if (sig) text += sig + "\n";
+            if (yourName) text += yourName;
             const t = allTemplates.find(x => x.id === cb.value);
-            navigator.clipboard.writeText(desc).then(() => {
+            navigator.clipboard.writeText(text.trim()).then(() => {
                 showToast("Copied: " + (t ? t.name : "template"));
             }).catch(() => {
                 showToast("Failed to copy.", "error");
