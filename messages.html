@@ -379,14 +379,22 @@
                 return;
             }
 
-            // Get last guest message
-            const lastGuestMsg = [...conversation].reverse().find(m => m.role === "guest");
-            if (!lastGuestMsg) {
-                showToast("No guest message found.", "error");
+            // Get all unanswered guest messages (after the last host message)
+            const reversed = [...conversation].reverse();
+            const lastHostIdx = reversed.findIndex(m => m.role === "host");
+            const unanswered = lastHostIdx === -1
+                ? reversed.filter(m => m.role === "guest")
+                : reversed.slice(0, lastHostIdx).filter(m => m.role === "guest");
+            unanswered.reverse();
+
+            if (unanswered.length === 0) {
+                showToast("No unanswered guest messages found.", "error");
                 btn.disabled = false;
                 btn.textContent = "Suggest";
                 return;
             }
+
+            const guestText = unanswered.map(m => m.text).join("\n");
 
             // Build template list for AI
             const templateList = allTemplates.map(t => t.id + ": " + t.name).join("\n");
@@ -404,7 +412,7 @@
                             },
                             {
                                 role: "user",
-                                content: "Guest message: " + lastGuestMsg.text + "\n\nTemplates:\n" + templateList
+                                content: "Guest messages (unanswered):\n" + guestText + "\n\nTemplates:\n" + templateList
                             }
                         ],
                         temperature: 0.1
