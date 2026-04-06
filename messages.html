@@ -348,9 +348,14 @@
         // ========== AI SUGGEST TEMPLATES ==========
 
         window.suggestTemplates = async function () {
+            if (!aiApiUrl) {
+                showToast("AI not configured. Ask admin to set API URL.", "error");
+                return;
+            }
+
             const btn = document.getElementById("suggest-btn");
             btn.disabled = true;
-            btn.textContent = "Searching...";
+            btn.textContent = "Thinking...";
 
             // Get conversation from extension
             let conversation = [];
@@ -389,48 +394,72 @@
                 return;
             }
 
-            // Keyword matching — extract words from guest messages
-            const guestText = unanswered.map(m => m.text).join(" ").toLowerCase();
-            const guestWords = guestText.replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 2);
+            const guestText = unanswered.map(m => m.text).join("\n");
 
-            // Common words to ignore
-            const stopWords = new Set(["the", "and", "for", "are", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out", "has", "have", "been", "will", "with", "this", "that", "from", "they", "were", "been", "some", "them", "than", "its", "also", "into", "just", "about", "would", "there", "their", "what", "when", "who", "how", "which", "could", "should", "does", "don", "didn", "isn", "won", "let", "know", "want", "think", "back", "here", "come", "going", "get", "got"]);
-            const keywords = guestWords.filter(w => !stopWords.has(w));
+            // Build numbered template list with content
+            const templateList = allTemplates.map((t, i) => {
+                return (i + 1) + ". [" + t.id + "] " + t.name + "\n" + t.description.substring(0, 150);
+            }).join("\n\n");
 
-            // Score each template by keyword matches in name + content
-            suggestedTemplateIds = [];
-            const scored = allTemplates.map(t => {
-                const searchText = (t.name + " " + t.description).toLowerCase();
-                let score = 0;
-                const matched = new Set();
-                keywords.forEach(kw => {
-                    if (searchText.includes(kw)) {
-                        score++;
-                        matched.add(kw);
+            try {
+                const res = await fetch(aiApiUrl + "/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "llama3.1:8b",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "You pick templates that answer a guest's question. Reply with ONLY the template IDs in brackets, one per line. Example:\n[WiFi Info]\n[Pool Heat]\nIf none match, reply: NONE\nDo NOT explain. Do NOT add text."
+                            },
+                            {
+                                role: "user",
+                                content: "GUEST SAYS:\n" + guestText + "\n\nTEMPLATES:\n" + templateList
+                            }
+                        ],
+                        temperature: 0
+                    })
+                });
+
+                if (!res.ok) throw new Error("API error");
+
+                const data = await res.json();
+                const aiResponse = data.choices?.[0]?.message?.content || "";
+
+                // Parse template IDs from [brackets]
+                suggestedTemplateIds = [];
+                const bracketMatches = aiResponse.match(/\[([^\]]+)\]/g) || [];
+                bracketMatches.forEach(match => {
+                    const id = match.slice(1, -1).trim();
+                    if (allTemplates.some(t => t.id === id)) {
+                        suggestedTemplateIds.push(id);
                     }
                 });
-                // Bonus for matching in template name
-                keywords.forEach(kw => {
-                    if (t.name.toLowerCase().includes(kw)) {
-                        score += 2;
-                    }
-                });
-                return { id: t.id, score, matched: matched.size };
-            }).filter(t => t.score >= 2 && t.matched >= 1)
-              .sort((a, b) => b.score - a.score);
 
-            suggestedTemplateIds = scored.slice(0, 5).map(t => t.id);
+                // Fallback: try line-by-line matching if brackets didn't work
+                if (suggestedTemplateIds.length === 0 && !aiResponse.includes("NONE")) {
+                    const lines = aiResponse.split("\n").map(l => l.trim()).filter(l => l);
+                    lines.forEach(line => {
+                        const cleanLine = line.replace(/^\d+[\.\)]\s*/, "").replace(/[\[\]]/g, "").trim();
+                        const match = allTemplates.find(t => t.id === cleanLine || t.name === cleanLine);
+                        if (match) suggestedTemplateIds.push(match.id);
+                    });
+                }
 
-            renderCheckboxes();
+                renderCheckboxes();
 
-            if (suggestedTemplateIds.length > 0) {
-                showToast(suggestedTemplateIds.length + " template(s) suggested!");
-            } else {
-                showToast("No matching templates found.", "error");
+                if (suggestedTemplateIds.length > 0) {
+                    showToast(suggestedTemplateIds.length + " template(s) suggested!");
+                } else {
+                    showToast("No matching templates found.", "error");
+                }
+            } catch (e) {
+                console.error("Suggest error:", e);
+                showToast("AI is unavailable.", "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Suggest";
             }
-
-            btn.disabled = false;
-            btn.textContent = "Suggest";
         };
 
         function showToast(message, type = "success") {
