@@ -387,14 +387,20 @@
                 : reversed.slice(0, lastHostIdx).filter(m => m.role === "guest");
             unanswered.reverse();
 
-            if (unanswered.length === 0) {
-                showToast("No unanswered guest messages found.", "error");
+            // Fallback: if no unanswered, use last guest messages anyway
+            let guestMessages = unanswered;
+            if (guestMessages.length === 0) {
+                guestMessages = conversation.filter(m => m.role === "guest").slice(-3);
+            }
+
+            if (guestMessages.length === 0) {
+                showToast("No guest messages found.", "error");
                 btn.disabled = false;
                 btn.textContent = "Suggest";
                 return;
             }
 
-            const guestText = unanswered.map(m => m.text).join("\n");
+            const guestText = guestMessages.map(m => m.text).join("\n");
 
             // Build template list — names only for speed
             const templateList = allTemplates.map(t => "[" + t.id + "] " + t.name).join("\n");
