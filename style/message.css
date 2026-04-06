@@ -122,6 +122,11 @@
   background: var(--bg-hover);
 }
 
+.checkbox-item.suggested {
+  background: var(--accent-soft);
+  border-left: 2px solid var(--accent);
+}
+
 .checkbox-inner {
   display: flex;
   align-items: center;
