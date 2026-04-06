@@ -73,6 +73,10 @@ CRITICAL RULES:
                 userSignature.mode = sData.signatureMode || "fixed";
                 userSignature.text = sData.signatureText || "";
                 userSignature.randomList = sData.randomSignatures || [];
+                if (sData.extensionId) {
+                    EXTENSION_ID = sData.extensionId;
+                    localStorage.setItem("masterbotExtensionId", sData.extensionId);
+                }
             } catch (e) {
                 console.error("Error checking AI access:", e);
                 window.location.href = "messages.html";
@@ -87,9 +91,8 @@ CRITICAL RULES:
                     const data = globalSnap.data();
                     aiApiUrl = data.aiApiUrl || "";
                     aiSystemPrompt = data.aiSystemPrompt || DEFAULT_SYSTEM_PROMPT;
-                    if (data.aiExtensionId) {
-                        EXTENSION_ID = data.aiExtensionId;
-                        localStorage.setItem("masterbotExtensionId", data.aiExtensionId);
+                    if (data.aiGroqKey) {
+                        localStorage.setItem("masterbotGroqKey", data.aiGroqKey);
                     }
                 } else {
                     aiSystemPrompt = DEFAULT_SYSTEM_PROMPT;

@@ -55,9 +55,6 @@
                     const globalSnap = await getDoc(globalRef);
                     if (globalSnap.exists()) {
                         aiApiUrl = globalSnap.data().aiApiUrl || "";
-                        if (globalSnap.data().aiExtensionId) {
-                            EXTENSION_ID = globalSnap.data().aiExtensionId;
-                        }
                         if (globalSnap.data().aiGroqKey) {
                             localStorage.setItem("masterbotGroqKey", globalSnap.data().aiGroqKey);
                         }
@@ -87,6 +84,10 @@
                         document.getElementById("ai-nav-link").style.display = "";
                         document.getElementById("suggest-btn").style.display = "";
                         aiEnabled = true;
+                    }
+                    if (data.extensionId) {
+                        EXTENSION_ID = data.extensionId;
+                        localStorage.setItem("masterbotExtensionId", data.extensionId);
                     }
                 }
             } catch (e) {

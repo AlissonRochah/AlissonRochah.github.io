@@ -327,9 +327,11 @@
                 if (snap.exists()) {
                     const data = snap.data();
 
-                    // AI nav link
+                    // AI nav link and extension ID section
                     if (data.aiEnabled) {
                         document.getElementById("ai-nav-link").style.display = "";
+                        document.getElementById("extension-id-section").style.display = "";
+                        document.getElementById("user-extension-id").value = data.extensionId || localStorage.getItem("masterbotExtensionId") || "";
                     }
 
                     // Greeting
@@ -377,16 +379,11 @@
                             const globalSnap = await getDoc(globalRef);
                             if (globalSnap.exists()) {
                                 const globalData = globalSnap.data();
-                                document.getElementById("ai-extension-id").value = globalData.aiExtensionId || "";
                                 document.getElementById("ai-api-url").value = globalData.aiApiUrl || "";
                                 document.getElementById("ai-groq-key").value = globalData.aiGroqKey || "";
                                 document.getElementById("ai-system-prompt").value = globalData.aiSystemPrompt || "";
                                 if (globalData.aiGroqKey) {
                                     localStorage.setItem("masterbotGroqKey", globalData.aiGroqKey);
-                                }
-                                // Also save extension ID to localStorage for ai.html to use
-                                if (globalData.aiExtensionId) {
-                                    localStorage.setItem("masterbotExtensionId", globalData.aiExtensionId);
                                 }
                             }
                         } catch (e) {
@@ -428,7 +425,8 @@
                 const settingsRef = doc(db, "settings", user.uid);
                 const snap = await getDoc(settingsRef);
                 const existing = snap.exists() ? snap.data() : {};
-                await setDoc(settingsRef, {
+                const userExtId = document.getElementById("user-extension-id")?.value?.trim() || "";
+                const saveData = {
                     ...existing,
                     greeting: greetingText,
                     greetingMode: greetingMode,
@@ -438,24 +436,24 @@
                     signatureText: signatureText,
                     randomSignatures: randomSignatures,
                     categories: categories
-                });
+                };
+                if (userExtId) {
+                    saveData.extensionId = userExtId;
+                    localStorage.setItem("masterbotExtensionId", userExtId);
+                }
+                await setDoc(settingsRef, saveData);
                 // Save AI config if admin
                 const currentSnap = await getDoc(settingsRef);
                 if (currentSnap.exists() && currentSnap.data().isAdmin) {
                     const globalRef = doc(db, "settings", "global");
-                    const extId = document.getElementById("ai-extension-id").value.trim();
                     const groqKey = document.getElementById("ai-groq-key").value.trim();
                     await setDoc(globalRef, {
-                        aiExtensionId: extId,
                         aiApiUrl: document.getElementById("ai-api-url").value.trim(),
                         aiGroqKey: groqKey,
                         aiSystemPrompt: document.getElementById("ai-system-prompt").value.trim()
                     }, { merge: true });
                     if (groqKey) {
                         localStorage.setItem("masterbotGroqKey", groqKey);
-                    }
-                    if (extId) {
-                        localStorage.setItem("masterbotExtensionId", extId);
                     }
                 }
 
@@ -678,6 +676,23 @@ Your Name</pre>
             </div>
         </section>
 
+        <!-- Extension ID (for AI-enabled users) -->
+        <section id="extension-id-section" class="settings-section" style="display: none;">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Browser Extension</h2>
+                    <p>Connect the MasterBot extension to enable conversation capture.</p>
+                </div>
+            </div>
+            <div style="margin-top:12px">
+                <div class="form-group">
+                    <label for="user-extension-id">Extension ID</label>
+                    <input type="text" id="user-extension-id" placeholder="Find it in chrome://extensions/">
+                    <p style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">Open chrome://extensions/, find MasterBot, copy the ID.</p>
+                </div>
+            </div>
+        </section>
+
         <!-- AI Configuration Section (admin only) -->
         <section id="ai-config-section" class="settings-section" style="display: none;">
             <div class="section-header">
@@ -687,11 +702,6 @@ Your Name</pre>
                 </div>
             </div>
             <div class="ai-config-fields">
-                <div class="form-group">
-                    <label for="ai-extension-id">Extension ID</label>
-                    <input type="text" id="ai-extension-id" placeholder="e.g. abcdefghijklmnopqrstuvwxyz">
-                    <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">Find it in chrome://extensions/ after loading the extension.</p>
-                </div>
                 <div class="form-group">
                     <label for="ai-api-url">Ollama API URL</label>
                     <input type="text" id="ai-api-url" placeholder="e.g. https://your-tunnel.trycloudflare.com">
