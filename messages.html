@@ -58,6 +58,9 @@
                         if (globalSnap.data().aiExtensionId) {
                             EXTENSION_ID = globalSnap.data().aiExtensionId;
                         }
+                        if (globalSnap.data().aiGroqKey) {
+                            localStorage.setItem("masterbotGroqKey", globalSnap.data().aiGroqKey);
+                        }
                     }
                 } catch (e) {
                     console.error("Error loading AI config:", e);
@@ -406,11 +409,21 @@
             }).join("\n");
 
             try {
-                const res = await fetch(aiApiUrl + "/v1/chat/completions", {
+                const groqKey = localStorage.getItem("masterbotGroqKey") || "";
+                if (!groqKey) {
+                    showToast("Groq API key not configured. Ask admin.", "error");
+                    btn.disabled = false;
+                    btn.textContent = "Suggest";
+                    return;
+                }
+                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + groqKey
+                    },
                     body: JSON.stringify({
-                        model: "gemma3:12b",
+                        model: "llama-3.3-70b-versatile",
                         messages: [
                             {
                                 role: "system",
@@ -422,7 +435,7 @@
                             }
                         ],
                         temperature: 0,
-                        num_predict: 100
+                        max_tokens: 100
                     })
                 });
 
