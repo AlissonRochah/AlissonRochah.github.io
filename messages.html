@@ -396,10 +396,8 @@
 
             const guestText = unanswered.map(m => m.text).join("\n");
 
-            // Build numbered template list with content
-            const templateList = allTemplates.map((t, i) => {
-                return (i + 1) + ". [" + t.id + "] " + t.name + "\n" + t.description.substring(0, 150);
-            }).join("\n\n");
+            // Build template list — names only for speed
+            const templateList = allTemplates.map(t => "[" + t.id + "] " + t.name).join("\n");
 
             try {
                 const res = await fetch(aiApiUrl + "/v1/chat/completions", {
@@ -410,7 +408,7 @@
                         messages: [
                             {
                                 role: "system",
-                                content: "You pick templates that answer a guest's question. Reply with ONLY the template IDs in brackets, one per line. Example:\n[WiFi Info]\n[Pool Heat]\nIf none match, reply: NONE\nDo NOT explain. Do NOT add text."
+                                content: "You are a vacation rental assistant. A guest sent a message. Pick which templates are relevant to respond. Think about what the guest needs — for example 'internet not working' matches 'WIFI (Not Working)', 'what time can we arrive' matches 'Check-in'. Reply with ONLY the IDs in brackets, one per line. If none match, reply NONE."
                             },
                             {
                                 role: "user",
