@@ -43,8 +43,7 @@
                 currentUserId = user.uid;
                 document.getElementById("user-email").innerText = user.email;
                 await loadCategories(user.uid);
-                loadTemplates(user.uid);
-                // Load AI config
+                // Load AI config first so templates can generate summaries
                 try {
                     const globalRef = doc(db, "settings", "global");
                     const globalSnap = await getDoc(globalRef);
@@ -52,6 +51,7 @@
                         aiApiUrl = globalSnap.data().aiApiUrl || "";
                     }
                 } catch (e) {}
+                await loadTemplates(user.uid);
             } else {
                 window.location.href = "index.html";
             }
