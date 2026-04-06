@@ -205,6 +205,9 @@
                 const categoryBadge = data.category
                     ? `<span class="category-badge">${data.category}</span>`
                     : '';
+                const aiBadge = data.aiSummary
+                    ? `<span class="category-badge ai-badge" onclick="event.stopPropagation(); showSummary('${data.aiSummary.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">AI</span>`
+                    : '';
 
                 const item = document.createElement("div");
                 item.className = "template-card";
@@ -225,6 +228,7 @@
                             </span>
                             <h3 class="template-card-title">${data.name}</h3>
                             ${categoryBadge}
+                            ${aiBadge}
                         </div>
                         <div class="template-card-actions">
                             <button onclick="editTemplate('${data.id}')" class="btn-icon btn-edit" title="Edit template">
@@ -489,6 +493,13 @@
             }
 
             event.target.value = "";
+        };
+
+        window.showSummary = function (text) {
+            const toast = document.getElementById("toast");
+            toast.textContent = "AI: " + text;
+            toast.className = "toast success show";
+            setTimeout(() => toast.classList.remove("show"), 5000);
         };
 
         // Generate AI summary for a template (runs in background)

@@ -149,6 +149,12 @@
   border-radius: 10px;
 }
 
+.ai-badge {
+  color: var(--success);
+  background: var(--success-soft);
+  cursor: pointer;
+}
+
 /* Modal form row */
 .form-row-modal {
   display: flex;
