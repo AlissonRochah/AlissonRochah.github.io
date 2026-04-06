@@ -379,32 +379,27 @@
                 return;
             }
 
-            // Get all unanswered guest messages (after the last host message)
+            // Get unanswered guest messages, fallback to last 3
             const reversed = [...conversation].reverse();
             const lastHostIdx = reversed.findIndex(m => m.role === "host");
-            const unanswered = lastHostIdx === -1
+            let unanswered = lastHostIdx === -1
                 ? reversed.filter(m => m.role === "guest")
                 : reversed.slice(0, lastHostIdx).filter(m => m.role === "guest");
             unanswered.reverse();
-
-            // Fallback: if no unanswered, use last guest messages anyway
-            let guestMessages = unanswered;
-            if (guestMessages.length === 0) {
-                guestMessages = conversation.filter(m => m.role === "guest").slice(-3);
+            if (unanswered.length === 0) {
+                unanswered = conversation.filter(m => m.role === "guest").slice(-3);
             }
 
-            if (guestMessages.length === 0) {
+            if (unanswered.length === 0) {
                 showToast("No guest messages found.", "error");
                 btn.disabled = false;
                 btn.textContent = "Suggest";
                 return;
             }
 
-            const guestText = guestMessages.map(m => m.text).join("\n");
+            const guestText = unanswered.map(m => m.text).join("\n");
 
-            // Build template list — names only for speed
-            const templateList = allTemplates.map(t => "[" + t.id + "] " + t.name).join("\n");
-
+            // STEP 1: Ask AI to extract topics/keywords from guest message
             try {
                 const res = await fetch(aiApiUrl + "/v1/chat/completions", {
                     method: "POST",
@@ -414,11 +409,11 @@
                         messages: [
                             {
                                 role: "system",
-                                content: "You are a vacation rental assistant. A guest sent a message. Pick which templates are relevant to respond. Think about what the guest needs — for example 'internet not working' matches 'WIFI (Not Working)', 'what time can we arrive' matches 'Check-in'. Reply with ONLY the IDs in brackets, one per line. If none match, reply NONE."
+                                content: "Extract the key topics from a vacation rental guest message. List related keywords and synonyms. Reply with ONLY a comma-separated list of keywords. Example: guest says 'the internet on the TV stopped working' → wifi, internet, tv, not working, connection, router"
                             },
                             {
                                 role: "user",
-                                content: "GUEST SAYS:\n" + guestText + "\n\nTEMPLATES:\n" + templateList
+                                content: guestText
                             }
                         ],
                         temperature: 0
@@ -428,27 +423,30 @@
                 if (!res.ok) throw new Error("API error");
 
                 const data = await res.json();
-                const aiResponse = data.choices?.[0]?.message?.content || "";
+                const aiKeywords = (data.choices?.[0]?.message?.content || "").toLowerCase();
 
-                // Parse template IDs from [brackets]
+                // Parse keywords from AI response
+                const keywords = aiKeywords
+                    .replace(/\n/g, ",")
+                    .split(",")
+                    .map(k => k.trim().replace(/[^a-z0-9\s]/g, ""))
+                    .filter(k => k.length > 1);
+
+                // STEP 2: Keyword match against templates locally
                 suggestedTemplateIds = [];
-                const bracketMatches = aiResponse.match(/\[([^\]]+)\]/g) || [];
-                bracketMatches.forEach(match => {
-                    const id = match.slice(1, -1).trim();
-                    if (allTemplates.some(t => t.id === id)) {
-                        suggestedTemplateIds.push(id);
-                    }
-                });
-
-                // Fallback: try line-by-line matching if brackets didn't work
-                if (suggestedTemplateIds.length === 0 && !aiResponse.includes("NONE")) {
-                    const lines = aiResponse.split("\n").map(l => l.trim()).filter(l => l);
-                    lines.forEach(line => {
-                        const cleanLine = line.replace(/^\d+[\.\)]\s*/, "").replace(/[\[\]]/g, "").trim();
-                        const match = allTemplates.find(t => t.id === cleanLine || t.name === cleanLine);
-                        if (match) suggestedTemplateIds.push(match.id);
+                const scored = allTemplates.map(t => {
+                    const searchText = (t.name + " " + t.description).toLowerCase();
+                    let score = 0;
+                    keywords.forEach(kw => {
+                        if (searchText.includes(kw)) score++;
+                        // Extra weight for name matches
+                        if (t.name.toLowerCase().includes(kw)) score += 2;
                     });
-                }
+                    return { id: t.id, score };
+                }).filter(t => t.score >= 2)
+                  .sort((a, b) => b.score - a.score);
+
+                suggestedTemplateIds = scored.slice(0, 5).map(t => t.id);
 
                 renderCheckboxes();
 
