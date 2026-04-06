@@ -98,31 +98,40 @@
   gap: 8px;
 }
 
-.template-order-btns {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.btn-move {
+.drag-handle {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 16px;
-  border-radius: 3px;
+  cursor: grab;
   color: var(--text-muted);
-  transition: all 0.15s ease;
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+  touch-action: none;
 }
 
-.btn-move:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+.drag-handle:active {
+  cursor: grabbing;
 }
 
-.btn-move:disabled {
-  opacity: 0.2;
-  cursor: default;
+.template-card:hover .drag-handle {
+  opacity: 1;
+}
+
+.template-card.dragging {
+  opacity: 0.3;
+}
+
+.template-card.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.drag-clone {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0.85;
+  box-shadow: var(--shadow-lg);
+  transform: rotate(1deg);
 }
 
 .template-card-title {

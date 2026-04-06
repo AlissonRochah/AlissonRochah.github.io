@@ -183,17 +183,21 @@
 
                 const item = document.createElement("div");
                 item.className = "template-card";
+                item.draggable = true;
+                item.dataset.id = data.id;
+                item.ondragstart = (e) => onDragStart(e, data.id);
+                item.ondragend = onDragEnd;
+                item.ondragover = onDragOver;
+                item.ondrop = (e) => onDropTemplate(e, data.id);
+                item.ontouchstart = (e) => {
+                    if (e.target.closest(".drag-handle")) onTouchDragStart(e, data.id);
+                };
                 item.innerHTML = `
                     <div class="template-card-header">
                         <div class="template-card-title-row">
-                            <div class="template-order-btns">
-                                <button onclick="moveTemplate('${data.id}', -1)" class="btn-move" title="Move up" ${idx === 0 ? 'disabled' : ''}>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                                </button>
-                                <button onclick="moveTemplate('${data.id}', 1)" class="btn-move" title="Move down" ${idx === filtered.length - 1 ? 'disabled' : ''}>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                            </div>
+                            <span class="drag-handle" title="Drag to reorder">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>
+                            </span>
                             <h3 class="template-card-title">${data.name}</h3>
                             ${categoryBadge}
                         </div>
@@ -212,25 +216,125 @@
             });
         }
 
-        window.moveTemplate = async function (templateId, direction) {
+        // Drag and drop reordering
+        let draggedId = null;
+
+        window.onDragStart = function (e, templateId) {
+            draggedId = templateId;
+            e.dataTransfer.effectAllowed = "move";
+            e.target.closest(".template-card").classList.add("dragging");
+        };
+
+        window.onDragEnd = function (e) {
+            draggedId = null;
+            document.querySelectorAll(".template-card").forEach(c => {
+                c.classList.remove("dragging", "drag-over");
+            });
+        };
+
+        window.onDragOver = function (e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            const card = e.target.closest(".template-card");
+            if (card) {
+                document.querySelectorAll(".template-card.drag-over").forEach(c => c.classList.remove("drag-over"));
+                card.classList.add("drag-over");
+            }
+        };
+
+        window.onDropTemplate = async function (e, targetId) {
+            e.preventDefault();
+            if (!draggedId || draggedId === targetId) return;
+
             const sorted = [...allTemplates].sort((a, b) => a.order - b.order);
-            const idx = sorted.findIndex(t => t.id === templateId);
-            const swapIdx = idx + direction;
-            if (swapIdx < 0 || swapIdx >= sorted.length) return;
+            const fromIdx = sorted.findIndex(t => t.id === draggedId);
+            const toIdx = sorted.findIndex(t => t.id === targetId);
+            if (fromIdx === -1 || toIdx === -1) return;
 
-            const a = sorted[idx];
-            const b = sorted[swapIdx];
-            const tmpOrder = a.order;
-            a.order = b.order;
-            b.order = tmpOrder;
+            const [moved] = sorted.splice(fromIdx, 1);
+            sorted.splice(toIdx, 0, moved);
 
+            sorted.forEach((t, i) => t.order = i);
             renderTemplates(currentUserId);
 
-            const refA = doc(doc(db, "templates", currentUserId), "userTemplates", a.id);
-            const refB = doc(doc(db, "templates", currentUserId), "userTemplates", b.id);
-            await setDoc(refA, { order: a.order }, { merge: true });
-            await setDoc(refB, { order: b.order }, { merge: true });
+            for (const t of sorted) {
+                const ref = doc(doc(db, "templates", currentUserId), "userTemplates", t.id);
+                await setDoc(ref, { order: t.order }, { merge: true });
+            }
         };
+
+        // Touch drag support
+        let touchDragId = null;
+        let touchClone = null;
+
+        window.onTouchDragStart = function (e, templateId) {
+            const touch = e.touches[0];
+            touchDragId = templateId;
+
+            const card = e.target.closest(".template-card");
+            touchClone = card.cloneNode(true);
+            touchClone.className = "template-card drag-clone";
+            touchClone.style.width = card.offsetWidth + "px";
+            document.body.appendChild(touchClone);
+            touchClone.style.top = touch.clientY - 20 + "px";
+            touchClone.style.left = card.getBoundingClientRect().left + "px";
+
+            card.classList.add("dragging");
+            e.preventDefault();
+        };
+
+        document.addEventListener("touchmove", function (e) {
+            if (!touchDragId || !touchClone) return;
+            const touch = e.touches[0];
+            touchClone.style.top = touch.clientY - 20 + "px";
+
+            document.querySelectorAll(".template-card.drag-over").forEach(c => c.classList.remove("drag-over"));
+            const el = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (el) {
+                const card = el.closest(".template-card:not(.drag-clone)");
+                if (card) card.classList.add("drag-over");
+            }
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener("touchend", async function (e) {
+            if (!touchDragId) return;
+
+            if (touchClone) {
+                touchClone.remove();
+                touchClone = null;
+            }
+
+            const touch = e.changedTouches[0];
+            const el = document.elementFromPoint(touch.clientX, touch.clientY);
+            let targetId = null;
+            if (el) {
+                const card = el.closest(".template-card");
+                if (card && card.dataset.id) targetId = card.dataset.id;
+            }
+
+            document.querySelectorAll(".template-card").forEach(c => {
+                c.classList.remove("dragging", "drag-over");
+            });
+
+            if (targetId && targetId !== touchDragId) {
+                const sorted = [...allTemplates].sort((a, b) => a.order - b.order);
+                const fromIdx = sorted.findIndex(t => t.id === touchDragId);
+                const toIdx = sorted.findIndex(t => t.id === targetId);
+                if (fromIdx !== -1 && toIdx !== -1) {
+                    const [moved] = sorted.splice(fromIdx, 1);
+                    sorted.splice(toIdx, 0, moved);
+                    sorted.forEach((t, i) => t.order = i);
+                    renderTemplates(currentUserId);
+                    for (const t of sorted) {
+                        const ref = doc(doc(db, "templates", currentUserId), "userTemplates", t.id);
+                        await setDoc(ref, { order: t.order }, { merge: true });
+                    }
+                }
+            }
+
+            touchDragId = null;
+        });
 
         // Edit template
         window.editTemplate = async function (templateId) {
