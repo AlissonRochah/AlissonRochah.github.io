@@ -2,80 +2,87 @@
 // Listens for scrape requests from the extension and returns conversation data
 
 (function () {
-  chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-    if (request.action !== "scrapeConversation") return false;
+    chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+        if (request.action !== "scrapeConversation") return false;
 
-    try {
-      const messages = scrapeMessages();
-      sendResponse({ success: true, messages: messages });
-    } catch (error) {
-      sendResponse({ success: false, error: error.message });
+        try {
+            var messages = scrapeMessages();
+            sendResponse({ success: true, messages: messages });
+        } catch (error) {
+            sendResponse({ success: false, error: error.message });
+        }
+
+        return true;
+    });
+
+    function scrapeMessages() {
+        var messages = [];
+
+        // Airbnb uses data-testid="message-list" for the message container
+        var messageList = document.querySelector('[data-testid="message-list"]');
+
+        if (!messageList) {
+            throw new Error("Could not find message thread on this page.");
+        }
+
+        // Each message is a div with role="group" and data-item-id
+        // The aria-label contains: "{Name} sent {message text}. Sent {time}"
+        // Host messages have company name in parentheses: "⁨Name (Company)⁩ sent ..."
+        // Guest messages are just: "Name sent ..."
+        // System messages: "Airbnb service says ..."
+        var messageItems = messageList.querySelectorAll('[role="group"][data-item-id]');
+
+        if (!messageItems || messageItems.length === 0) {
+            throw new Error("No messages found in the conversation.");
+        }
+
+        messageItems.forEach(function (item) {
+            var label = item.getAttribute("aria-label");
+            if (!label) return;
+
+            // Skip system messages (Airbnb service)
+            if (label.indexOf("Airbnb service says") !== -1) return;
+
+            // Skip start of conversation marker
+            if (label.indexOf("Start of Conversation") !== -1) return;
+
+            // Extract sender and message text from aria-label
+            // Format: "{Name} sent {message}. Sent {time}" or
+            // "Most Recent Message. {Name} sent {message}. Sent {time}"
+            var cleanLabel = label.replace(/^Most Recent Message\.\s*/, "");
+
+            // Match: "Name sent Message. Sent Time"
+            var sentMatch = cleanLabel.match(/^(.+?)\s+sent\s+(.+?)\.\s+Sent\s+/);
+            if (!sentMatch) return;
+
+            var senderName = sentMatch[1].trim();
+            var messageText = sentMatch[2].trim();
+
+            // Remove trailing period if present
+            if (messageText.endsWith(".")) {
+                messageText = messageText.slice(0, -1).trim();
+            }
+
+            // Clean up special unicode characters around host names
+            senderName = senderName.replace(/[\u2068\u2069]/g, "");
+
+            // Determine role: host messages contain "Master Vacation Homes"
+            var isHost = senderName.toLowerCase().indexOf("master vacation homes") !== -1;
+
+            // Replace ".." with newlines (Airbnb uses ".." as line separator in aria-label)
+            messageText = messageText.replace(/\.\./g, "\n");
+
+            messages.push({
+                role: isHost ? "host" : "guest",
+                sender: senderName,
+                text: messageText
+            });
+        });
+
+        if (messages.length === 0) {
+            throw new Error("No messages found in the conversation.");
+        }
+
+        return messages;
     }
-
-    return true; // keep message channel open for async response
-  });
-
-  function scrapeMessages() {
-    const messages = [];
-
-    // Airbnb messaging thread container
-    // These selectors need to be verified against the live Airbnb DOM
-    // and updated if Airbnb changes their markup
-    const threadContainer = document.querySelector(
-      '[data-testid="messaging-thread"], ' +
-      '[class*="message-thread"], ' +
-      '[class*="messaging_thread"], ' +
-      '.messaging-thread'
-    );
-
-    if (!threadContainer) {
-      throw new Error("Could not find message thread on this page.");
-    }
-
-    // Find all message elements within the thread
-    const messageElements = threadContainer.querySelectorAll(
-      '[data-testid="message-content"], ' +
-      '[class*="message-content"], ' +
-      '[class*="MessageContent"], ' +
-      '[class*="message_content"]'
-    );
-
-    if (messageElements.length === 0) {
-      // Fallback: try to find any text blocks that look like messages
-      const fallbackElements = threadContainer.querySelectorAll(
-        'div[dir="ltr"], [class*="message"] p, [class*="Message"] span'
-      );
-
-      if (fallbackElements.length === 0) {
-        throw new Error("Could not find messages in the thread.");
-      }
-
-      fallbackElements.forEach(function (el) {
-        const text = el.textContent.trim();
-        if (!text || text.length < 2) return;
-
-        // Try to determine role by checking parent classes/attributes
-        const parent = el.closest('[class*="outgoing"], [class*="sent"], [class*="host"], [class*="Outgoing"]');
-        const role = parent ? "host" : "guest";
-
-        messages.push({ role: role, text: text });
-      });
-    } else {
-      messageElements.forEach(function (el) {
-        const text = el.textContent.trim();
-        if (!text) return;
-
-        const parent = el.closest('[class*="outgoing"], [class*="sent"], [class*="host"], [class*="Outgoing"]');
-        const role = parent ? "host" : "guest";
-
-        messages.push({ role: role, text: text });
-      });
-    }
-
-    if (messages.length === 0) {
-      throw new Error("No messages found in the conversation.");
-    }
-
-    return messages;
-  }
 })();
