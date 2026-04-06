@@ -173,7 +173,8 @@
 
         async function generateMissingSummaries(userId) {
             if (!aiApiUrl) return;
-            const missing = allTemplates.filter(t => !t.aiSummary);
+            // Regenerate all — remove this filter after first run
+            const missing = allTemplates.filter(t => !t.aiSummary || t.aiSummary.split(" ").length > 15);
             if (missing.length === 0) return;
 
             const toast = document.getElementById("toast");
@@ -531,7 +532,7 @@
                         messages: [
                             {
                                 role: "system",
-                                content: "Summarize this vacation rental response template in one short sentence. Describe WHEN to use it — what guest situation or question triggers this template. Be specific. Example: 'Guest asks about wifi password or network name' or 'Guest reports wifi or internet not working'. Reply with ONLY the summary, nothing else."
+                                content: "Write a 5-10 word tag describing when to use this template. Examples: 'wifi not working', 'guest asks about check-in time', 'pool heat request', 'guest paid charge'. Reply with ONLY the short tag. No full sentences. No periods."
                             },
                             {
                                 role: "user",
