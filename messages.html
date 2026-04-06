@@ -400,10 +400,9 @@
 
             const guestText = unanswered.map(m => m.text).join("\n");
 
-            // Build template list with AI summaries when available
+            // Build compact template list — ID + short summary only
             const templateList = allTemplates.map(t => {
-                const desc = t.aiSummary || t.name;
-                return "[" + t.id + "] " + t.name + (t.aiSummary ? " — " + t.aiSummary : "");
+                return "[" + t.id + "] " + (t.aiSummary || t.name);
             }).join("\n");
 
             try {
@@ -411,18 +410,19 @@
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        model: "qwen3:8b",
+                        model: "gemma3:12b",
                         messages: [
                             {
                                 role: "system",
-                                content: "You are a vacation rental assistant. Given a guest's message and a list of response templates, pick ONLY the templates that directly address what the guest is asking or needs.\n\nRules:\n- Return ONLY the exact IDs inside brackets, one per line\n- Only pick templates that are clearly relevant\n- If the guest asks about wifi/internet issues, pick the wifi problem template, NOT the wifi info template\n- If nothing matches, return NONE\n- No explanations, no extra text"
+                                content: "Pick templates matching the guest message. Reply ONLY with IDs in brackets, one per line. Max 5. If none match: NONE"
                             },
                             {
                                 role: "user",
-                                content: "GUEST MESSAGE:\n" + guestText + "\n\nAVAILABLE TEMPLATES:\n" + templateList
+                                content: guestText + "\n\n" + templateList
                             }
                         ],
-                        temperature: 0
+                        temperature: 0,
+                        num_predict: 100
                     })
                 });
 
