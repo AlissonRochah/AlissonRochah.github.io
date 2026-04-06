@@ -389,7 +389,7 @@
             }
 
             // Build template list for AI
-            const templateList = allTemplates.map(t => t.id + ": " + t.name).join("\n");
+            const templateList = allTemplates.map(t => "ID: " + t.id + "\nName: " + t.name + "\nContent: " + t.description).join("\n\n---\n\n");
 
             try {
                 const res = await fetch(aiApiUrl + "/v1/chat/completions", {
@@ -404,7 +404,7 @@
                             },
                             {
                                 role: "user",
-                                content: "Guest message: " + lastGuestMsg.text + "\n\nAvailable templates:\n" + templateList
+                                content: "Guest's last message: " + lastGuestMsg.text + "\n\nFull conversation for context:\n" + conversation.map(m => (m.role === "host" ? "Host" : "Guest") + ": " + m.text).join("\n") + "\n\nAvailable templates (with full content):\n" + templateList
                             }
                         ],
                         temperature: 0.1
