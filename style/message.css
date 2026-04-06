@@ -215,6 +215,11 @@
   font-size: 0.9rem;
 }
 
+.btn-quick {
+  padding: 12px 14px;
+  flex-shrink: 0;
+}
+
 .btn-copy-raw {
   padding: 12px 14px;
   flex-shrink: 0;
