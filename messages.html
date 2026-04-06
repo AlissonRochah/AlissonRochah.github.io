@@ -397,7 +397,10 @@
             const guestText = unanswered.map(m => m.text).join("\n");
 
             // Build template list for AI
-            const templateList = allTemplates.map(t => t.id + ": " + t.name).join("\n");
+            const templateList = allTemplates.map(t => {
+                const firstLine = t.description.split("\n")[0].substring(0, 100);
+                return t.id + " | " + t.name + " | " + firstLine;
+            }).join("\n");
 
             try {
                 const res = await fetch(aiApiUrl + "/v1/chat/completions", {
@@ -408,7 +411,7 @@
                         messages: [
                             {
                                 role: "system",
-                                content: "You are a template matcher. Given a guest message and a list of templates, return ONLY the IDs of relevant templates, one per line. No explanations, no other text. If no template matches, return NONE."
+                                content: "You match guest messages to response templates. Each template has: ID | Name | Content preview. Pick ONLY templates whose CONTENT directly answers what the guest is asking. Return ONLY matching template IDs, one per line. No explanations. If nothing matches, return NONE. Be strict — only match if the template content is clearly relevant to the guest's specific question."
                             },
                             {
                                 role: "user",
