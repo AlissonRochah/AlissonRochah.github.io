@@ -175,10 +175,27 @@
             if (!aiApiUrl) return;
             const missing = allTemplates.filter(t => !t.aiSummary);
             if (missing.length === 0) return;
-            for (const t of missing) {
+
+            const toast = document.getElementById("toast");
+            for (let i = 0; i < missing.length; i++) {
+                const t = missing[i];
+                toast.textContent = "Generating AI summaries... " + (i + 1) + "/" + missing.length;
+                toast.className = "toast success show";
                 const content = (t.description || "").replace(/\\n/g, "\n");
                 await generateAiSummary(userId, t.id, t.name, content);
+                // Update the template in allTemplates so badge shows
+                const idx = allTemplates.findIndex(x => x.id === t.id);
+                if (idx !== -1) {
+                    const ref = doc(doc(db, "templates", userId), "userTemplates", t.id);
+                    const snap = await getDoc(ref);
+                    if (snap.exists() && snap.data().aiSummary) {
+                        allTemplates[idx].aiSummary = snap.data().aiSummary;
+                    }
+                }
             }
+            renderTemplates(userId);
+            toast.textContent = "All AI summaries generated!";
+            setTimeout(() => toast.classList.remove("show"), 3000);
         }
 
         function renderTemplates(userId) {
