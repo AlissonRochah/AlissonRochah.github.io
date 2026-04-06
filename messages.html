@@ -326,7 +326,7 @@
         };
 
         window.sendQuickMessage = function () {
-            if (!quickMessage) { showToast("Set up Quick Message in Settings.", "error"); return; }
+            if (!quickMessage) { window.location.href = "settings.html"; return; }
             const yourName = document.getElementById("yourName").value.trim();
             if (!yourName) { showToast("Please enter your name.", "error"); return; }
 
