@@ -136,7 +136,8 @@
                     name: data.name,
                     description: data.description.replace(/\\n/g, "\n"),
                     category: data.category || "",
-                    order: data.order ?? 999999
+                    order: data.order ?? 999999,
+                    aiSummary: data.aiSummary || ""
                 });
             });
 
@@ -399,8 +400,11 @@
 
             const guestText = unanswered.map(m => m.text).join("\n");
 
-            // Build template list — names only
-            const templateList = allTemplates.map(t => "[" + t.id + "] " + t.name).join("\n");
+            // Build template list with AI summaries when available
+            const templateList = allTemplates.map(t => {
+                const desc = t.aiSummary || t.name;
+                return "[" + t.id + "] " + t.name + (t.aiSummary ? " — " + t.aiSummary : "");
+            }).join("\n");
 
             try {
                 const res = await fetch(aiApiUrl + "/v1/chat/completions", {

@@ -36,6 +36,7 @@
         let editingTemplateId = null;
         let userCategories = [];
         let allTemplates = [];
+        let aiApiUrl = "";
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -43,6 +44,14 @@
                 document.getElementById("user-email").innerText = user.email;
                 await loadCategories(user.uid);
                 loadTemplates(user.uid);
+                // Load AI config
+                try {
+                    const globalRef = doc(db, "settings", "global");
+                    const globalSnap = await getDoc(globalRef);
+                    if (globalSnap.exists()) {
+                        aiApiUrl = globalSnap.data().aiApiUrl || "";
+                    }
+                } catch (e) {}
             } else {
                 window.location.href = "index.html";
             }
@@ -120,7 +129,10 @@
                 categorySelect.value = "";
                 editingTemplateId = null;
                 closeModal();
-                showToast(editingTemplateId ? "Template updated!" : "Template added!");
+                showToast("Template saved!");
+
+                // Generate AI summary in background
+                generateAiSummary(user.uid, name, name, description);
                 loadTemplates(user.uid);
             }
         };
@@ -465,6 +477,41 @@
 
             event.target.value = "";
         };
+
+        // Generate AI summary for a template (runs in background)
+        async function generateAiSummary(userId, templateId, name, content) {
+            if (!aiApiUrl) return;
+            try {
+                const res = await fetch(aiApiUrl + "/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "gemma3:12b",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "Summarize this vacation rental response template in one short sentence. Describe WHEN to use it — what guest situation or question triggers this template. Be specific. Example: 'Guest asks about wifi password or network name' or 'Guest reports wifi or internet not working'. Reply with ONLY the summary, nothing else."
+                            },
+                            {
+                                role: "user",
+                                content: "Template name: " + name + "\n\nTemplate content:\n" + content
+                            }
+                        ],
+                        temperature: 0
+                    })
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const summary = data.choices?.[0]?.message?.content || "";
+                if (summary) {
+                    const userDocRef = doc(db, "templates", userId);
+                    const ref = doc(collection(userDocRef, "userTemplates"), templateId);
+                    await setDoc(ref, { aiSummary: summary }, { merge: true });
+                }
+            } catch (e) {
+                console.error("AI summary error:", e);
+            }
+        }
 
         // Toast notification
         function showToast(message, type = "success") {
