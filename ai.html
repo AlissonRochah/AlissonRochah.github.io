@@ -243,7 +243,7 @@ CRITICAL RULES:
             messages.push({
                 role: "user",
                 content: "Here is the conversation so far:\n\n" + conversationText +
-                    "\n\nWrite a short, direct response to the guest's latest message. Output only the message text." +
+                    "\n\nWrite a short, direct response ONLY to the guest's LAST message above. Do NOT repeat information already given by the host in previous messages. Output only the message text, nothing else." +
                     (instruction ? "\n\nAdditional instruction: " + instruction : "")
             });
 
