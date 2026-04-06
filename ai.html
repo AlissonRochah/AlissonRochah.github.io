@@ -47,6 +47,7 @@ CRITICAL RULES:
         let capturedConversation = [];
         let aiApiUrl = "";
         let aiSystemPrompt = "";
+        let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
 
         // ========== AUTH ==========
 
@@ -66,6 +67,12 @@ CRITICAL RULES:
                     window.location.href = "messages.html";
                     return;
                 }
+                // Load signature settings
+                const sData = snap.data();
+                userSignature.enabled = sData.signatureEnabled || false;
+                userSignature.mode = sData.signatureMode || "fixed";
+                userSignature.text = sData.signatureText || "";
+                userSignature.randomList = sData.randomSignatures || [];
             } catch (e) {
                 console.error("Error checking AI access:", e);
                 window.location.href = "messages.html";
@@ -332,13 +339,33 @@ CRITICAL RULES:
 
         // ========== COPY ==========
 
+        function getSignatureText() {
+            if (!userSignature.enabled) return "";
+            if (userSignature.mode === "random" && userSignature.randomList.length > 0) {
+                var i = Math.floor(Math.random() * userSignature.randomList.length);
+                return userSignature.randomList[i];
+            }
+            return userSignature.text || "";
+        }
+
         window.copyResponse = function () {
             const text = document.getElementById("response-textarea").value.trim();
             if (!text) {
                 showToast("Nothing to copy.", "error");
                 return;
             }
-            navigator.clipboard.writeText(text).then(() => {
+
+            const yourName = localStorage.getItem("yourName") || "";
+            const sig = getSignatureText();
+
+            let finalText = text;
+            if (sig || yourName) {
+                finalText += "\n\n";
+                if (sig) finalText += sig + "\n";
+                if (yourName) finalText += yourName;
+            }
+
+            navigator.clipboard.writeText(finalText.trim()).then(() => {
                 showToast("Response copied to clipboard!");
             }).catch(() => {
                 showToast("Failed to copy.", "error");
