@@ -34,7 +34,6 @@
 
         let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
         let userGreeting = { text: "Hello", mode: "fixed", randomList: [] };
-        let quickMessage = "";
         let allTemplates = [];
         let favorites = [];
         let currentUserId = null;
@@ -64,7 +63,6 @@
                     userGreeting.text = data.greeting || "Hello";
                     userGreeting.mode = data.greetingMode || "fixed";
                     userGreeting.randomList = data.randomGreetings || [];
-                    quickMessage = data.quickMessage || "";
                     if (data.aiEnabled) {
                         document.getElementById("ai-nav-link").style.display = "";
                     }
@@ -325,24 +323,6 @@
             selectionOrder = [];
         };
 
-        window.sendQuickMessage = function () {
-            if (!quickMessage) { window.location.href = "settings.html"; return; }
-            const yourName = document.getElementById("yourName").value.trim();
-            if (!yourName) { showToast("Please enter your name.", "error"); return; }
-
-            const sig = getSignatureText();
-            let text = quickMessage + "\n\n";
-            if (sig) text += sig + "\n";
-            text += yourName;
-
-            document.getElementById("generatedMessage").value = text;
-            navigator.clipboard.writeText(text).then(() => {
-                showToast("Quick message copied!");
-            }).catch(() => {
-                showToast("Quick message generated. Copy manually.", "error");
-            });
-        };
-
         function showToast(message, type = "success") {
             const toast = document.getElementById("toast");
             toast.textContent = message;
@@ -410,9 +390,6 @@
         </div>
 
         <div class="btn-row">
-            <button onclick="sendQuickMessage()" class="btn btn-outline btn-quick" title="Quick Message">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            </button>
             <button onclick="generateMessage()" class="btn btn-primary btn-full btn-generate">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 Generate Message

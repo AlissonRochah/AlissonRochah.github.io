@@ -345,11 +345,6 @@
                         randomGreetings = data.randomGreetings;
                     }
 
-                    // Quick Message
-                    if (data.quickMessage) {
-                        document.getElementById("quick-message-input").value = data.quickMessage;
-                    }
-
                     // Signature toggle
                     const sigEnabled = data.signatureEnabled || false;
                     document.getElementById("signature-toggle").checked = sigEnabled;
@@ -411,7 +406,6 @@
             const user = auth.currentUser;
             if (!user) return;
 
-            const quickMessageText = document.getElementById("quick-message-input").value.trim();
             const signatureEnabled = document.getElementById("signature-toggle").checked;
             const signatureMode = document.getElementById("mode-random").classList.contains("active") ? "random" : "fixed";
             const signatureText = document.getElementById("fixed-signature-input").value.trim();
@@ -432,7 +426,6 @@
                 const existing = snap.exists() ? snap.data() : {};
                 await setDoc(settingsRef, {
                     ...existing,
-                    quickMessage: quickMessageText,
                     greeting: greetingText,
                     greetingMode: greetingMode,
                     randomGreetings: randomGreetings,
@@ -580,20 +573,6 @@
                         <button type="button" class="chip" onclick="addPresetToRandomGreeting('Welcome')">Welcome</button>
                     </div>
                 </div>
-            </div>
-        </section>
-
-        <!-- Quick Message Section -->
-        <section class="settings-section">
-            <div class="section-header">
-                <div class="section-info">
-                    <h2>Quick Message</h2>
-                    <p>A shortcut message you can send with one click from the messages page.</p>
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="quick-message-input">Message text</label>
-                <textarea id="quick-message-input" placeholder="e.g. Thank you for your message. We will get back to you shortly." rows="3" style="min-height: 80px;"></textarea>
             </div>
         </section>
 
