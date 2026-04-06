@@ -399,7 +399,9 @@
 
             const guestText = unanswered.map(m => m.text).join("\n");
 
-            // STEP 1: Ask AI to extract topics/keywords from guest message
+            // Build template list — names only
+            const templateList = allTemplates.map(t => "[" + t.id + "] " + t.name).join("\n");
+
             try {
                 const res = await fetch(aiApiUrl + "/v1/chat/completions", {
                     method: "POST",
@@ -409,11 +411,11 @@
                         messages: [
                             {
                                 role: "system",
-                                content: "Extract the key topics from a vacation rental guest message. List related keywords and synonyms. Reply with ONLY a comma-separated list of keywords. Example: guest says 'the internet on the TV stopped working' → wifi, internet, tv, not working, connection, router"
+                                content: "You are a vacation rental assistant. Given a guest's message and a list of response templates, pick ONLY the templates that directly address what the guest is asking or needs.\n\nRules:\n- Return ONLY the exact IDs inside brackets, one per line\n- Only pick templates that are clearly relevant\n- If the guest asks about wifi/internet issues, pick the wifi problem template, NOT the wifi info template\n- If nothing matches, return NONE\n- No explanations, no extra text"
                             },
                             {
                                 role: "user",
-                                content: guestText
+                                content: "GUEST MESSAGE:\n" + guestText + "\n\nAVAILABLE TEMPLATES:\n" + templateList
                             }
                         ],
                         temperature: 0
@@ -423,30 +425,17 @@
                 if (!res.ok) throw new Error("API error");
 
                 const data = await res.json();
-                const aiKeywords = (data.choices?.[0]?.message?.content || "").toLowerCase();
+                const aiResponse = data.choices?.[0]?.message?.content || "";
 
-                // Parse keywords from AI response
-                const keywords = aiKeywords
-                    .replace(/\n/g, ",")
-                    .split(",")
-                    .map(k => k.trim().replace(/[^a-z0-9\s]/g, ""))
-                    .filter(k => k.length > 1);
-
-                // STEP 2: Keyword match against templates locally
+                // Parse template IDs from [brackets]
                 suggestedTemplateIds = [];
-                const scored = allTemplates.map(t => {
-                    const searchText = (t.name + " " + t.description).toLowerCase();
-                    let score = 0;
-                    keywords.forEach(kw => {
-                        if (searchText.includes(kw)) score++;
-                        // Extra weight for name matches
-                        if (t.name.toLowerCase().includes(kw)) score += 2;
-                    });
-                    return { id: t.id, score };
-                }).filter(t => t.score >= 2)
-                  .sort((a, b) => b.score - a.score);
-
-                suggestedTemplateIds = scored.slice(0, 5).map(t => t.id);
+                const bracketMatches = aiResponse.match(/\[([^\]]+)\]/g) || [];
+                bracketMatches.forEach(match => {
+                    const id = match.slice(1, -1).trim();
+                    if (allTemplates.some(t => t.id === id)) {
+                        suggestedTemplateIds.push(id);
+                    }
+                });
 
                 renderCheckboxes();
 
