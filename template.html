@@ -36,7 +36,6 @@
         let editingTemplateId = null;
         let userCategories = [];
         let allTemplates = [];
-        let sortOrder = "az"; // "az", "za", "category"
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -106,10 +105,14 @@
 
                 const formattedDescription = description.replace(/\n/g, "\\n");
 
+                const existingTemplate = allTemplates.find(t => t.id === editingTemplateId);
+                const order = existingTemplate ? existingTemplate.order : allTemplates.length;
+
                 await setDoc(userTemplatesRef, {
                     name: name,
                     description: formattedDescription,
-                    category: category || ""
+                    category: category || "",
+                    order: order
                 });
 
                 nameInput.value = "";
@@ -130,8 +133,25 @@
 
             allTemplates = [];
             querySnapshot.forEach((docSnap) => {
-                allTemplates.push({ id: docSnap.id, ...docSnap.data() });
+                const data = docSnap.data();
+                allTemplates.push({ id: docSnap.id, order: data.order ?? 999999, ...data });
             });
+
+            // Assign order to templates that don't have one yet
+            allTemplates.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+            let needsOrderUpdate = false;
+            allTemplates.forEach((t, i) => {
+                if (t.order === 999999) {
+                    t.order = i;
+                    needsOrderUpdate = true;
+                }
+            });
+            if (needsOrderUpdate) {
+                for (const t of allTemplates) {
+                    const ref = doc(doc(db, "templates", userId), "userTemplates", t.id);
+                    await setDoc(ref, { order: t.order }, { merge: true });
+                }
+            }
 
             renderTemplates(userId);
         }
@@ -145,15 +165,7 @@
             list.innerHTML = "";
 
             let filtered = allTemplates.filter(t => t.name.toLowerCase().includes(query));
-
-            // Sort
-            if (sortOrder === "az") {
-                filtered.sort((a, b) => a.name.localeCompare(b.name));
-            } else if (sortOrder === "za") {
-                filtered.sort((a, b) => b.name.localeCompare(a.name));
-            } else if (sortOrder === "category") {
-                filtered.sort((a, b) => (a.category || "").localeCompare(b.category || "") || a.name.localeCompare(b.name));
-            }
+            filtered.sort((a, b) => a.order - b.order);
 
             counter.textContent = allTemplates.length + " template" + (allTemplates.length !== 1 ? "s" : "");
 
@@ -163,7 +175,7 @@
             }
             emptyState.style.display = "none";
 
-            filtered.forEach((data) => {
+            filtered.forEach((data, idx) => {
                 const formattedDescription = data.description.replace(/\\n/g, "<br>");
                 const categoryBadge = data.category
                     ? `<span class="category-badge">${data.category}</span>`
@@ -174,6 +186,14 @@
                 item.innerHTML = `
                     <div class="template-card-header">
                         <div class="template-card-title-row">
+                            <div class="template-order-btns">
+                                <button onclick="moveTemplate('${data.id}', -1)" class="btn-move" title="Move up" ${idx === 0 ? 'disabled' : ''}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                                </button>
+                                <button onclick="moveTemplate('${data.id}', 1)" class="btn-move" title="Move down" ${idx === filtered.length - 1 ? 'disabled' : ''}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                            </div>
                             <h3 class="template-card-title">${data.name}</h3>
                             ${categoryBadge}
                         </div>
@@ -192,14 +212,24 @@
             });
         }
 
-        window.toggleSort = function () {
-            if (sortOrder === "az") sortOrder = "za";
-            else if (sortOrder === "za") sortOrder = "category";
-            else sortOrder = "az";
+        window.moveTemplate = async function (templateId, direction) {
+            const sorted = [...allTemplates].sort((a, b) => a.order - b.order);
+            const idx = sorted.findIndex(t => t.id === templateId);
+            const swapIdx = idx + direction;
+            if (swapIdx < 0 || swapIdx >= sorted.length) return;
 
-            const labels = { az: "A-Z", za: "Z-A", category: "Category" };
-            document.getElementById("sort-label").textContent = labels[sortOrder];
+            const a = sorted[idx];
+            const b = sorted[swapIdx];
+            const tmpOrder = a.order;
+            a.order = b.order;
+            b.order = tmpOrder;
+
             renderTemplates(currentUserId);
+
+            const refA = doc(doc(db, "templates", currentUserId), "userTemplates", a.id);
+            const refB = doc(doc(db, "templates", currentUserId), "userTemplates", b.id);
+            await setDoc(refA, { order: a.order }, { merge: true });
+            await setDoc(refB, { order: b.order }, { merge: true });
         };
 
         // Edit template

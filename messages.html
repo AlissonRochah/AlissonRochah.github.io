@@ -116,10 +116,12 @@
                     id: docSnap.id,
                     name: data.name,
                     description: data.description.replace(/\\n/g, "\n"),
-                    category: data.category || ""
+                    category: data.category || "",
+                    order: data.order ?? 999999
                 });
             });
 
+            allTemplates.sort((a, b) => a.order - b.order);
             renderCheckboxes();
         }
 

@@ -98,6 +98,33 @@
   gap: 8px;
 }
 
+.template-order-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.btn-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 16px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+
+.btn-move:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-move:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
 .template-card-title {
   font-size: 0.9rem;
   font-weight: 600;
