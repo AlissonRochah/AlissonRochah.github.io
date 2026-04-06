@@ -63,6 +63,9 @@
                     userGreeting.text = data.greeting || "Hello";
                     userGreeting.mode = data.greetingMode || "fixed";
                     userGreeting.randomList = data.randomGreetings || [];
+                    if (data.aiEnabled) {
+                        document.getElementById("ai-nav-link").style.display = "";
+                    }
                 }
             } catch (e) {
                 console.error("Error loading signature:", e);
@@ -345,6 +348,7 @@
             <nav class="header-nav">
                 <a href="template.html" class="nav-link">Templates</a>
                 <a href="messages.html" class="nav-link active">Messages</a>
+                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
                 <a href="settings.html" class="nav-link">Settings</a>
             </nav>
         </div>

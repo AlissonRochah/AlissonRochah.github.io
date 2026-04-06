@@ -327,6 +327,11 @@
                 if (snap.exists()) {
                     const data = snap.data();
 
+                    // AI nav link
+                    if (data.aiEnabled) {
+                        document.getElementById("ai-nav-link").style.display = "";
+                    }
+
                     // Greeting
                     if (data.greeting) {
                         greetingText = data.greeting;
@@ -362,6 +367,27 @@
                     // Categories
                     if (data.categories && Array.isArray(data.categories)) {
                         categories = data.categories;
+                    }
+
+                    // AI admin config
+                    if (data.isAdmin) {
+                        document.getElementById("ai-config-section").style.display = "";
+                        try {
+                            const globalRef = doc(db, "settings", "global");
+                            const globalSnap = await getDoc(globalRef);
+                            if (globalSnap.exists()) {
+                                const globalData = globalSnap.data();
+                                document.getElementById("ai-extension-id").value = globalData.aiExtensionId || "";
+                                document.getElementById("ai-api-url").value = globalData.aiApiUrl || "";
+                                document.getElementById("ai-system-prompt").value = globalData.aiSystemPrompt || "";
+                                // Also save extension ID to localStorage for ai.html to use
+                                if (globalData.aiExtensionId) {
+                                    localStorage.setItem("masterbotExtensionId", globalData.aiExtensionId);
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Error loading AI config:", e);
+                        }
                     }
                 }
 
@@ -409,6 +435,21 @@
                     randomSignatures: randomSignatures,
                     categories: categories
                 });
+                // Save AI config if admin
+                const currentSnap = await getDoc(settingsRef);
+                if (currentSnap.exists() && currentSnap.data().isAdmin) {
+                    const globalRef = doc(db, "settings", "global");
+                    const extId = document.getElementById("ai-extension-id").value.trim();
+                    await setDoc(globalRef, {
+                        aiExtensionId: extId,
+                        aiApiUrl: document.getElementById("ai-api-url").value.trim(),
+                        aiSystemPrompt: document.getElementById("ai-system-prompt").value.trim()
+                    }, { merge: true });
+                    if (extId) {
+                        localStorage.setItem("masterbotExtensionId", extId);
+                    }
+                }
+
                 showToast("Settings saved!");
             } catch (error) {
                 console.error("Error saving settings:", error);
@@ -441,6 +482,7 @@
             <nav class="header-nav">
                 <a href="template.html" class="nav-link">Templates</a>
                 <a href="messages.html" class="nav-link">Messages</a>
+                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
                 <a href="settings.html" class="nav-link active">Settings</a>
             </nav>
         </div>
@@ -623,6 +665,31 @@
 [message content]
 
 Your Name</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI Configuration Section (admin only) -->
+        <section id="ai-config-section" class="settings-section" style="display: none;">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>AI Configuration</h2>
+                    <p>Configure the AI assistant. These settings apply to all users.</p>
+                </div>
+            </div>
+            <div class="ai-config-fields">
+                <div class="form-group">
+                    <label for="ai-extension-id">Extension ID</label>
+                    <input type="text" id="ai-extension-id" placeholder="e.g. abcdefghijklmnopqrstuvwxyz">
+                    <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">Find it in chrome://extensions/ after loading the extension.</p>
+                </div>
+                <div class="form-group">
+                    <label for="ai-api-url">API URL</label>
+                    <input type="text" id="ai-api-url" placeholder="e.g. https://your-tunnel.trycloudflare.com">
+                </div>
+                <div class="form-group">
+                    <label for="ai-system-prompt">System Prompt</label>
+                    <textarea id="ai-system-prompt" class="ai-prompt-textarea" placeholder="Instructions for how the AI should behave..."></textarea>
                 </div>
             </div>
         </section>

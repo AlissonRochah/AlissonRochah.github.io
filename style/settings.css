@@ -290,3 +290,18 @@
   padding: 12px 24px;
   font-size: 0.9rem;
 }
+
+/* AI Configuration */
+.ai-config-fields {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ai-prompt-textarea {
+  min-height: 200px;
+  font-family: monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}

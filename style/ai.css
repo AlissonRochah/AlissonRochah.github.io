@@ -1,0 +1,171 @@
+/* ========================================
+   AI TAB PAGE
+   ======================================== */
+.ai-main {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Capture Section */
+.capture-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.capture-status {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.capture-status.captured {
+  color: var(--success);
+}
+
+.paste-toggle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.paste-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.paste-area {
+  display: none;
+}
+
+.paste-area.visible {
+  display: block;
+}
+
+.paste-area textarea {
+  width: 100%;
+  min-height: 80px;
+  max-height: 120px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.paste-area textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Instruction Input */
+.instruction-section .form-group input {
+  width: 100%;
+}
+
+/* Generate Button */
+.btn-generate-ai {
+  padding: 12px;
+  font-size: 0.9rem;
+  position: relative;
+}
+
+.btn-generate-ai.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.btn-generate-ai .spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.btn-generate-ai.loading .spinner {
+  display: inline-block;
+}
+
+.btn-generate-ai.loading .btn-text {
+  display: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Response Section */
+.response-section {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.response-section.visible {
+  display: flex;
+}
+
+.response-section textarea {
+  width: 100%;
+  min-height: 200px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.response-section textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Action Bar */
+.action-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.adjust-group {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.adjust-group input {
+  flex: 1;
+  background: var(--bg-input);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.adjust-group input::placeholder {
+  color: var(--text-muted);
+}
+
+.adjust-group input:focus {
+  border-color: var(--accent);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
