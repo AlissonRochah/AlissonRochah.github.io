@@ -166,6 +166,19 @@
             }
 
             renderTemplates(userId);
+
+            // Generate AI summaries for templates that don't have one
+            generateMissingSummaries(userId);
+        }
+
+        async function generateMissingSummaries(userId) {
+            if (!aiApiUrl) return;
+            const missing = allTemplates.filter(t => !t.aiSummary);
+            if (missing.length === 0) return;
+            for (const t of missing) {
+                const content = (t.description || "").replace(/\\n/g, "\n");
+                await generateAiSummary(userId, t.id, t.name, content);
+            }
         }
 
         function renderTemplates(userId) {
