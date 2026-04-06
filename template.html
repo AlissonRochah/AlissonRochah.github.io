@@ -117,12 +117,17 @@
                 const existingTemplate = allTemplates.find(t => t.id === editingTemplateId);
                 const order = existingTemplate ? existingTemplate.order : allTemplates.length;
 
-                await setDoc(userTemplatesRef, {
+                const manualSummary = document.getElementById("template-summary").value.trim();
+                const templateData = {
                     name: name,
                     description: formattedDescription,
                     category: category || "",
                     order: order
-                });
+                };
+                if (manualSummary) {
+                    templateData.aiSummary = manualSummary;
+                }
+                await setDoc(userTemplatesRef, templateData);
 
                 nameInput.value = "";
                 descInput.value = "";
@@ -131,8 +136,10 @@
                 closeModal();
                 showToast("Template saved!");
 
-                // Generate AI summary in background
-                generateAiSummary(user.uid, name, name, description);
+                // Generate AI summary only if not manually set
+                if (!manualSummary) {
+                    generateAiSummary(user.uid, name, name, description);
+                }
                 loadTemplates(user.uid);
             }
         };
@@ -399,6 +406,10 @@
                 document.getElementById("template-name").value = data.name;
                 document.getElementById("template-description").value = data.description.replace(/\\n/g, "\n");
                 document.getElementById("template-category").value = data.category || "";
+                if (data.aiSummary) {
+                    document.getElementById("template-summary").value = data.aiSummary;
+                    document.getElementById("summary-group").style.display = "";
+                }
                 document.getElementById("modal-title").textContent = "Edit Template";
                 document.getElementById("modal-save-btn").textContent = "Save Changes";
                 document.getElementById("add-modal").classList.add("active");
@@ -434,6 +445,8 @@
             document.getElementById("template-name").value = "";
             document.getElementById("template-description").value = "";
             document.getElementById("template-category").value = "";
+            document.getElementById("template-summary").value = "";
+            document.getElementById("summary-group").style.display = "none";
             document.getElementById("modal-title").textContent = "New Template";
             document.getElementById("modal-save-btn").textContent = "Save Template";
             document.getElementById("add-modal").classList.add("active");
@@ -442,6 +455,8 @@
 
         window.closeModal = function () {
             document.getElementById("add-modal").classList.remove("active");
+            document.getElementById("summary-group").style.display = "none";
+            document.getElementById("template-summary").value = "";
             editingTemplateId = null;
         };
 
@@ -649,6 +664,10 @@
                 <div class="form-group">
                     <label for="template-description">Template Content</label>
                     <textarea id="template-description" placeholder="Write your template message here..."></textarea>
+                </div>
+                <div id="summary-group" class="form-group" style="display:none">
+                    <label for="template-summary" style="font-size:0.75rem; color:var(--text-muted)">AI Summary <span style="font-weight:400">(auto-generated, edit if needed)</span></label>
+                    <input type="text" id="template-summary" placeholder="e.g. guest asks about check-in time" style="font-size:0.78rem; padding:7px 12px; color:var(--text-muted)">
                 </div>
             </div>
             <div class="modal-footer">
