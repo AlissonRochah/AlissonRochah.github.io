@@ -235,7 +235,7 @@
                 const categoryBadge = data.category
                     ? `<span class="category-badge">${data.category}</span>`
                     : '';
-                const aiBadge = data.aiSummary
+                const aiBadge = (aiApiUrl && data.aiSummary)
                     ? `<span class="category-badge ai-badge" onclick="event.stopPropagation(); showSummary('${data.aiSummary.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">AI</span>`
                     : '';
 
