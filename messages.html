@@ -149,9 +149,8 @@
                 allTemplates.sort((a, b) => a.order - b.order);
                 renderCheckboxes();
             } catch (e) {
-                console.error("Error loading templates:", e);
-                showToast("Error loading templates. Retrying...", "error");
-                setTimeout(() => loadTemplates(userId), 2000);
+                console.error("Error loading templates:", e, e.code, e.message);
+                showToast("Error loading templates: " + e.message, "error");
             }
         }
 
