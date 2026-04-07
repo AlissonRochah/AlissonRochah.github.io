@@ -154,6 +154,7 @@
             allTemplates = [];
             querySnapshot.forEach((docSnap) => {
                 const data = docSnap.data();
+                if (!data.name) return; // Skip invalid templates
                 allTemplates.push({ id: docSnap.id, order: data.order ?? 999999, ...data });
             });
 
