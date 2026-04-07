@@ -129,12 +129,13 @@
                 }
                 await setDoc(userTemplatesRef, templateData);
 
+                const wasEditing = !!editingTemplateId;
                 nameInput.value = "";
                 descInput.value = "";
                 categorySelect.value = "";
                 editingTemplateId = null;
                 closeModal();
-                showToast("Template saved!");
+                showToast(wasEditing ? "Template updated!" : "Template added!");
 
                 // Generate AI summary only if not manually set
                 if (!manualSummary) {
@@ -165,14 +166,20 @@
                     needsOrderUpdate = true;
                 }
             });
-            if (needsOrderUpdate) {
-                for (const t of allTemplates) {
-                    const ref = doc(doc(db, "templates", userId), "userTemplates", t.id);
-                    await setDoc(ref, { order: t.order }, { merge: true });
-                }
-            }
 
             renderTemplates(userId);
+
+            // Update order in background (don't block rendering)
+            if (needsOrderUpdate) {
+                try {
+                    for (const t of allTemplates) {
+                        const ref = doc(doc(db, "templates", userId), "userTemplates", t.id);
+                        await setDoc(ref, { order: t.order }, { merge: true });
+                    }
+                } catch (e) {
+                    console.error("Error updating order:", e);
+                }
+            }
 
             // Generate AI summaries for templates that don't have one
             generateMissingSummaries(userId);
@@ -180,7 +187,6 @@
 
         async function generateMissingSummaries(userId) {
             if (!aiApiUrl) return;
-            // Regenerate all — remove this filter after first run
             const missing = allTemplates.filter(t => !t.aiSummary || t.aiSummary.split(" ").length > 15);
             if (missing.length === 0) return;
 
@@ -191,7 +197,6 @@
                 toast.className = "toast success show";
                 const content = (t.description || "").replace(/\\n/g, "\n");
                 await generateAiSummary(userId, t.id, t.name, content);
-                // Update the template in allTemplates so badge shows
                 const idx = allTemplates.findIndex(x => x.id === t.id);
                 if (idx !== -1) {
                     const ref = doc(doc(db, "templates", userId), "userTemplates", t.id);
