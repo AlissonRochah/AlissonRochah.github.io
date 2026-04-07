@@ -127,26 +127,32 @@
         }
 
         async function loadTemplates(userId) {
-            const userDocRef = doc(db, "templates", userId);
-            const userTemplatesCollection = collection(userDocRef, "userTemplates");
-            const querySnapshot = await getDocs(userTemplatesCollection);
+            try {
+                const userDocRef = doc(db, "templates", userId);
+                const userTemplatesCollection = collection(userDocRef, "userTemplates");
+                const querySnapshot = await getDocs(userTemplatesCollection);
 
-            allTemplates = [];
+                allTemplates = [];
 
-            querySnapshot.forEach((docSnap) => {
-                const data = docSnap.data();
-                allTemplates.push({
-                    id: docSnap.id,
-                    name: data.name,
-                    description: data.description.replace(/\\n/g, "\n"),
-                    category: data.category || "",
-                    order: data.order ?? 999999,
-                    aiSummary: data.aiSummary || ""
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    allTemplates.push({
+                        id: docSnap.id,
+                        name: data.name,
+                        description: (data.description || "").replace(/\\n/g, "\n"),
+                        category: data.category || "",
+                        order: data.order ?? 999999,
+                        aiSummary: data.aiSummary || ""
+                    });
                 });
-            });
 
-            allTemplates.sort((a, b) => a.order - b.order);
-            renderCheckboxes();
+                allTemplates.sort((a, b) => a.order - b.order);
+                renderCheckboxes();
+            } catch (e) {
+                console.error("Error loading templates:", e);
+                showToast("Error loading templates. Retrying...", "error");
+                setTimeout(() => loadTemplates(userId), 2000);
+            }
         }
 
         function renderCheckboxes() {
@@ -165,7 +171,7 @@
                 })
                 .filter(t => {
                     const filter = textFilter;
-                    return t.name.toLowerCase().includes(filter) || t.description.toLowerCase().includes(filter);
+                    return t.name.toLowerCase().includes(filter) || (t.description || "").toLowerCase().includes(filter);
                 })
                 .forEach(t => {
                     const isFav = favorites.includes(t.id);
@@ -174,7 +180,7 @@
                     item.className = "checkbox-item" + (isSuggested ? " suggested" : "");
                     item.innerHTML = `
                         <label class="checkbox-inner">
-                            <input type="checkbox" class="service" value="${t.id}" data-description="${t.description.replace(/"/g, '&quot;')}" onchange="onTemplateToggle(this)">
+                            <input type="checkbox" class="service" value="${t.id}" data-description="${(t.description || "").replace(/"/g, '&quot;')}" onchange="onTemplateToggle(this)">
                             <span class="checkmark"></span>
                             <span class="checkbox-label" title="${t.name}">${t.name}</span>
                         </label>
