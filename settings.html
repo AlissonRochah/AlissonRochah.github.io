@@ -15,7 +15,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -31,6 +31,11 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth();
         const db = getFirestore(app);
+
+        // Secondary app instance used only for creating new users without
+        // signing the admin out of the primary session.
+        const secondaryApp = initializeApp(firebaseConfig, "secondary");
+        const secondaryAuth = getAuth(secondaryApp);
 
         let categories = [];
         let randomSignatures = [];
@@ -371,8 +376,9 @@
                         categories = data.categories;
                     }
 
-                    // AI admin config
+                    // Admin-only sections
                     if (data.isAdmin) {
+                        document.getElementById("user-management-section").style.display = "";
                         document.getElementById("ai-config-section").style.display = "";
                         try {
                             const globalRef = doc(db, "settings", "global");
@@ -461,6 +467,80 @@
             } catch (error) {
                 console.error("Error saving settings:", error);
                 showToast("Error: " + error.message, "error");
+            }
+        };
+
+        // ========== ADMIN: CREATE USER ==========
+
+        window.createNewUser = async function () {
+            const emailInput = document.getElementById("new-user-email");
+            const passwordInput = document.getElementById("new-user-password");
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!email || !password) {
+                showToast("Enter email and password.", "error");
+                return;
+            }
+            if (password.length < 6) {
+                showToast("Password must be at least 6 characters.", "error");
+                return;
+            }
+
+            // Verify the current user is still an admin before proceeding.
+            const current = auth.currentUser;
+            if (!current) {
+                showToast("Not signed in.", "error");
+                return;
+            }
+            try {
+                const snap = await getDoc(doc(db, "settings", current.uid));
+                if (!snap.exists() || !snap.data().isAdmin) {
+                    showToast("Admin privileges required.", "error");
+                    return;
+                }
+            } catch (e) {
+                showToast("Error verifying admin: " + e.message, "error");
+                return;
+            }
+
+            const btn = document.getElementById("create-user-btn");
+            btn.disabled = true;
+            btn.textContent = "Creating...";
+
+            try {
+                // Create the user via the secondary auth instance so the
+                // admin's own session is preserved.
+                const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+                // Seed an empty settings doc for the new user.
+                await setDoc(doc(db, "settings", cred.user.uid), {
+                    email: email,
+                    isAdmin: false,
+                    categories: [],
+                    randomSignatures: [],
+                    randomGreetings: [],
+                    greeting: "Hello",
+                    greetingMode: "fixed",
+                    signatureEnabled: false,
+                    signatureMode: "fixed",
+                    signatureText: ""
+                });
+                // Sign the new user out of the secondary instance.
+                await fbSignOut(secondaryAuth);
+
+                showToast("User created: " + email);
+                emailInput.value = "";
+                passwordInput.value = "";
+            } catch (e) {
+                console.error("Error creating user:", e);
+                let msg = e.message || "Unknown error";
+                if (e.code === "auth/email-already-in-use") msg = "Email already in use.";
+                else if (e.code === "auth/invalid-email") msg = "Invalid email address.";
+                else if (e.code === "auth/weak-password") msg = "Password is too weak.";
+                showToast("Error: " + msg, "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Create User";
             }
         };
 
@@ -691,6 +771,25 @@ Your Name</pre>
                     <p style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">Open chrome://extensions/, find MasterBot, copy the ID.</p>
                 </div>
             </div>
+        </section>
+
+        <!-- User Management Section (admin only) -->
+        <section id="user-management-section" class="settings-section" style="display: none;">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>User Management</h2>
+                    <p>Create login credentials for new team members.</p>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="new-user-email">Email</label>
+                <input type="email" id="new-user-email" placeholder="newuser@example.com" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="new-user-password">Password</label>
+                <input type="password" id="new-user-password" placeholder="At least 6 characters" autocomplete="new-password">
+            </div>
+            <button id="create-user-btn" onclick="createNewUser()" class="btn btn-primary btn-sm">Create User</button>
         </section>
 
         <!-- AI Configuration Section (admin only) -->
