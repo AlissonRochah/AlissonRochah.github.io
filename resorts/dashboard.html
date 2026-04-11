@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resort Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header class="top-bar">
+        <h1 class="logo">Resort Manager</h1>
+        <div class="top-right">
+            <span id="user-email" class="user-email"></span>
+            <button id="sign-out" class="btn btn-outline btn-sm">Sign Out</button>
+        </div>
+    </header>
+
+    <main class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <input type="text" id="search" placeholder="Search resorts...">
+                <button id="add-resort" class="btn btn-primary btn-sm" title="New resort">+ New</button>
+            </div>
+            <ul id="resort-list" class="resort-list"></ul>
+        </aside>
+
+        <section class="editor">
+            <div class="empty-state" id="empty-state">
+                <p>Select a resort or create a new one.</p>
+            </div>
+
+            <div class="editor-content" id="editor-content" hidden>
+                <div class="editor-header">
+                    <input type="text" id="resort-name" class="resort-name-input" placeholder="Resort Name">
+                    <div class="editor-actions">
+                        <button id="save-btn" class="btn btn-primary btn-sm">Save</button>
+                        <button id="delete-btn" class="btn btn-danger btn-sm">Delete</button>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Aliases (comma separated) — used for matching on Airbnb listings</label>
+                    <input type="text" id="resort-aliases" placeholder="e.g. champions gate, cg, oasis club">
+                </div>
+
+                <div class="field">
+                    <label>Address</label>
+                    <input type="text" id="resort-address">
+                </div>
+
+                <div class="field highlight-field">
+                    <label>Gate Code <span class="muted">(changes monthly)</span></label>
+                    <input type="text" id="resort-gate-code" placeholder="e.g. 1527#">
+                </div>
+
+                <div class="sections-header">
+                    <h2>Sections</h2>
+                    <div class="add-section">
+                        <select id="add-section-type">
+                            <option value="">+ Add section...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="sections-container" class="sections-container"></div>
+
+                <p class="meta" id="meta"></p>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast" class="toast"></div>
+
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+
+</html>
