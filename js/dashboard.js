@@ -1,5 +1,6 @@
 import { supabase } from "./supabase.js";
 import { requireAuth, signOut } from "./auth.js";
+import { initAccounts, loadAccounts } from "./accounts.js";
 
 // Fixed section types. Users can still add a "custom" section with a free-form title.
 const SECTION_TYPES = [
@@ -32,8 +33,22 @@ async function init() {
     document.getElementById("save-btn").addEventListener("click", saveCurrentResort);
     document.getElementById("delete-btn").addEventListener("click", deleteCurrentResort);
 
+    document.querySelectorAll(".nav-tab").forEach(tab => {
+        tab.addEventListener("click", () => switchView(tab.dataset.view));
+    });
+
+    initAccounts(showToast);
     populateAddSectionDropdown();
     await loadResorts();
+}
+
+function switchView(view) {
+    document.querySelectorAll(".nav-tab").forEach(t =>
+        t.classList.toggle("active", t.dataset.view === view)
+    );
+    document.getElementById("resorts-view").hidden = view !== "resorts";
+    document.getElementById("accounts-view").hidden = view !== "accounts";
+    if (view === "accounts") loadAccounts();
 }
 
 // ============ Data ============
