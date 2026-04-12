@@ -1,11 +1,20 @@
 {
     "manifest_version": 3,
     "name": "Resort Info",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Quick lookup of resort information for customer service agents.",
     "permissions": ["storage", "sidePanel"],
     "host_permissions": [
-        "https://ahpubmxpfmmpkfwbhtwf.supabase.co/*"
+        "https://ahpubmxpfmmpkfwbhtwf.supabase.co/*",
+        "https://*.airbnb.com/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": ["https://*.airbnb.com/*"],
+            "js": ["content.js"],
+            "run_at": "document_idle",
+            "all_frames": false
+        }
     ],
     "action": {
         "default_popup": "popup.html",
