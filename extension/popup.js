@@ -1,7 +1,8 @@
 import { getSession, signIn, signOut, listResorts } from "./js/api.js";
 
 const MODE_KEY = "rm_panel_mode";
-const LISTING_KEY = "rm_current_listing";
+const RESORTS_CACHE_KEY = "rm_resorts_cache";
+const MATCHED_KEY = "rm_matched_resort";
 
 const SECTION_ICONS = {
     gate:       "🚪",
@@ -50,33 +51,22 @@ async function init() {
 }
 
 // ============ Auto-select from Airbnb listing title ============
+//
+// The background worker does the actual match (so it works even when the
+// popup isn't open) and writes it to rm_matched_resort. Here we just read
+// that value and open the full resort detail using the freshly-loaded list.
 
-function findResortForText(text) {
-    if (!text) return null;
-    const needle = text.toLowerCase();
-    let best = null;
-    let bestLen = 0;
-    for (const r of resorts) {
-        const candidates = [r.name, ...(r.aliases || [])].filter(Boolean);
-        for (const c of candidates) {
-            const s = c.toLowerCase().trim();
-            if (s.length < 3) continue; // avoid "cg"-style collisions in long titles
-            if (needle.includes(s) && s.length > bestLen) {
-                best = r;
-                bestLen = s.length;
-            }
-        }
-    }
-    return best;
+function findResortById(id) {
+    return resorts.find(r => r.id === id) || null;
 }
 
 async function autoSelectFromStorage() {
     try {
-        const obj = await chrome.storage.local.get(LISTING_KEY);
-        const entry = obj[LISTING_KEY];
-        if (!entry || !entry.text) return;
-        const match = findResortForText(entry.text);
-        if (match) showDetail(match);
+        const obj = await chrome.storage.local.get(MATCHED_KEY);
+        const match = obj[MATCHED_KEY];
+        if (!match || !match.id) return;
+        const full = findResortById(match.id);
+        if (full) showDetail(full);
     } catch (err) {
         console.warn("Resort Info: auto-select failed", err);
     }
@@ -84,11 +74,11 @@ async function autoSelectFromStorage() {
 
 function subscribeToListingChanges() {
     chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== "local" || !changes[LISTING_KEY]) return;
-        const next = changes[LISTING_KEY].newValue;
-        if (!next || !next.text) return;
-        const match = findResortForText(next.text);
-        if (match) showDetail(match);
+        if (area !== "local" || !changes[MATCHED_KEY]) return;
+        const next = changes[MATCHED_KEY].newValue;
+        if (!next || !next.id) return;
+        const full = findResortById(next.id);
+        if (full) showDetail(full);
     });
 }
 
@@ -182,6 +172,18 @@ async function loadAndShowList() {
     try {
         resorts = await listResorts();
         renderList();
+        // Publish a lean cache for the background worker + content script.
+        // Keep only the fields they need so we don't bloat chrome.storage.local.
+        const lean = resorts.map(r => ({
+            id: r.id,
+            name: r.name,
+            aliases: r.aliases || [],
+            gate_code: r.gate_code || "",
+            address: r.address || "",
+        }));
+        await chrome.storage.local.set({
+            [RESORTS_CACHE_KEY]: { resorts: lean, ts: Date.now() },
+        });
     } catch (err) {
         document.getElementById("resort-list").innerHTML = "";
         const empty = document.getElementById("empty-msg");
