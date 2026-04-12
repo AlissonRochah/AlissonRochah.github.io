@@ -1,0 +1,14 @@
+{
+    "manifest_version": 3,
+    "name": "Resort Info",
+    "version": "0.1.0",
+    "description": "Quick lookup of resort information for customer service agents.",
+    "permissions": ["storage"],
+    "host_permissions": [
+        "https://ahpubmxpfmmpkfwbhtwf.supabase.co/*"
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_title": "Resort Info"
+    }
+}

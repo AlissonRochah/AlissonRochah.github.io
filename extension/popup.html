@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Resort Info</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <!-- Login view -->
+    <section id="login-view" class="view" hidden>
+        <header class="popup-header">
+            <h1>Resort Info</h1>
+        </header>
+        <form id="login-form" class="login-form">
+            <label>
+                Email
+                <input type="email" id="email" autocomplete="email" required>
+            </label>
+            <label>
+                Password
+                <input type="password" id="password" autocomplete="current-password" required>
+            </label>
+            <p class="error" id="login-error"></p>
+            <button type="submit" class="btn btn-primary" id="login-btn">Sign In</button>
+        </form>
+    </section>
+
+    <!-- List view -->
+    <section id="list-view" class="view" hidden>
+        <header class="popup-header">
+            <h1>Resort Info</h1>
+            <button id="sign-out-btn" class="btn-ghost" title="Sign out">Sign out</button>
+        </header>
+        <div class="search-bar">
+            <input type="text" id="search" placeholder="Search resort...">
+        </div>
+        <ul id="resort-list" class="resort-list"></ul>
+        <p class="empty-msg" id="empty-msg" hidden>No resorts yet.</p>
+    </section>
+
+    <!-- Detail view -->
+    <section id="detail-view" class="view" hidden>
+        <header class="popup-header">
+            <button id="back-btn" class="btn-ghost">← Back</button>
+            <h1 id="detail-name"></h1>
+        </header>
+
+        <div class="gate-code-card" id="gate-code-card" hidden>
+            <span class="label">Gate Code</span>
+            <span class="value" id="gate-code-value"></span>
+        </div>
+
+        <div id="sections-container" class="sections"></div>
+
+        <p class="meta" id="detail-meta"></p>
+    </section>
+
+    <script type="module" src="popup.js"></script>
+</body>
+
+</html>
