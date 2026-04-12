@@ -26,6 +26,17 @@ html, body {
     overflow-x: hidden;
 }
 
+/* When running inside Chrome's side panel, the popup width/height limits
+   don't apply — the panel fills the whole side. Stretch to fit. */
+@media (min-height: 601px) {
+    html, body {
+        width: 100%;
+        min-height: 100vh;
+        max-height: none;
+    }
+    .view { min-height: 100vh; }
+}
+
 body {
     background: var(--bg-primary);
     color: var(--text-primary);
@@ -80,6 +91,11 @@ ul { list-style: none; }
 .btn-ghost:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
+}
+
+.toggle-mode-btn {
+    border: 1px solid var(--border);
+    white-space: nowrap;
 }
 
 /* ============ Buttons ============ */

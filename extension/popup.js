@@ -1,5 +1,7 @@
 import { getSession, signIn, signOut, listResorts } from "./js/api.js";
 
+const MODE_KEY = "rm_panel_mode";
+
 const SECTION_ICONS = {
     gate:       "🚪",
     contacts:   "☎️",
@@ -31,11 +33,66 @@ async function init() {
     document.getElementById("search").addEventListener("input", renderList);
     document.getElementById("back-btn").addEventListener("click", () => showView("list-view"));
 
+    document.querySelectorAll("[data-toggle-mode]").forEach(btn => {
+        btn.addEventListener("click", toggleMode);
+    });
+    await refreshToggleLabels();
+
     const session = await getSession();
     if (session) {
         await loadAndShowList();
     } else {
         showView("login-view");
+    }
+}
+
+// ============ Panel mode (popup vs side panel) ============
+
+async function getMode() {
+    const obj = await chrome.storage.local.get(MODE_KEY);
+    return obj[MODE_KEY] === "sidepanel" ? "sidepanel" : "popup";
+}
+
+async function refreshToggleLabels() {
+    const mode = await getMode();
+    const label = mode === "sidepanel" ? "◨ Popup" : "◨ Side panel";
+    const title = mode === "sidepanel"
+        ? "Switch to popup mode"
+        : "Switch to side panel mode";
+    document.querySelectorAll("[data-toggle-mode]").forEach(btn => {
+        btn.textContent = label;
+        btn.title = title;
+    });
+}
+
+async function toggleMode() {
+    const current = await getMode();
+    const next = current === "sidepanel" ? "popup" : "sidepanel";
+    await chrome.storage.local.set({ [MODE_KEY]: next });
+
+    try {
+        await chrome.sidePanel.setPanelBehavior({
+            openPanelOnActionClick: next === "sidepanel",
+        });
+    } catch (err) {
+        console.warn("Failed to set panel behavior:", err);
+    }
+
+    if (next === "sidepanel") {
+        // Open the side panel for the current window, then close the popup.
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab) {
+                await chrome.sidePanel.open({ windowId: tab.windowId });
+            }
+        } catch (err) {
+            console.warn("Failed to open side panel:", err);
+        }
+        window.close();
+    } else {
+        // Going back to popup mode: next click on the extension icon will
+        // open the popup. The side panel stays open until the user closes it.
+        await refreshToggleLabels();
     }
 }
 
