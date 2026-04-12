@@ -8,7 +8,7 @@ export async function getSession() {
 export async function requireAuth() {
     const session = await getSession();
     if (!session) {
-        window.location.href = "index.html";
+        window.location.replace("index.html");
         return null;
     }
     return session;
@@ -17,8 +17,10 @@ export async function requireAuth() {
 export async function redirectIfAuthed() {
     const session = await getSession();
     if (session) {
-        window.location.href = "dashboard.html";
+        window.location.replace("dashboard.html");
+        return true;
     }
+    return false;
 }
 
 export async function signIn(email, password) {
@@ -27,5 +29,5 @@ export async function signIn(email, password) {
 
 export async function signOut() {
     await supabase.auth.signOut();
-    window.location.href = "index.html";
+    window.location.replace("index.html");
 }

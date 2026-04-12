@@ -38,7 +38,16 @@ body {
     color: var(--text-primary);
     font-size: 14px;
     line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    /* Hide until JS has confirmed auth state to prevent a flash
+       of the wrong page content. */
+    visibility: hidden;
 }
+
+body.ready { visibility: visible; }
 
 input, button, select, textarea {
     font: inherit;
@@ -99,9 +108,8 @@ a { color: var(--accent); text-decoration: none; }
 
 /* ============ Login ============ */
 .login-body {
-    display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
     padding: 24px;
 }
 
@@ -173,6 +181,7 @@ a { color: var(--accent); text-decoration: none; }
     padding: 14px 24px;
     border-bottom: 1px solid var(--border);
     background: var(--bg-secondary);
+    flex-shrink: 0;
 }
 
 .logo { font-size: 1rem; font-weight: 600; }
@@ -192,7 +201,8 @@ a { color: var(--accent); text-decoration: none; }
 .layout {
     display: grid;
     grid-template-columns: 280px 1fr;
-    height: calc(100vh - 54px);
+    flex: 1;
+    min-height: 0;
 }
 
 .sidebar {
@@ -422,7 +432,6 @@ a { color: var(--accent); text-decoration: none; }
     .layout {
         grid-template-columns: 1fr;
         grid-template-rows: auto 1fr;
-        height: auto;
     }
     .sidebar { max-height: 40vh; }
     .item-row { grid-template-columns: 1fr 1fr auto; }

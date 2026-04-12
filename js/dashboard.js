@@ -23,6 +23,8 @@ async function init() {
     session = await requireAuth();
     if (!session) return;
 
+    document.body.classList.add("ready");
+
     document.getElementById("user-email").textContent = session.user.email;
     document.getElementById("sign-out").addEventListener("click", signOut);
     document.getElementById("add-resort").addEventListener("click", createNewResort);

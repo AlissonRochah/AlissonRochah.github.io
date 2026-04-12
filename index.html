@@ -28,9 +28,16 @@
     </main>
 
     <script type="module">
-        import { signIn, redirectIfAuthed } from "./js/auth.js";
+        import { getSession, signIn } from "./js/auth.js";
 
-        await redirectIfAuthed();
+        // If already signed in, go straight to the dashboard without
+        // ever showing this page.
+        const session = await getSession();
+        if (session) {
+            window.location.replace("dashboard.html");
+        } else {
+            document.body.classList.add("ready");
+        }
 
         const form = document.getElementById("login-form");
         const errorEl = document.getElementById("error");
@@ -54,7 +61,7 @@
                 return;
             }
 
-            window.location.href = "dashboard.html";
+            window.location.replace("dashboard.html");
         });
     </script>
 </body>
