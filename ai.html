@@ -20,17 +20,15 @@
     <script type="module">
         import { supabase } from "./js/supabase.js";
         import { requireAuth, signOut } from "./js/auth.js";
+        import {
+            runRouter,
+            runWriter,
+            runAdjust,
+            buildWriterPromptPreview,
+            DEFAULT_SYSTEM_PROMPT,
+        } from "./js/ai.js";
 
-        const DEFAULT_SYSTEM_PROMPT = `You write Airbnb messages on behalf of Master Vacation Homes.
-
-CRITICAL RULES:
-- Output ONLY the message text. No quotes, no labels, no "Here is the message:", no explanations before or after.
-- Keep it SHORT. 1-3 sentences for simple questions. Max 4-5 sentences for complex topics.
-- Match the guest's tone — casual if they're casual, formal if they're formal.
-- Always respond in English.
-- Never promise refunds or discounts unless explicitly instructed.
-- Never share info about other guests or reservations.
-- Use the provided templates as reference for tone and style.`;
+        // ============ Auth + settings ============
 
         const session = await requireAuth();
         if (!session) throw new Error("no session");
@@ -38,14 +36,19 @@ CRITICAL RULES:
         const currentUserId = session.user.id;
         document.getElementById("user-email").innerText = session.user.email;
 
-        let allTemplates = [];
-        let capturedConversation = [];
-        let aiApiUrl = "";
-        let aiSystemPrompt = DEFAULT_SYSTEM_PROMPT;
+        // State
+        let allTemplates = [];           // full row per template
+        let conversation = [];           // [{role, text, sender}]
+        let resort = null;               // { id, name, gate_code, sections, ... } or null
+        let routerResult = { templateIds: [], intent: "" };
+        let currentDraft = "";           // last known response text
+        let groqKey = "";
+        let systemPrompt = DEFAULT_SYSTEM_PROMPT;
         let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
-        let EXTENSION_ID = localStorage.getItem("masterbotExtensionId") || "";
+        let extensionId = localStorage.getItem("masterbotExtensionId") || "";
+        let pipelineRunning = false;
 
-        // Check AI access via user_settings.ai_enabled
+        // Feature gate: check ai_enabled
         const { data: settingsData, error: settingsError } = await supabase
             .from("user_settings")
             .select("ai_enabled, signature_enabled, signature_mode, signature_text, random_signatures, extension_id")
@@ -62,11 +65,11 @@ CRITICAL RULES:
         userSignature.text = settingsData.signature_text || "";
         userSignature.randomList = settingsData.random_signatures || [];
         if (settingsData.extension_id) {
-            EXTENSION_ID = settingsData.extension_id;
+            extensionId = settingsData.extension_id;
             localStorage.setItem("masterbotExtensionId", settingsData.extension_id);
         }
 
-        // Load global AI config
+        // Global AI config
         try {
             const { data: globalData } = await supabase
                 .from("global_settings")
@@ -74,244 +77,332 @@ CRITICAL RULES:
                 .eq("key", "ai_config")
                 .maybeSingle();
             if (globalData && globalData.value) {
-                aiApiUrl = globalData.value.ai_api_url || "";
-                aiSystemPrompt = globalData.value.ai_system_prompt || DEFAULT_SYSTEM_PROMPT;
-                if (globalData.value.ai_groq_key) {
-                    localStorage.setItem("masterbotGroqKey", globalData.value.ai_groq_key);
-                }
+                systemPrompt = globalData.value.ai_system_prompt || DEFAULT_SYSTEM_PROMPT;
+                groqKey = globalData.value.ai_groq_key || "";
             }
         } catch (e) {
             console.error("Error loading global AI config:", e);
         }
 
-        // Load templates
-        await loadTemplates();
-
-        async function loadTemplates() {
-            const { data, error } = await supabase
+        // Templates
+        try {
+            const { data: tpls } = await supabase
                 .from("templates")
-                .select("name, description")
+                .select("id, name, description, ai_summary")
                 .eq("auth_user_id", currentUserId)
                 .order("sort_order", { ascending: true });
-            if (error) {
-                console.error("Error loading templates:", error);
-                return;
-            }
-            allTemplates = (data || []).map(row => ({
-                name: row.name,
-                content: row.description || "",
+            allTemplates = (tpls || []).map((t) => ({
+                id: t.id,
+                name: t.name,
+                description: t.description || "",
+                ai_summary: t.ai_summary || "",
             }));
+        } catch (e) {
+            console.error("Error loading templates:", e);
         }
 
-        // ========== CAPTURE ==========
+        // ============ Extension bridge ============
 
-        window.captureConversation = async function () {
-            const statusEl = document.getElementById("capture-status");
-            statusEl.textContent = "Searching for Airbnb tab...";
-            statusEl.className = "capture-status";
-
-            if (!EXTENSION_ID) {
-                statusEl.textContent = "Extension ID not configured. Set it in Settings.";
-                showPasteToggle();
-                return;
-            }
-
-            try {
-                chrome.runtime.sendMessage(EXTENSION_ID, { action: "scrapeConversation" }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        statusEl.textContent = "Could not connect to extension. Is it installed?";
-                        showPasteToggle();
-                        return;
-                    }
-
-                    if (!response || !response.success) {
-                        statusEl.textContent = response?.error || "Failed to capture conversation.";
-                        showPasteToggle();
-                        return;
-                    }
-
-                    capturedConversation = response.messages;
-                    const count = capturedConversation.length;
-                    statusEl.textContent = count + " message" + (count !== 1 ? "s" : "") + " captured";
-                    statusEl.className = "capture-status captured";
-                });
-            } catch (e) {
-                console.error("Capture error:", e);
-                statusEl.textContent = "Error: " + e.message;
-                showPasteToggle();
-            }
-        };
-
-        function showPasteToggle() {
-            document.getElementById("paste-toggle").style.display = "inline";
-        }
-
-        window.togglePasteArea = function () {
-            document.getElementById("paste-area").classList.toggle("visible");
-        };
-
-        // ========== GENERATE ==========
-
-        window.generateResponse = async function () {
-            const instruction = document.getElementById("instruction-input").value.trim();
-
-            let conversation = capturedConversation;
-            const pasteArea = document.getElementById("paste-area");
-            if (pasteArea.classList.contains("visible")) {
-                const pasted = document.getElementById("paste-textarea").value.trim();
-                if (pasted) {
-                    conversation = [{ role: "guest", text: pasted }];
+        function sendToExtension(action, payload = {}) {
+            return new Promise((resolve) => {
+                if (!extensionId || typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) {
+                    resolve({ success: false, error: "Extension not available." });
+                    return;
                 }
-            }
-
-            if (!conversation || conversation.length === 0) {
-                showToast("Please capture or paste a conversation first.", "error");
-                return;
-            }
-
-            if (!aiApiUrl) {
-                showToast("AI API URL is not configured. Contact your administrator.", "error");
-                return;
-            }
-
-            setGenerating(true);
-
-            try {
-                const messages = buildMessages(conversation, instruction);
-                const response = await fetch(aiApiUrl + "/v1/chat/completions", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        model: "gemma3:12b",
-                        messages,
-                        temperature: 0.7
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error("API error: " + response.status + " " + response.statusText);
+                try {
+                    chrome.runtime.sendMessage(extensionId, { action, ...payload }, (reply) => {
+                        if (chrome.runtime.lastError) {
+                            resolve({ success: false, error: chrome.runtime.lastError.message });
+                            return;
+                        }
+                        resolve(reply || { success: false, error: "No reply from extension." });
+                    });
+                } catch (err) {
+                    resolve({ success: false, error: err && err.message });
                 }
-
-                const data = await response.json();
-                const reply = data.choices?.[0]?.message?.content || "";
-
-                if (!reply) {
-                    throw new Error("Empty response from AI.");
-                }
-
-                showResponse(reply);
-            } catch (e) {
-                console.error("Generation error:", e);
-                showToast("Error: " + e.message, "error");
-            } finally {
-                setGenerating(false);
-            }
-        };
-
-        function buildMessages(conversation, instruction) {
-            let systemContent = aiSystemPrompt;
-
-            if (allTemplates.length > 0) {
-                systemContent += "\n\nMessage Templates (use these as reference for tone and content):\n";
-                allTemplates.forEach((t) => {
-                    systemContent += "\n--- Template: " + t.name + " ---\n" + t.content;
-                });
-            }
-
-            const messages = [{ role: "system", content: systemContent }];
-
-            const conversationText = conversation
-                .map(m => (m.role === "host" ? "Host" : "Guest") + ": " + m.text)
-                .join("\n\n");
-
-            messages.push({
-                role: "user",
-                content: "Here is the conversation so far:\n\n" + conversationText +
-                    "\n\nWrite a short, direct response ONLY to the guest's LAST message above. Do NOT repeat information already given by the host in previous messages. Output only the message text, nothing else." +
-                    (instruction ? "\n\nAdditional instruction: " + instruction : "")
             });
-
-            return messages;
         }
 
-        // ========== ADJUST ==========
+        async function captureFromExtension() {
+            const reply = await sendToExtension("scrapeConversation");
+            if (!reply.success) return { ok: false, error: reply.error || "Capture failed." };
+            return { ok: true, messages: reply.messages || [] };
+        }
 
-        window.adjustResponse = async function () {
-            const adjustInstruction = document.getElementById("adjust-input").value.trim();
-            if (!adjustInstruction) {
-                showToast("Please enter an adjustment instruction.", "error");
-                return;
+        async function getResortFromExtension() {
+            const reply = await sendToExtension("getMatchedResort");
+            if (!reply.success || !reply.resort) return null;
+            return reply.resort; // { id, name, gate_code, address, listing_text, ts }
+        }
+
+        async function fetchResortFull(resortId) {
+            if (!resortId) return null;
+            try {
+                const { data } = await supabase
+                    .from("resorts")
+                    .select("id, name, gate_code, sections")
+                    .eq("id", resortId)
+                    .maybeSingle();
+                return data || null;
+            } catch (e) {
+                console.error("Error fetching resort:", e);
+                return null;
+            }
+        }
+
+        // ============ UI wiring ============
+
+        const el = {
+            resortChip: document.getElementById("chip-resort"),
+            msgsChip: document.getElementById("chip-msgs"),
+            tplsChip: document.getElementById("chip-tpls"),
+            card: document.getElementById("response-card"),
+            skeleton: document.getElementById("response-skeleton"),
+            textarea: document.getElementById("response-textarea"),
+            banner: document.getElementById("error-banner"),
+            actionRow: document.getElementById("action-row"),
+            regenerateBtn: document.getElementById("btn-regenerate"),
+            adjustBtn: document.getElementById("btn-adjust"),
+            copyBtn: document.getElementById("btn-copy"),
+            adjustPanel: document.getElementById("adjust-panel"),
+            adjustInput: document.getElementById("adjust-input"),
+            adjustApply: document.getElementById("btn-adjust-apply"),
+            pasteFallback: document.getElementById("paste-fallback"),
+            pasteToggle: document.getElementById("paste-toggle"),
+            pasteTextarea: document.getElementById("paste-textarea"),
+            pasteGenerate: document.getElementById("btn-paste-generate"),
+            detailsConv: document.getElementById("details-conv"),
+            detailsTpls: document.getElementById("details-tpls"),
+            detailsIntent: document.getElementById("details-intent"),
+            detailsResort: document.getElementById("details-resort"),
+            detailsPrompt: document.getElementById("details-prompt"),
+            toast: document.getElementById("toast"),
+        };
+
+        function setChip(chip, text, state = "default") {
+            chip.textContent = text;
+            chip.classList.remove("chip-ok", "chip-warn", "chip-err", "chip-muted");
+            if (state === "ok") chip.classList.add("chip-ok");
+            else if (state === "warn") chip.classList.add("chip-warn");
+            else if (state === "err") chip.classList.add("chip-err");
+            else if (state === "muted") chip.classList.add("chip-muted");
+        }
+
+        function setStage(stage) {
+            // stage ∈ "loading" | "routing" | "writing" | "ready" | "error"
+            el.card.dataset.stage = stage;
+            if (stage === "loading" || stage === "routing" || stage === "writing") {
+                el.skeleton.style.display = "";
+                el.textarea.style.display = "none";
+                el.actionRow.classList.add("disabled");
+            } else if (stage === "ready") {
+                el.skeleton.style.display = "none";
+                el.textarea.style.display = "";
+                el.actionRow.classList.remove("disabled");
+            }
+            const labels = {
+                loading: "Loading context…",
+                routing: "Finding relevant templates…",
+                writing: "Writing response…",
+                ready: "",
+                error: "",
+            };
+            el.skeleton.querySelector(".skeleton-label").textContent = labels[stage] || "";
+        }
+
+        function showBanner(message) {
+            el.banner.textContent = message;
+            el.banner.style.display = "";
+        }
+
+        function hideBanner() {
+            el.banner.style.display = "none";
+            el.banner.textContent = "";
+        }
+
+        function showToast(message, type = "success") {
+            el.toast.textContent = message;
+            el.toast.className = `toast ${type} show`;
+            setTimeout(() => el.toast.classList.remove("show"), 2500);
+        }
+
+        function renderDetails() {
+            // Conversation
+            el.detailsConv.innerHTML = "";
+            conversation.forEach((m) => {
+                const row = document.createElement("div");
+                row.className = "detail-msg";
+                row.innerHTML = `<span class="badge badge-${m.role === "host" ? "success" : "info"}">${m.role}</span>`;
+                const txt = document.createElement("div");
+                txt.className = "detail-msg-text";
+                txt.textContent = m.text;
+                row.appendChild(txt);
+                el.detailsConv.appendChild(row);
+            });
+            if (conversation.length === 0) {
+                el.detailsConv.innerHTML = '<p class="detail-empty">No conversation captured.</p>';
             }
 
-            const currentResponse = document.getElementById("response-textarea").value.trim();
-            if (!currentResponse) {
-                showToast("No response to adjust.", "error");
-                return;
+            // Templates used
+            el.detailsTpls.innerHTML = "";
+            const usedTemplates = allTemplates.filter((t) => routerResult.templateIds.includes(t.id));
+            usedTemplates.forEach((t) => {
+                const block = document.createElement("details");
+                block.className = "detail-tpl";
+                block.innerHTML = `<summary>${escapeHtml(t.name)}</summary><pre>${escapeHtml(t.description)}</pre>`;
+                el.detailsTpls.appendChild(block);
+            });
+            if (usedTemplates.length === 0) {
+                el.detailsTpls.innerHTML = '<p class="detail-empty">No templates used.</p>';
             }
 
-            if (!aiApiUrl) {
-                showToast("AI API URL is not configured.", "error");
-                return;
+            // Intent
+            el.detailsIntent.textContent = routerResult.intent || "(none detected)";
+
+            // Resort
+            if (resort) {
+                const sectionsHtml = (resort.sections || [])
+                    .map((s) => {
+                        const items = (s.items || [])
+                            .filter((i) => i.label && i.value)
+                            .map((i) => `<li><b>${escapeHtml(i.label)}</b>: ${escapeHtml(i.value)}</li>`)
+                            .join("");
+                        return items ? `<div class="detail-section"><h5>${escapeHtml(s.title || s.type)}</h5><ul>${items}</ul></div>` : "";
+                    })
+                    .join("");
+                el.detailsResort.innerHTML =
+                    `<div class="detail-resort-head"><b>${escapeHtml(resort.name)}</b>` +
+                    (resort.gate_code ? ` · Gate code: <code>${escapeHtml(resort.gate_code)}</code>` : "") +
+                    `</div>${sectionsHtml}`;
+            } else {
+                el.detailsResort.innerHTML = '<p class="detail-empty">No resort matched.</p>';
             }
 
-            setGenerating(true);
+            // Writer prompt preview
+            const preview = buildWriterPromptPreview({
+                conversation,
+                resort,
+                templates: usedTemplates,
+                intent: routerResult.intent,
+                systemPrompt,
+                instruction: "",
+            });
+            const previewText = preview
+                .map((m) => `### ${m.role.toUpperCase()}\n${m.content}`)
+                .join("\n\n");
+            el.detailsPrompt.textContent = previewText;
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        // ============ Pipeline ============
+
+        async function runPipeline({ useConversation = null, skipRouter = false, instruction = "" } = {}) {
+            if (pipelineRunning) return;
+            pipelineRunning = true;
+            hideBanner();
 
             try {
-                const messages = [
-                    { role: "system", content: aiSystemPrompt },
-                    {
-                        role: "user",
-                        content: "Here is my current draft response to a guest:\n\n" + currentResponse +
-                            "\n\nPlease adjust it with the following instruction: " + adjustInstruction +
-                            "\n\nReturn only the adjusted response text, nothing else."
+                if (!groqKey) {
+                    showBanner("AI API key not configured — ask an admin.");
+                    setStage("error");
+                    return;
+                }
+
+                // 1. Gather context (unless passed explicitly via paste)
+                setStage("loading");
+
+                if (useConversation) {
+                    conversation = useConversation;
+                    setChip(el.msgsChip, `💬 ${conversation.length} messages pasted`, "ok");
+                } else {
+                    setChip(el.msgsChip, "💬 Capturing conversation…", "muted");
+                    const capture = await captureFromExtension();
+                    if (!capture.ok || capture.messages.length === 0) {
+                        setChip(el.msgsChip, "💬 Could not capture", "err");
+                        showBanner(capture.error || "Could not capture conversation. Use paste below.");
+                        el.pasteFallback.classList.add("visible");
+                        setStage("error");
+                        return;
                     }
-                ];
+                    conversation = capture.messages;
+                    setChip(el.msgsChip, `💬 ${conversation.length} messages captured`, "ok");
+                }
 
-                const response = await fetch(aiApiUrl + "/v1/chat/completions", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        model: "gemma3:12b",
-                        messages,
-                        temperature: 0.7
-                    })
+                // 2. Resort (optional)
+                if (!resort) {
+                    const matched = await getResortFromExtension();
+                    if (matched && matched.id) {
+                        resort = await fetchResortFull(matched.id);
+                    }
+                }
+                if (resort) {
+                    setChip(el.resortChip, `🏠 ${resort.name}`, "ok");
+                } else {
+                    setChip(el.resortChip, "🏠 No resort matched", "muted");
+                }
+
+                // 3. Router (unless skipped for adjust flow)
+                if (!skipRouter) {
+                    setStage("routing");
+                    setChip(el.tplsChip, "✨ Finding templates…", "muted");
+                    const router = await runRouter({
+                        conversation,
+                        resort,
+                        templates: allTemplates.map((t) => ({ id: t.id, name: t.name, ai_summary: t.ai_summary })),
+                        groqKey,
+                    });
+                    if (!router.ok) {
+                        showBanner(router.error || "Router failed.");
+                        setStage("error");
+                        return;
+                    }
+                    routerResult = { templateIds: router.templateIds, intent: router.intent };
+                    if (router.degraded || router.templateIds.length === 0) {
+                        setChip(el.tplsChip, "✨ 0 templates (fallback)", "warn");
+                    } else {
+                        setChip(el.tplsChip, `✨ ${router.templateIds.length} templates used`, "ok");
+                    }
+                }
+
+                // 4. Writer
+                setStage("writing");
+                const usedTemplates = allTemplates.filter((t) => routerResult.templateIds.includes(t.id));
+                const writer = await runWriter({
+                    conversation,
+                    resort,
+                    templates: usedTemplates,
+                    intent: routerResult.intent,
+                    systemPrompt,
+                    instruction,
+                    groqKey,
                 });
-
-                if (!response.ok) {
-                    throw new Error("API error: " + response.status + " " + response.statusText);
+                if (!writer.ok) {
+                    showBanner(writer.error || "Writer failed.");
+                    setStage("error");
+                    return;
                 }
 
-                const data = await response.json();
-                const reply = data.choices?.[0]?.message?.content || "";
+                currentDraft = writer.text;
+                el.textarea.value = currentDraft;
+                setStage("ready");
+                renderDetails();
 
-                if (!reply) {
-                    throw new Error("Empty response from AI.");
-                }
-
-                document.getElementById("response-textarea").value = reply;
-                document.getElementById("adjust-input").value = "";
-                showToast("Response adjusted!");
-            } catch (e) {
-                console.error("Adjust error:", e);
-                showToast("Error: " + e.message, "error");
+                // Auto-focus copy so Enter copies
+                setTimeout(() => el.copyBtn.focus(), 100);
             } finally {
-                setGenerating(false);
+                pipelineRunning = false;
             }
-        };
+        }
 
-        window.handleAdjustKeypress = function (e) {
-            if (e.key === "Enter") adjustResponse();
-        };
-
-        // ========== REGENERATE ==========
-
-        window.regenerateResponse = function () {
-            document.getElementById("response-section").classList.remove("visible");
-            document.getElementById("response-textarea").value = "";
-            generateResponse();
-        };
-
-        // ========== COPY ==========
+        // ============ Actions ============
 
         function getSignatureText() {
             if (!userSignature.enabled) return "";
@@ -322,51 +413,122 @@ CRITICAL RULES:
             return userSignature.text || "";
         }
 
-        window.copyResponse = function () {
-            const text = document.getElementById("response-textarea").value.trim();
-            if (!text) {
+        window.doCopy = function () {
+            const base = (el.textarea.value || currentDraft || "").trim();
+            if (!base) {
                 showToast("Nothing to copy.", "error");
                 return;
             }
-
             const yourName = localStorage.getItem("yourName") || "";
             const sig = getSignatureText();
-
-            let finalText = text;
+            let finalText = base;
             if (sig || yourName) {
                 finalText += "\n\n";
                 if (sig) finalText += sig + "\n";
                 if (yourName) finalText += yourName;
             }
-
-            navigator.clipboard.writeText(finalText.trim()).then(() => {
-                showToast("Response copied to clipboard!");
-            }).catch(() => {
-                showToast("Failed to copy.", "error");
-            });
+            navigator.clipboard.writeText(finalText.trim())
+                .then(() => showToast("Response copied to clipboard!"))
+                .catch(() => showToast("Failed to copy.", "error"));
         };
 
-        // ========== HELPERS ==========
-
-        function setGenerating(loading) {
-            document.getElementById("generate-btn").classList.toggle("loading", loading);
-        }
-
-        function showResponse(text) {
-            document.getElementById("response-textarea").value = text;
-            document.getElementById("response-section").classList.add("visible");
-        }
-
-        function showToast(message, type = "success") {
-            const toast = document.getElementById("toast");
-            toast.textContent = message;
-            toast.className = "toast " + type + " show";
-            setTimeout(() => toast.classList.remove("show"), 2500);
-        }
-
-        window.logout = async function () {
-            await signOut();
+        window.doRegenerate = function () {
+            routerResult = { templateIds: [], intent: "" };
+            runPipeline();
         };
+
+        window.doAdjust = function () {
+            el.adjustPanel.classList.toggle("visible");
+            if (el.adjustPanel.classList.contains("visible")) {
+                setTimeout(() => el.adjustInput.focus(), 50);
+            }
+        };
+
+        window.doApplyAdjust = async function () {
+            const instruction = el.adjustInput.value.trim();
+            if (!instruction) return;
+            const draft = el.textarea.value || currentDraft;
+            if (!draft) {
+                showToast("No draft to adjust.", "error");
+                return;
+            }
+            el.actionRow.classList.add("disabled");
+            const result = await runAdjust({ draft, instruction, systemPrompt, groqKey });
+            el.actionRow.classList.remove("disabled");
+            if (!result.ok) {
+                showToast(result.error || "Adjust failed.", "error");
+                return;
+            }
+            currentDraft = result.text;
+            el.textarea.value = currentDraft;
+            el.adjustInput.value = "";
+            el.adjustPanel.classList.remove("visible");
+            showToast("Response adjusted!");
+        };
+
+        window.togglePasteFallback = function () {
+            el.pasteFallback.classList.toggle("visible");
+            if (el.pasteFallback.classList.contains("visible")) {
+                setTimeout(() => el.pasteTextarea.focus(), 50);
+            }
+        };
+
+        window.doPasteGenerate = function () {
+            const pasted = el.pasteTextarea.value.trim();
+            if (!pasted) {
+                showToast("Paste a conversation first.", "error");
+                return;
+            }
+            // Treat pasted text as a single guest message
+            runPipeline({ useConversation: [{ role: "guest", text: pasted }] });
+        };
+
+        window.logout = function () {
+            signOut().then(() => (window.location.href = "index.html"));
+        };
+
+        // ============ Keyboard shortcuts ============
+
+        document.addEventListener("keydown", (e) => {
+            // Skip when typing in an input/textarea (except for Enter on copy)
+            const tag = (e.target && e.target.tagName) || "";
+            const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+            if (e.key === "Escape") {
+                if (el.adjustPanel.classList.contains("visible")) {
+                    el.adjustPanel.classList.remove("visible");
+                    return;
+                }
+            }
+
+            if (typing) return;
+
+            if (e.key === "r" || e.key === "R") {
+                e.preventDefault();
+                doRegenerate();
+            } else if (e.key === "a" || e.key === "A") {
+                e.preventDefault();
+                doAdjust();
+            } else if (e.key === "d" || e.key === "D") {
+                e.preventDefault();
+                document.getElementById("details-section").open = !document.getElementById("details-section").open;
+            }
+        });
+
+        // Adjust input — Enter applies
+        el.adjustInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                doApplyAdjust();
+            }
+        });
+
+        // ============ Boot ============
+
+        setChip(el.resortChip, "🏠 Loading…", "muted");
+        setChip(el.msgsChip, "💬 Loading…", "muted");
+        setChip(el.tplsChip, "✨ Waiting…", "muted");
+        runPipeline();
     </script>
 </head>
 
@@ -394,68 +556,84 @@ CRITICAL RULES:
     <!-- Main Content -->
     <main class="ai-main">
 
-        <!-- 1. Capture Section -->
-        <div class="capture-section">
-            <button onclick="captureConversation()" class="btn btn-outline btn-sm">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                Capture Conversation
+        <!-- Status strip -->
+        <div class="status-strip">
+            <span id="chip-resort" class="status-chip chip-muted">🏠 Loading…</span>
+            <span id="chip-msgs" class="status-chip chip-muted">💬 Loading…</span>
+            <span id="chip-tpls" class="status-chip chip-muted">✨ Waiting…</span>
+        </div>
+
+        <!-- Error banner -->
+        <div id="error-banner" class="error-banner" style="display:none" role="alert"></div>
+
+        <!-- Response card -->
+        <div id="response-card" class="response-card" data-stage="loading">
+            <div id="response-skeleton" class="response-skeleton">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line"></div>
+                <p class="skeleton-label">Loading context…</p>
+            </div>
+            <textarea id="response-textarea" placeholder="AI response will appear here..." style="display:none"></textarea>
+        </div>
+
+        <!-- Action row -->
+        <div id="action-row" class="ai-action-row disabled">
+            <button id="btn-regenerate" onclick="doRegenerate()" class="btn btn-ghost btn-sm" title="Regenerate (R)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+                Regenerate
             </button>
-            <span id="capture-status" class="capture-status"></span>
-            <button id="paste-toggle" class="paste-toggle" style="display: none;" onclick="togglePasteArea()">or paste manually</button>
+            <button id="btn-adjust" onclick="doAdjust()" class="btn btn-outline btn-sm" title="Adjust (A)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Adjust
+            </button>
+            <button id="btn-copy" onclick="doCopy()" class="btn btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+            </button>
         </div>
 
-        <!-- 2. Paste Area (hidden by default) -->
-        <div id="paste-area" class="paste-area">
-            <textarea id="paste-textarea" placeholder="Paste the conversation here..."></textarea>
+        <!-- Adjust panel -->
+        <div id="adjust-panel" class="adjust-panel">
+            <input type="text" id="adjust-input" placeholder="e.g. Make it shorter, add the gate code, be more formal…">
+            <button id="btn-adjust-apply" onclick="doApplyAdjust()" class="btn btn-primary btn-sm">Apply</button>
         </div>
 
-        <!-- 3. Instruction Section -->
-        <div class="instruction-section">
-            <div class="form-group">
-                <label for="instruction-input">Instruction (optional)</label>
-                <input type="text" id="instruction-input" placeholder="e.g. Keep it short, mention early check-in is available...">
+        <!-- Paste fallback (hidden unless capture fails) -->
+        <div id="paste-fallback" class="paste-fallback">
+            <button id="paste-toggle" class="paste-toggle" onclick="togglePasteFallback()">or paste conversation manually</button>
+            <div class="paste-area">
+                <textarea id="paste-textarea" placeholder="Paste the last guest message here…"></textarea>
+                <button id="btn-paste-generate" onclick="doPasteGenerate()" class="btn btn-primary btn-sm">Generate from Paste</button>
             </div>
         </div>
 
-        <!-- 4. Generate Button -->
-        <button id="generate-btn" onclick="generateResponse()" class="btn btn-primary btn-full btn-generate-ai">
-            <svg class="btn-text" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg>
-            <span class="btn-text">Generate AI Response</span>
-            <span class="spinner"></span>
-        </button>
-
-        <!-- 5. Response Section (hidden until response generated) -->
-        <div id="response-section" class="response-section">
-            <label for="response-textarea">AI Response</label>
-            <textarea id="response-textarea" placeholder="AI response will appear here..."></textarea>
-
-            <div class="action-bar">
-                <!-- Adjust Group -->
-                <div class="adjust-group">
-                    <input
-                        type="text"
-                        id="adjust-input"
-                        placeholder="Adjustment instruction..."
-                        onkeypress="handleAdjustKeypress(event)"
-                    >
-                    <button onclick="adjustResponse()" class="btn btn-outline btn-sm">Adjust</button>
+        <!-- Details (debug) -->
+        <details id="details-section" class="details-section">
+            <summary>Details</summary>
+            <div class="details-grid">
+                <div class="details-block">
+                    <h4>Conversation</h4>
+                    <div id="details-conv" class="details-body"></div>
                 </div>
-
-                <!-- Action Buttons -->
-                <div class="action-buttons">
-                    <!-- Regenerate -->
-                    <button onclick="regenerateResponse()" class="btn btn-outline btn-sm btn-icon" title="Regenerate">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-                    </button>
-                    <!-- Copy -->
-                    <button onclick="copyResponse()" class="btn btn-primary btn-sm">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        Copy
-                    </button>
+                <div class="details-block">
+                    <h4>Templates used</h4>
+                    <div id="details-tpls" class="details-body"></div>
+                </div>
+                <div class="details-block">
+                    <h4>Intent detected</h4>
+                    <p id="details-intent" class="details-body"></p>
+                </div>
+                <div class="details-block">
+                    <h4>Resort context</h4>
+                    <div id="details-resort" class="details-body"></div>
+                </div>
+                <div class="details-block">
+                    <h4>Writer prompt</h4>
+                    <pre id="details-prompt" class="details-body details-prompt"></pre>
                 </div>
             </div>
-        </div>
-
+        </details>
     </main>
 
     <!-- Toast -->
