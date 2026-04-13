@@ -23,6 +23,14 @@
         const currentUserId = session.user.id;
         document.getElementById("user-email").innerText = session.user.email;
 
+        // Browsers (especially via bfcache) restore form values across reloads.
+        // Force the search filter blank so every card renders on fresh load.
+        document.getElementById("search-input").value = "";
+        window.addEventListener("pageshow", (e) => {
+            document.getElementById("search-input").value = "";
+            if (typeof renderTemplates === "function") renderTemplates();
+        });
+
         let editingTemplateId = null;
         let userCategories = [];
         let allTemplates = [];

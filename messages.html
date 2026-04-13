@@ -23,6 +23,14 @@
         const currentUserId = session.user.id;
         document.getElementById("user-email").innerText = session.user.email;
 
+        // Browsers can restore old filter values via bfcache; clear so every
+        // template shows on a fresh load.
+        document.getElementById("filter-input").value = "";
+        window.addEventListener("pageshow", () => {
+            document.getElementById("filter-input").value = "";
+            if (typeof renderCheckboxes === "function") renderCheckboxes();
+        });
+
         let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
         let userGreeting = { text: "Hello", mode: "fixed", randomList: [] };
         let allTemplates = [];
