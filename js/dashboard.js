@@ -1,20 +1,14 @@
 import { supabase } from "./supabase.js";
 import { requireAuth, signOut } from "./auth.js";
 import { initAccounts, loadAccounts } from "./accounts.js";
-
-// Fixed section types. Users can still add a "custom" section with a free-form title.
-const SECTION_TYPES = [
-    { type: "gate",       title: "Gate Access",         icon: "🚪" },
-    { type: "contacts",   title: "Contacts",            icon: "☎️" },
-    { type: "amenities",  title: "Community Amenities", icon: "🏊" },
-    { type: "pool",       title: "Pool",                icon: "💧" },
-    { type: "trash",      title: "Trash",               icon: "🗑️" },
-    { type: "parking",    title: "Parking",             icon: "🅿️" },
-    { type: "packages",   title: "Packages",            icon: "📦" },
-    { type: "pets",       title: "Pets",                icon: "🐾" },
-    { type: "ev",         title: "Electric Car",        icon: "🔌" },
-    { type: "additional", title: "Additional Info",    icon: "ℹ️" },
-];
+import {
+    loadSectionTypes,
+    getSectionTypes,
+    getSectionType,
+    getSectionIcon,
+} from "./section-types.js";
+import { initTemplates, loadMessageTemplates } from "./templates.js";
+import { initMessages, refreshMessagesView } from "./messages.js";
 
 let resorts = [];
 let currentResort = null;
@@ -28,16 +22,22 @@ async function init() {
 
     document.getElementById("user-email").textContent = session.user.email;
     document.getElementById("sign-out").addEventListener("click", signOut);
-    document.getElementById("add-resort").addEventListener("click", createNewResort);
+    document.getElementById("add-resort").addEventListener("click", openNewResortModal);
     document.getElementById("search").addEventListener("input", renderList);
     document.getElementById("save-btn").addEventListener("click", saveCurrentResort);
     document.getElementById("delete-btn").addEventListener("click", deleteCurrentResort);
+    document.getElementById("clone-btn").addEventListener("click", cloneCurrentResort);
 
     document.querySelectorAll(".nav-tab").forEach(tab => {
         tab.addEventListener("click", () => switchView(tab.dataset.view));
     });
 
+    initNewResortModal();
     initAccounts(showToast);
+    initTemplates(showToast, session);
+    initMessages(showToast);
+
+    await loadSectionTypes();
     populateAddSectionDropdown();
     await loadResorts();
 }
@@ -48,7 +48,12 @@ function switchView(view) {
     );
     document.getElementById("resorts-view").hidden = view !== "resorts";
     document.getElementById("accounts-view").hidden = view !== "accounts";
+    document.getElementById("templates-view").hidden = view !== "templates";
+    document.getElementById("messages-view").hidden = view !== "messages";
+
     if (view === "accounts") loadAccounts();
+    if (view === "templates") loadMessageTemplates();
+    if (view === "messages") refreshMessagesView();
 }
 
 // ============ Data ============
@@ -136,6 +141,23 @@ async function deleteCurrentResort() {
     showToast("Deleted.");
 }
 
+function cloneCurrentResort() {
+    if (!currentResort) return;
+    startEditingNewResort({
+        name: `Copy of ${currentResort.name}`,
+        aliases: [],
+        address: currentResort.address || "",
+        gate_code: "",
+        sections: deepCloneSections(currentResort.sections),
+    });
+    showToast("Cloned — edit and save.");
+}
+
+function deepCloneSections(sections) {
+    if (!sections) return [];
+    return JSON.parse(JSON.stringify(sections));
+}
+
 // ============ Rendering ============
 
 function renderList() {
@@ -174,53 +196,59 @@ function selectResort(resort) {
     document.getElementById("resort-aliases").value = (currentResort.aliases || []).join(", ");
     document.getElementById("resort-address").value = currentResort.address || "";
     document.getElementById("resort-gate-code").value = currentResort.gate_code || "";
+    document.getElementById("clone-btn").hidden = false;
 
     renderSections();
     renderMeta();
     renderList();
 }
 
-function createNewResort() {
+function startEditingNewResort(seed) {
     currentResort = {
         id: null,
-        name: "",
-        aliases: [],
-        address: "",
-        gate_code: "",
-        sections: [],
+        name: seed.name || "",
+        aliases: seed.aliases || [],
+        address: seed.address || "",
+        gate_code: seed.gate_code || "",
+        sections: seed.sections || [],
     };
 
     document.getElementById("empty-state").hidden = true;
     document.getElementById("editor-content").hidden = false;
-    document.getElementById("resort-name").value = "";
-    document.getElementById("resort-aliases").value = "";
-    document.getElementById("resort-address").value = "";
-    document.getElementById("resort-gate-code").value = "";
+    document.getElementById("resort-name").value = currentResort.name;
+    document.getElementById("resort-aliases").value = (currentResort.aliases || []).join(", ");
+    document.getElementById("resort-address").value = currentResort.address || "";
+    document.getElementById("resort-gate-code").value = currentResort.gate_code || "";
+    document.getElementById("clone-btn").hidden = true;
 
     renderSections();
     document.getElementById("meta").textContent = "New resort — not saved yet.";
     document.getElementById("resort-name").focus();
+    renderList();
 }
 
 function populateAddSectionDropdown() {
     const select = document.getElementById("add-section-type");
-    SECTION_TYPES.forEach(s => {
+    select.innerHTML = '<option value="">+ Add section...</option>';
+
+    getSectionTypes().forEach(s => {
         const opt = document.createElement("option");
         opt.value = s.type;
         opt.textContent = `${s.icon} ${s.title}`;
         select.appendChild(opt);
     });
+
     const customOpt = document.createElement("option");
     customOpt.value = "custom";
-    customOpt.textContent = "✏️ Custom...";
+    customOpt.textContent = "\u270F\uFE0F Custom...";
     select.appendChild(customOpt);
 
-    select.addEventListener("change", () => {
+    select.onchange = () => {
         const val = select.value;
         if (!val) return;
         addSection(val);
         select.value = "";
-    });
+    };
 }
 
 function addSection(type) {
@@ -231,7 +259,11 @@ function addSection(type) {
         title = prompt("Section name:");
         if (!title) return;
     } else {
-        const def = SECTION_TYPES.find(s => s.type === type);
+        const def = getSectionType(type);
+        if (!def) {
+            showToast("Unknown section type.", "error");
+            return;
+        }
         title = def.title;
         if ((currentResort.sections || []).some(s => s.type === type)) {
             showToast("Section already exists.", "error");
@@ -253,9 +285,12 @@ function renderSections() {
     container.innerHTML = "";
 
     (currentResort.sections || []).forEach((section, sIdx) => {
-        const def = SECTION_TYPES.find(s => s.type === section.type);
-        const icon = def ? def.icon : "✏️";
-        const readOnlyTitle = section.type !== "custom";
+        const def = getSectionType(section.type);
+        const icon = def ? def.icon : getSectionIcon(section.type);
+        const readOnlyTitle = section.type !== "custom" && !!def;
+        // Prefer the canonical title for known types so stale JSONB titles
+        // never drift from the central definition.
+        const displayTitle = def ? def.title : (section.title || "");
 
         const card = document.createElement("div");
         card.className = "section-card";
@@ -271,7 +306,7 @@ function renderSections() {
         const titleInput = document.createElement("input");
         titleInput.type = "text";
         titleInput.className = "section-title-input";
-        titleInput.value = section.title || "";
+        titleInput.value = displayTitle;
         if (readOnlyTitle) titleInput.readOnly = true;
         titleInput.addEventListener("input", (e) => {
             currentResort.sections[sIdx].title = e.target.value;
@@ -281,7 +316,7 @@ function renderSections() {
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "btn-icon btn-delete-section";
         deleteBtn.title = "Remove section";
-        deleteBtn.textContent = "×";
+        deleteBtn.textContent = "\u00D7";
         deleteBtn.addEventListener("click", () => {
             currentResort.sections.splice(sIdx, 1);
             renderSections();
@@ -335,7 +370,7 @@ function buildItemRow(sIdx, iIdx, item) {
     const del = document.createElement("button");
     del.className = "btn-icon btn-delete-item";
     del.title = "Remove";
-    del.textContent = "×";
+    del.textContent = "\u00D7";
     del.addEventListener("click", () => {
         currentResort.sections[sIdx].items.splice(iIdx, 1);
         renderSections();
@@ -355,9 +390,52 @@ function renderMeta() {
     }
     const when = currentResort.updated_at
         ? new Date(currentResort.updated_at).toLocaleString()
-        : "—";
-    const who = currentResort.updated_by || "—";
+        : "\u2014";
+    const who = currentResort.updated_by || "\u2014";
     meta.textContent = `Last updated ${when} by ${who}`;
+}
+
+// ============ New Resort Modal ============
+
+function initNewResortModal() {
+    document.getElementById("modal-close").addEventListener("click", closeNewResortModal);
+    document.getElementById("modal-backdrop").addEventListener("click", (e) => {
+        if (e.target.id === "modal-backdrop") closeNewResortModal();
+    });
+    document.getElementById("start-blank").addEventListener("click", () => {
+        closeNewResortModal();
+        startEditingNewResort({});
+    });
+    document.getElementById("clone-picker").addEventListener("change", (e) => {
+        const id = e.target.value;
+        if (!id) return;
+        const src = resorts.find(r => r.id === id);
+        if (!src) return;
+        closeNewResortModal();
+        startEditingNewResort({
+            name: `Copy of ${src.name}`,
+            address: src.address || "",
+            sections: deepCloneSections(src.sections),
+        });
+        showToast(`Cloning "${src.name}"`);
+    });
+}
+
+function openNewResortModal() {
+    const clonePicker = document.getElementById("clone-picker");
+    clonePicker.innerHTML = '<option value="">Select a resort...</option>';
+    resorts.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r.id;
+        opt.textContent = r.name;
+        clonePicker.appendChild(opt);
+    });
+    document.getElementById("modal-backdrop").hidden = false;
+}
+
+function closeNewResortModal() {
+    document.getElementById("modal-backdrop").hidden = true;
+    document.getElementById("clone-picker").value = "";
 }
 
 // ============ Toast ============
