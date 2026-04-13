@@ -531,12 +531,15 @@
                 for (let i = 0; i < data.length; i++) {
                     const t = data[i];
                     if (!t.name || !t.description) continue;
+                    // Legacy Firebase exports stored newlines as literal "\n" strings.
+                    // Decode so the new system stores real newlines.
+                    const decodedDescription = String(t.description).replace(/\\n/g, "\n");
                     const { error } = await supabase
                         .from("templates")
                         .upsert({
                             auth_user_id: currentUserId,
                             name: t.name,
-                            description: t.description,
+                            description: decodedDescription,
                             category: t.category || "",
                             sort_order: base + count,
                         }, { onConflict: "auth_user_id,name" });
