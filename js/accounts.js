@@ -1,13 +1,9 @@
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase.js";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const signupClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: false },
-});
+import { supabase } from "./supabase.js";
 
 let accounts = [];
 let editingAccount = null;
 let _showToast;
+let saving = false;
 
 export function initAccounts(showToastFn) {
     _showToast = showToastFn;
@@ -37,7 +33,8 @@ function showNewForm() {
     document.getElementById("account-email").disabled = false;
     document.getElementById("account-name").value = "";
     document.getElementById("account-password").value = "";
-    document.getElementById("account-password-field").hidden = false;
+    document.getElementById("account-password").placeholder = "Min 6 characters";
+    document.getElementById("account-password-label").textContent = "Password";
     document.getElementById("account-role").value = "editor";
     document.getElementById("account-form-wrapper").hidden = false;
     document.getElementById("account-email").focus();
@@ -50,7 +47,8 @@ function showEditForm(account) {
     document.getElementById("account-email").disabled = true;
     document.getElementById("account-name").value = account.full_name || "";
     document.getElementById("account-password").value = "";
-    document.getElementById("account-password-field").hidden = true;
+    document.getElementById("account-password").placeholder = "Leave blank to keep current";
+    document.getElementById("account-password-label").textContent = "New Password (optional)";
     document.getElementById("account-role").value = account.role || "editor";
     document.getElementById("account-form-wrapper").hidden = false;
     document.getElementById("account-name").focus();
@@ -61,17 +59,37 @@ function hideForm() {
     editingAccount = null;
 }
 
+function setSaving(isSaving) {
+    saving = isSaving;
+    const saveBtn = document.getElementById("account-save-btn");
+    const cancelBtn = document.getElementById("account-cancel-btn");
+    saveBtn.disabled = isSaving;
+    cancelBtn.disabled = isSaving;
+    saveBtn.textContent = isSaving ? "Saving..." : "Save";
+}
+
 async function saveAccount() {
+    if (saving) return;
+
     const email = document.getElementById("account-email").value.trim();
     const fullName = document.getElementById("account-name").value.trim();
     const password = document.getElementById("account-password").value;
     const role = document.getElementById("account-role").value;
 
     if (editingAccount) {
-        const { error } = await supabase
-            .from("profiles")
-            .update({ full_name: fullName, role })
-            .eq("id", editingAccount.id);
+        if (password && password.length < 6) {
+            _showToast("Password must be at least 6 characters.", "error");
+            return;
+        }
+
+        setSaving(true);
+        const { error } = await supabase.rpc("admin_update_account", {
+            p_profile_id: editingAccount.id,
+            p_full_name: fullName,
+            p_role: role,
+            p_new_password: password || null,
+        });
+        setSaving(false);
 
         if (error) {
             _showToast("Error: " + error.message, "error");
@@ -88,24 +106,17 @@ async function saveAccount() {
             return;
         }
 
-        const { data, error } = await signupClient.auth.signUp({ email, password });
+        setSaving(true);
+        const { error } = await supabase.rpc("admin_create_account", {
+            p_email: email,
+            p_password: password,
+            p_full_name: fullName,
+            p_role: role,
+        });
+        setSaving(false);
 
         if (error) {
             _showToast("Error: " + error.message, "error");
-            return;
-        }
-
-        const { error: profileError } = await supabase
-            .from("profiles")
-            .insert({
-                auth_user_id: data.user?.id || null,
-                email,
-                full_name: fullName,
-                role,
-            });
-
-        if (profileError) {
-            _showToast("Error saving profile: " + profileError.message, "error");
             return;
         }
         _showToast("Account created!");
@@ -118,18 +129,13 @@ async function saveAccount() {
 async function deleteAccount(account) {
     if (!confirm(`Delete account "${account.email}"? This cannot be undone.`)) return;
 
-    const { error } = await supabase
-        .from("profiles")
-        .delete()
-        .eq("id", account.id);
+    const { error } = await supabase.rpc("admin_delete_account", {
+        p_profile_id: account.id,
+    });
 
     if (error) {
         _showToast("Error: " + error.message, "error");
         return;
-    }
-
-    if (account.auth_user_id) {
-        await supabase.rpc("delete_auth_user", { target_user_id: account.auth_user_id }).catch(() => {});
     }
 
     _showToast("Account deleted.");
