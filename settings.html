@@ -353,7 +353,6 @@
                     .eq("key", "ai_config")
                     .maybeSingle();
                 if (globalData && globalData.value) {
-                    document.getElementById("ai-api-url").value = globalData.value.ai_api_url || "";
                     document.getElementById("ai-groq-key").value = globalData.value.ai_groq_key || "";
                     document.getElementById("ai-system-prompt").value = globalData.value.ai_system_prompt || "";
                     if (globalData.value.ai_groq_key) {
@@ -414,7 +413,6 @@
             if (isAdmin) {
                 const groqKey = document.getElementById("ai-groq-key").value.trim();
                 const globalValue = {
-                    ai_api_url: document.getElementById("ai-api-url").value.trim(),
                     ai_groq_key: groqKey,
                     ai_system_prompt: document.getElementById("ai-system-prompt").value.trim(),
                 };
@@ -771,11 +769,7 @@ Your Name</pre>
             </div>
             <div class="ai-config-fields">
                 <div class="form-group">
-                    <label for="ai-api-url">Ollama API URL</label>
-                    <input type="text" id="ai-api-url" placeholder="e.g. https://your-tunnel.trycloudflare.com">
-                </div>
-                <div class="form-group">
-                    <label for="ai-groq-key">Groq API Key (for template suggestions)</label>
+                    <label for="ai-groq-key">Groq API Key</label>
                     <input type="password" id="ai-groq-key" placeholder="gsk_...">
                 </div>
                 <div class="form-group">
