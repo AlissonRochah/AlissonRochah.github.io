@@ -1,23 +1,25 @@
 import { supabase } from "./supabase.js";
 
-// CRUD for message templates. Powers the "Templates" tab in the dashboard
-// and is the source the message generator reads from.
+// CRUD for message templates. Matches the old app's behavior exactly:
+//   - A single add form at the top (always visible).
+//   - Save upserts by name, so re-adding with an existing name updates it
+//     (mirrors the old Firestore setDoc pattern that used the name as the
+//     document ID).
+//   - List below shows each template as a horizontal row with Title, Body,
+//     and Delete button.
+//   - No edit button — edit happens by typing the same name again.
 
 let templates = [];
-let editing = null;
 let _showToast;
 let _session;
-let saving = false;
 let _onChange;
+let saving = false;
 
 export function initTemplates(showToastFn, session, onChangeFn) {
     _showToast = showToastFn;
     _session = session;
     _onChange = onChangeFn;
-
-    document.getElementById("add-template").addEventListener("click", showNewForm);
     document.getElementById("template-save-btn").addEventListener("click", saveTemplate);
-    document.getElementById("template-cancel-btn").addEventListener("click", hideForm);
 }
 
 export function getTemplates() {
@@ -41,36 +43,11 @@ export async function loadMessageTemplates() {
     return templates;
 }
 
-function showNewForm() {
-    editing = null;
-    document.getElementById("template-form-title").textContent = "New Template";
-    document.getElementById("template-name").value = "";
-    document.getElementById("template-body").value = "";
-    document.getElementById("template-form-wrapper").hidden = false;
-    document.getElementById("template-name").focus();
-}
-
-function showEditForm(template) {
-    editing = template;
-    document.getElementById("template-form-title").textContent = "Edit Template";
-    document.getElementById("template-name").value = template.name || "";
-    document.getElementById("template-body").value = template.body || "";
-    document.getElementById("template-form-wrapper").hidden = false;
-    document.getElementById("template-name").focus();
-}
-
-function hideForm() {
-    document.getElementById("template-form-wrapper").hidden = true;
-    editing = null;
-}
-
 function setSaving(isSaving) {
     saving = isSaving;
     const saveBtn = document.getElementById("template-save-btn");
-    const cancelBtn = document.getElementById("template-cancel-btn");
     saveBtn.disabled = isSaving;
-    cancelBtn.disabled = isSaving;
-    saveBtn.textContent = isSaving ? "Saving..." : "Save";
+    saveBtn.textContent = isSaving ? "Saving..." : "Add Template";
 }
 
 async function saveTemplate() {
@@ -80,11 +57,11 @@ async function saveTemplate() {
     const body = document.getElementById("template-body").value;
 
     if (!name) {
-        _showToast("Enter a name.", "error");
+        _showToast("Enter a title.", "error");
         return;
     }
     if (!body.trim()) {
-        _showToast("Enter a body.", "error");
+        _showToast("Enter a template body.", "error");
         return;
     }
 
@@ -95,30 +72,21 @@ async function saveTemplate() {
         updated_by: _session && _session.user ? _session.user.email : null,
     };
 
-    let result;
-    if (editing) {
-        result = await supabase
-            .from("message_templates")
-            .update(payload)
-            .eq("id", editing.id)
-            .select()
-            .single();
-    } else {
-        result = await supabase
-            .from("message_templates")
-            .insert(payload)
-            .select()
-            .single();
-    }
+    // Upsert on name so re-adding overwrites, matching the old setDoc pattern.
+    const { error } = await supabase
+        .from("message_templates")
+        .upsert(payload, { onConflict: "name" });
     setSaving(false);
 
-    if (result.error) {
-        _showToast("Error: " + result.error.message, "error");
+    if (error) {
+        _showToast("Error: " + error.message, "error");
         return;
     }
 
-    _showToast(editing ? "Template updated!" : "Template created!");
-    hideForm();
+    _showToast("Template saved!");
+    document.getElementById("template-name").value = "";
+    document.getElementById("template-body").value = "";
+    document.getElementById("template-name").focus();
     await loadMessageTemplates();
 }
 
@@ -151,40 +119,25 @@ function renderList() {
     emptyMsg.hidden = true;
 
     templates.forEach(t => {
-        const card = document.createElement("div");
-        card.className = "template-card";
+        const row = document.createElement("div");
+        row.className = "template-row";
 
-        const header = document.createElement("div");
-        header.className = "template-card-header";
+        const title = document.createElement("div");
+        title.className = "template-row-title";
+        title.textContent = t.name;
+        row.appendChild(title);
 
-        const name = document.createElement("div");
-        name.className = "template-card-name";
-        name.textContent = t.name;
-        header.appendChild(name);
-
-        const actions = document.createElement("div");
-        actions.className = "template-card-actions";
-
-        const editBtn = document.createElement("button");
-        editBtn.className = "btn btn-outline btn-sm";
-        editBtn.textContent = "Edit";
-        editBtn.addEventListener("click", () => showEditForm(t));
-        actions.appendChild(editBtn);
+        const body = document.createElement("div");
+        body.className = "template-row-body";
+        body.textContent = t.body || "";
+        row.appendChild(body);
 
         const delBtn = document.createElement("button");
         delBtn.className = "btn btn-danger btn-sm";
         delBtn.textContent = "Delete";
         delBtn.addEventListener("click", () => deleteTemplate(t));
-        actions.appendChild(delBtn);
+        row.appendChild(delBtn);
 
-        header.appendChild(actions);
-        card.appendChild(header);
-
-        const body = document.createElement("pre");
-        body.className = "template-card-body";
-        body.textContent = t.body || "";
-        card.appendChild(body);
-
-        container.appendChild(card);
+        container.appendChild(row);
     });
 }

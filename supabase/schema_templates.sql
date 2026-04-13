@@ -77,16 +77,13 @@ on conflict (type) do update set
 -- ------------------------------------------------------------
 create table if not exists public.message_templates (
     id          uuid primary key default gen_random_uuid(),
-    name        text not null,
+    name        text unique not null,
     body        text not null default '',
     sort_order  int default 0,
     created_at  timestamptz default now(),
     updated_at  timestamptz default now(),
     updated_by  text
 );
-
-create unique index if not exists message_templates_name_idx
-    on public.message_templates (lower(name));
 
 alter table public.message_templates enable row level security;
 

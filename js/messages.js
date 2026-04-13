@@ -1,21 +1,24 @@
 import { loadMessageTemplates, getTemplates } from "./templates.js";
 
-// Message generator. User picks templates (checkboxes), enters host/guest
-// names, clicks Generate — the selected templates are joined with blank
-// lines and {host}/{guest} placeholders are substituted. Result is copied
-// to the clipboard.
+// Message generator. Matches the old app's behavior exactly:
+//   - Inputs: Your Name, Guest's Name, checkboxes for templates.
+//   - Click "Generate Message" → builds the final message:
+//       Hello {guestName},
+//       {template 1}
+//       {template 2}
+//       {yourName}
+//   - Writes the message into the output textarea.
+//   - Copies it to the clipboard.
+//   - Unchecks all checkboxes.
 
 let _showToast;
 
 export function initMessages(showToastFn) {
     _showToast = showToastFn;
     document.getElementById("generate-msg-btn").addEventListener("click", generate);
-    document.getElementById("copy-msg-btn").addEventListener("click", copyGenerated);
-    document.getElementById("clear-msg-btn").addEventListener("click", clearGenerator);
 }
 
 export async function refreshMessagesView() {
-    // Ensure templates are loaded so the picker stays up to date.
     await loadMessageTemplates();
     renderTemplatePicker();
 }
@@ -54,43 +57,37 @@ function renderTemplatePicker() {
 function generate() {
     const host = document.getElementById("msg-host").value.trim();
     const guest = document.getElementById("msg-guest").value.trim();
-    const checked = document.querySelectorAll("#msg-template-picker input:checked");
 
+    if (!host) {
+        _showToast("Enter your name.", "error");
+        return;
+    }
+    if (!guest) {
+        _showToast("Enter the guest's name.", "error");
+        return;
+    }
+
+    const checked = document.querySelectorAll("#msg-template-picker input:checked");
     if (checked.length === 0) {
         _showToast("Select at least one template.", "error");
         return;
     }
 
-    const parts = Array.from(checked).map(cb => {
-        let body = cb.dataset.body || "";
-        body = body.replace(/\{host\}/gi, host || "{host}");
-        body = body.replace(/\{guest\}/gi, guest || "{guest}");
-        return body;
-    });
+    const parts = Array.from(checked).map(cb => cb.dataset.body || "");
 
-    const message = parts.join("\n\n");
+    let message = `Hello ${guest},\n\n`;
+    if (parts.length > 0) {
+        message += parts.join("\n\n") + "\n\n";
+    }
+    message += host;
+
     document.getElementById("msg-output").value = message;
 
-    copyGenerated(true);
-}
-
-function copyGenerated(silentIfEmpty = false) {
-    const output = document.getElementById("msg-output");
-    if (!output.value) {
-        if (!silentIfEmpty) _showToast("Nothing to copy.", "error");
-        return;
-    }
     navigator.clipboard
-        .writeText(output.value)
+        .writeText(message)
         .then(() => _showToast("Copied to clipboard!"))
         .catch(err => _showToast("Copy failed: " + err.message, "error"));
-}
 
-function clearGenerator() {
-    document.getElementById("msg-host").value = "";
-    document.getElementById("msg-guest").value = "";
-    document.getElementById("msg-output").value = "";
-    document.querySelectorAll("#msg-template-picker input:checked").forEach(cb => {
-        cb.checked = false;
-    });
+    // Reset checkboxes for the next message (matches old behavior).
+    checked.forEach(cb => { cb.checked = false; });
 }
