@@ -99,3 +99,49 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // while we were asleep.
 chrome.runtime.onInstalled.addListener(recomputeMatch);
 chrome.runtime.onStartup.addListener(recomputeMatch);
+
+// ============ External messaging (from the webapp) ============
+//
+// The AI page on https://alissonrochah.github.io/ai.html talks to this
+// extension via chrome.runtime.sendMessage(EXTENSION_ID, ...). Two actions:
+//
+//   getMatchedResort    → returns chrome.storage.local.rm_matched_resort
+//   scrapeConversation  → relays to the Airbnb tab's content script
+
+chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
+    if (!request || !request.action) return false;
+
+    if (request.action === "getMatchedResort") {
+        chrome.storage.local.get(MATCHED_KEY, (data) => {
+            sendResponse({ success: true, resort: data[MATCHED_KEY] || null });
+        });
+        return true; // async
+    }
+
+    if (request.action === "scrapeConversation") {
+        chrome.tabs.query({ url: "https://*.airbnb.com/*" }, (tabs) => {
+            if (!tabs || tabs.length === 0) {
+                sendResponse({
+                    success: false,
+                    error: "No Airbnb tab found. Open the Airbnb inbox first.",
+                });
+                return;
+            }
+            // Pick the most recently focused Airbnb tab.
+            const tab = tabs.find((t) => t.active) || tabs[0];
+            chrome.tabs.sendMessage(tab.id, { action: "scrapeConversation" }, (reply) => {
+                if (chrome.runtime.lastError) {
+                    sendResponse({
+                        success: false,
+                        error: "Could not reach Airbnb tab. Try refreshing the page.",
+                    });
+                    return;
+                }
+                sendResponse(reply);
+            });
+        });
+        return true; // async
+    }
+
+    return false;
+});

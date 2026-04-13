@@ -1,9 +1,9 @@
 {
     "manifest_version": 3,
     "name": "Resort Info",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "Quick lookup of resort information for customer service agents.",
-    "permissions": ["storage", "sidePanel"],
+    "permissions": ["storage", "sidePanel", "tabs"],
     "host_permissions": [
         "https://ahpubmxpfmmpkfwbhtwf.supabase.co/*",
         "https://*.airbnb.com/*"
@@ -26,5 +26,8 @@
     "background": {
         "service_worker": "background.js",
         "type": "module"
+    },
+    "externally_connectable": {
+        "matches": ["https://alissonrochah.github.io/*", "https://*.github.io/*"]
     }
 }

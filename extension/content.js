@@ -188,3 +188,80 @@ chrome.storage.onChanged.addListener((changes, area) => {
         injectGateCodeButton(changes[MATCHED_KEY].newValue);
     }
 });
+
+// ============ Conversation scraping ============
+//
+// Airbnb renders messages in a container marked with
+// data-testid="message-list". Each row is a div with role="group" and an
+// aria-label of the form "Name sent Message. Sent Time" (or
+// "Most Recent Message. Name sent Message. Sent Time").
+//
+// Host messages include the company name in parentheses, e.g.
+// "Name (Master Vacation Homes)". Guest messages don't.
+
+function scrapeMessages() {
+    const messageList = document.querySelector('[data-testid="message-list"]');
+    if (!messageList) {
+        throw new Error("Could not find message thread on this page.");
+    }
+
+    const items = messageList.querySelectorAll('[role="group"][data-item-id]');
+    if (!items || items.length === 0) {
+        throw new Error("No messages found in the conversation.");
+    }
+
+    const messages = [];
+    items.forEach((item) => {
+        const label = item.getAttribute("aria-label");
+        if (!label) return;
+
+        // Skip system messages and conversation markers.
+        if (label.indexOf("Airbnb service says") !== -1) return;
+        if (label.indexOf("Start of Conversation") !== -1) return;
+
+        const cleanLabel = label.replace(/^Most Recent Message\.\s*/, "");
+        const sentMatch = cleanLabel.match(/^(.+?)\s+sent\s+(.+?)\.\s+Sent\s+/);
+        if (!sentMatch) return;
+
+        let senderName = sentMatch[1].trim();
+        let messageText = sentMatch[2].trim();
+
+        if (messageText.endsWith(".")) {
+            messageText = messageText.slice(0, -1).trim();
+        }
+
+        // Clean up unicode bidi marks that Airbnb wraps around some names.
+        senderName = senderName.replace(/[\u2068\u2069]/g, "");
+
+        // Host messages contain "Master Vacation Homes" in the sender name.
+        const isHost = senderName.toLowerCase().indexOf("master vacation homes") !== -1;
+
+        // Airbnb collapses hard line breaks into ".." inside the aria-label.
+        messageText = messageText.replace(/\.\./g, "\n");
+
+        messages.push({
+            role: isHost ? "host" : "guest",
+            sender: senderName,
+            text: messageText,
+        });
+    });
+
+    if (messages.length === 0) {
+        throw new Error("No messages found in the conversation.");
+    }
+
+    return messages;
+}
+
+// Respond to scrape requests relayed from the background worker.
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request && request.action === "scrapeConversation") {
+        try {
+            sendResponse({ success: true, messages: scrapeMessages() });
+        } catch (err) {
+            sendResponse({ success: false, error: err && err.message });
+        }
+        return true; // keep channel open for the sync response above
+    }
+    return false;
+});
