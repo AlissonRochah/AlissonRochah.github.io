@@ -517,6 +517,14 @@
             const file = event.target.files[0];
             if (!file) return;
 
+            const overlay = document.getElementById("import-overlay");
+            const status = document.getElementById("import-status");
+            overlay.classList.add("active");
+            status.textContent = "Reading file...";
+            // Warn if the user tries to navigate away mid-import.
+            const beforeUnload = (e) => { e.preventDefault(); e.returnValue = ""; };
+            window.addEventListener("beforeunload", beforeUnload);
+
             try {
                 const text = await file.text();
                 const data = JSON.parse(text);
@@ -526,38 +534,51 @@
                     return;
                 }
 
-                let count = 0;
+                // Legacy Firebase exports stored newlines as literal "\n".
+                // Decode + normalize in one pass.
                 const base = allTemplates.length;
-                for (let i = 0; i < data.length; i++) {
-                    const t = data[i];
-                    if (!t.name || !t.description) continue;
-                    // Legacy Firebase exports stored newlines as literal "\n" strings.
-                    // Decode so the new system stores real newlines.
-                    const decodedDescription = String(t.description).replace(/\\n/g, "\n");
-                    const { error } = await supabase
-                        .from("templates")
-                        .upsert({
-                            auth_user_id: currentUserId,
-                            name: t.name,
-                            description: decodedDescription,
-                            category: t.category || "",
-                            sort_order: base + count,
-                        }, { onConflict: "auth_user_id,name" });
-                    if (error) {
-                        console.error("Import error:", error);
-                        continue;
-                    }
-                    count++;
+                const rows = [];
+                data.forEach((t, i) => {
+                    if (!t.name || !t.description) return;
+                    rows.push({
+                        auth_user_id: currentUserId,
+                        name: String(t.name),
+                        description: String(t.description).replace(/\\n/g, "\n"),
+                        category: t.category || "",
+                        sort_order: base + rows.length,
+                    });
+                });
+
+                if (rows.length === 0) {
+                    showToast("Nothing to import.", "error");
+                    return;
                 }
 
-                showToast(count + " templates imported!");
+                status.textContent = "Importing " + rows.length + " templates...";
+
+                // Chunk to avoid Supabase payload limits on huge imports.
+                const CHUNK = 200;
+                let imported = 0;
+                for (let i = 0; i < rows.length; i += CHUNK) {
+                    const slice = rows.slice(i, i + CHUNK);
+                    const { error } = await supabase
+                        .from("templates")
+                        .upsert(slice, { onConflict: "auth_user_id,name" });
+                    if (error) throw error;
+                    imported += slice.length;
+                    status.textContent = "Imported " + imported + "/" + rows.length + "...";
+                }
+
+                showToast(imported + " templates imported!");
                 await loadTemplates();
             } catch (e) {
                 console.error("Import error:", e);
-                showToast("Error importing: " + e.message, "error");
+                showToast("Error importing: " + (e.message || e), "error");
+            } finally {
+                window.removeEventListener("beforeunload", beforeUnload);
+                overlay.classList.remove("active");
+                event.target.value = "";
             }
-
-            event.target.value = "";
         };
 
         function showSummary(text) {
@@ -724,6 +745,19 @@
             </div>
         </div>
     </div>
+
+    <!-- Import progress overlay -->
+    <div id="import-overlay" class="modal-overlay">
+        <div class="modal modal-sm">
+            <div class="modal-body" style="text-align:center; padding: 32px;">
+                <div class="spinner" style="display:inline-block; width:32px; height:32px; border:3px solid rgba(148,163,184,0.3); border-top-color:#3b82f6; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+                <h3 style="margin-top:16px; color:#f1f5f9;">Importing templates</h3>
+                <p id="import-status" style="color:#94a3b8; margin-top:8px;">Working...</p>
+                <p style="color:#f59e0b; margin-top:16px; font-size:0.78rem;">⚠ Don't close or refresh this page.</p>
+            </div>
+        </div>
+    </div>
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 
     <!-- Toast -->
     <div id="toast" class="toast"></div>
