@@ -1,6 +1,7 @@
 import { supabase } from "./supabase.js";
 
 let accounts = [];
+let aiEnabledByUserId = new Map();
 let editingAccount = null;
 let _showToast;
 let saving = false;
@@ -23,7 +24,34 @@ export async function loadAccounts() {
         return;
     }
     accounts = data || [];
+
+    const { data: settingsRows } = await supabase
+        .from("user_settings")
+        .select("auth_user_id, ai_enabled");
+    aiEnabledByUserId = new Map((settingsRows || []).map(r => [r.auth_user_id, !!r.ai_enabled]));
+
     renderTable();
+}
+
+async function toggleAiEnabled(account, enabled) {
+    if (!account.auth_user_id) {
+        _showToast("User has no linked auth account.", "error");
+        return;
+    }
+    const { error } = await supabase
+        .from("user_settings")
+        .upsert({
+            auth_user_id: account.auth_user_id,
+            ai_enabled: enabled,
+            updated_at: new Date().toISOString(),
+        });
+    if (error) {
+        _showToast("Error: " + error.message, "error");
+        await loadAccounts();
+        return;
+    }
+    aiEnabledByUserId.set(account.auth_user_id, enabled);
+    _showToast(enabled ? "AI enabled for " + account.email : "AI disabled for " + account.email);
 }
 
 function showNewForm() {
@@ -170,6 +198,20 @@ function renderTable() {
         badge.textContent = acc.role || "editor";
         tdRole.appendChild(badge);
         tr.appendChild(tdRole);
+
+        const tdAi = document.createElement("td");
+        const aiLabel = document.createElement("label");
+        aiLabel.className = "ai-toggle";
+        const aiCheckbox = document.createElement("input");
+        aiCheckbox.type = "checkbox";
+        aiCheckbox.checked = !!aiEnabledByUserId.get(acc.auth_user_id);
+        aiCheckbox.addEventListener("change", () => toggleAiEnabled(acc, aiCheckbox.checked));
+        const aiSlider = document.createElement("span");
+        aiSlider.className = "ai-toggle-slider";
+        aiLabel.appendChild(aiCheckbox);
+        aiLabel.appendChild(aiSlider);
+        tdAi.appendChild(aiLabel);
+        tr.appendChild(tdAi);
 
         const tdDate = document.createElement("td");
         tdDate.textContent = acc.created_at

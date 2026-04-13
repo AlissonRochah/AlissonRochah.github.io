@@ -4,66 +4,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resort Manager — Sign In</title>
-    <link rel="stylesheet" href="style.css">
-</head>
+    <title>Login - Master Vacation Homes</title>
 
-<body class="login-body">
-    <main class="login-card">
-        <h1>Resort Manager</h1>
-        <p class="subtitle">Sign in to manage resort information.</p>
+    <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+    <script src="style/theme.js"></script>
 
-        <form id="login-form">
-            <div class="field">
-                <label for="email">Email</label>
-                <input type="email" id="email" autocomplete="email" required>
-            </div>
-            <div class="field">
-                <label for="password">Password</label>
-                <input type="password" id="password" autocomplete="current-password" required>
-            </div>
-            <p class="error-text" id="error"></p>
-            <button type="submit" class="btn btn-primary btn-block" id="submit-btn">Sign In</button>
-        </form>
-    </main>
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/login.css">
 
     <script type="module">
-        import { getSession, signIn } from "./js/auth.js";
+        import { signIn, redirectIfAuthed } from "./js/auth.js";
 
-        // If already signed in, go straight to the dashboard without
-        // ever showing this page.
-        const session = await getSession();
-        if (session) {
-            window.location.replace("dashboard.html");
-        } else {
-            document.body.classList.add("ready");
-        }
+        const APP_HOME = "messages.html";
 
-        const form = document.getElementById("login-form");
-        const errorEl = document.getElementById("error");
-        const submitBtn = document.getElementById("submit-btn");
+        await redirectIfAuthed(APP_HOME);
 
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            errorEl.textContent = "";
-            submitBtn.disabled = true;
-            submitBtn.textContent = "Signing in...";
-
+        window.login = async function () {
             const email = document.getElementById("email").value.trim();
             const password = document.getElementById("password").value;
+            const errorMessage = document.getElementById("error-message");
+            errorMessage.textContent = "";
 
             const { error } = await signIn(email, password);
-
             if (error) {
-                errorEl.textContent = error.message || "Could not sign in.";
-                submitBtn.disabled = false;
-                submitBtn.textContent = "Sign In";
+                errorMessage.textContent = "Invalid email or password.";
                 return;
             }
+            window.location.href = APP_HOME;
+        };
 
-            window.location.replace("dashboard.html");
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") window.login();
         });
     </script>
+</head>
+
+<body>
+    <div class="login-page">
+        <div class="login-container">
+            <div class="login-wrapper">
+                <img src="img/MasterLogo.jpg" alt="Master Logo" class="login-logo">
+                <h1>Master Vacation</h1>
+                <p class="login-subtitle">Sign in to your account</p>
+                <div class="login-input">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" placeholder="name@gmail.com">
+                </div>
+                <div class="login-input">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Password">
+                </div>
+                <button onclick="window.login()" class="btn btn-primary btn-full">Sign In</button>
+                <p id="error-message" class="error-text"></p>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

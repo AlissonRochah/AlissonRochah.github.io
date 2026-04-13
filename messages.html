@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Message Generator - Master Vacation Homes</title>
+
+    <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+    <script src="style/theme.js"></script>
+
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/message.css">
+
+    <script type="module">
+        import { supabase } from "./js/supabase.js";
+        import { requireAuth, signOut } from "./js/auth.js";
+
+        const session = await requireAuth();
+        if (!session) throw new Error("no session");
+
+        const currentUserId = session.user.id;
+        document.getElementById("user-email").innerText = session.user.email;
+
+        let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
+        let userGreeting = { text: "Hello", mode: "fixed", randomList: [] };
+        let allTemplates = [];
+        let favorites = [];
+        let aiApiUrl = "";
+        let aiEnabled = false;
+        let suggestedTemplateIds = [];
+        let EXTENSION_ID = localStorage.getItem("masterbotExtensionId") || "";
+
+        await loadSettings();
+        await loadAiConfig();
+        await loadTemplates();
+
+        async function loadSettings() {
+            const { data, error } = await supabase
+                .from("user_settings")
+                .select("*")
+                .eq("auth_user_id", currentUserId)
+                .maybeSingle();
+
+            if (error) {
+                console.error("Error loading settings:", error);
+                return;
+            }
+
+            const select = document.getElementById("category-filter");
+            select.innerHTML = '<option value="all">All</option><option value="__favorites__">⭐ Favorites</option>';
+
+            if (data) {
+                userSignature.enabled = data.signature_enabled || false;
+                userSignature.mode = data.signature_mode || "fixed";
+                userSignature.text = data.signature_text || "";
+                userSignature.randomList = data.random_signatures || [];
+                userGreeting.text = data.greeting || "Hello";
+                userGreeting.mode = data.greeting_mode || "fixed";
+                userGreeting.randomList = data.random_greetings || [];
+                favorites = data.favorites || [];
+
+                if (data.ai_enabled) {
+                    document.getElementById("ai-nav-link").style.display = "";
+                    document.getElementById("suggest-btn").style.display = "";
+                    aiEnabled = true;
+                }
+                if (data.extension_id) {
+                    EXTENSION_ID = data.extension_id;
+                    localStorage.setItem("masterbotExtensionId", data.extension_id);
+                }
+
+                (data.categories || []).forEach(cat => {
+                    const opt = document.createElement("option");
+                    opt.value = cat;
+                    opt.textContent = cat;
+                    select.appendChild(opt);
+                });
+            }
+
+            const uncatOpt = document.createElement("option");
+            uncatOpt.value = "__uncategorized__";
+            uncatOpt.textContent = "Uncategorized";
+            select.appendChild(uncatOpt);
+        }
+
+        async function loadAiConfig() {
+            const { data } = await supabase
+                .from("global_settings")
+                .select("value")
+                .eq("key", "ai_config")
+                .maybeSingle();
+            if (data && data.value) {
+                aiApiUrl = data.value.ai_api_url || "";
+                if (data.value.ai_groq_key) {
+                    localStorage.setItem("masterbotGroqKey", data.value.ai_groq_key);
+                }
+            }
+        }
+
+        async function loadTemplates() {
+            const { data, error } = await supabase
+                .from("templates")
+                .select("*")
+                .eq("auth_user_id", currentUserId)
+                .order("sort_order", { ascending: true })
+                .order("name", { ascending: true });
+
+            if (error) {
+                console.error("Error loading templates:", error);
+                showToast("Error loading templates: " + error.message, "error");
+                return;
+            }
+
+            allTemplates = (data || []).map(row => ({
+                id: row.id,
+                name: row.name,
+                description: row.description || "",
+                category: row.category || "",
+                sort_order: row.sort_order ?? 0,
+                aiSummary: row.ai_summary || "",
+            }));
+
+            renderCheckboxes();
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function renderCheckboxes() {
+            const list = document.getElementById("checkbox-list");
+            const categoryFilter = document.getElementById("category-filter").value;
+            const textFilter = document.getElementById("filter-input").value.toLowerCase();
+
+            list.innerHTML = "";
+
+            allTemplates
+                .filter(t => {
+                    if (categoryFilter === "all") return true;
+                    if (categoryFilter === "__favorites__") return favorites.includes(t.id);
+                    if (categoryFilter === "__uncategorized__") return !t.category;
+                    return t.category === categoryFilter;
+                })
+                .filter(t => {
+                    return t.name.toLowerCase().includes(textFilter) ||
+                        (t.description || "").toLowerCase().includes(textFilter);
+                })
+                .forEach(t => {
+                    const isFav = favorites.includes(t.id);
+                    const isSuggested = suggestedTemplateIds.includes(t.id);
+                    const item = document.createElement("div");
+                    item.className = "checkbox-item" + (isSuggested ? " suggested" : "");
+                    item.innerHTML = `
+                        <label class="checkbox-inner">
+                            <input type="checkbox" class="service" value="${escapeHtml(t.id)}" onchange="onTemplateToggle(this)">
+                            <span class="checkmark"></span>
+                            <span class="checkbox-label" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+                        </label>
+                        <button class="btn-fav ${isFav ? 'active' : ''}" data-fav-id="${escapeHtml(t.id)}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        </button>
+                    `;
+                    // Set description via JS to avoid HTML corruption from special chars/emojis
+                    item.querySelector(".service").dataset.description = t.description || "";
+                    list.appendChild(item);
+                });
+
+            list.querySelectorAll("[data-fav-id]").forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    toggleFavorite(btn.dataset.favId);
+                });
+            });
+        }
+
+        window.filterByCategory = renderCheckboxes;
+        window.filterServices = renderCheckboxes;
+
+        document.addEventListener("contextmenu", function (e) {
+            const item = e.target.closest(".checkbox-item");
+            if (!item) return;
+            e.preventDefault();
+            const cb = item.querySelector(".service");
+            if (!cb) return;
+            const desc = cb.getAttribute("data-description");
+            if (!desc) return;
+            const yourName = document.getElementById("yourName").value.trim();
+            const sig = getSignatureText();
+            let text = desc + "\n\n";
+            if (sig) text += sig + "\n";
+            if (yourName) text += yourName;
+            const t = allTemplates.find(x => x.id === cb.value);
+            navigator.clipboard.writeText(text.trim()).then(() => {
+                showToast("Copied: " + (t ? t.name : "template"));
+            }).catch(() => {
+                showToast("Failed to copy.", "error");
+            });
+        });
+
+        async function toggleFavorite(templateId) {
+            if (favorites.includes(templateId)) {
+                favorites = favorites.filter(id => id !== templateId);
+            } else {
+                favorites.push(templateId);
+            }
+            renderCheckboxes();
+
+            const { error } = await supabase
+                .from("user_settings")
+                .upsert({
+                    auth_user_id: currentUserId,
+                    favorites,
+                    updated_at: new Date().toISOString(),
+                });
+            if (error) console.error("Error saving favorites:", error);
+        }
+
+        // Track selection order
+        let selectionOrder = [];
+
+        // Auto-focus filter when typing without any input focused
+        document.addEventListener("keydown", function (e) {
+            const active = document.activeElement;
+            const tag = active ? active.tagName : "";
+            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (e.key === "Enter") {
+                e.preventDefault();
+                window.generateMessage();
+                return;
+            }
+            if (e.key.length === 1) {
+                document.getElementById("filter-input").focus();
+            }
+        });
+
+        window.onTemplateToggle = function (checkbox) {
+            const id = checkbox.value;
+            if (checkbox.checked) {
+                selectionOrder.push(id);
+            } else {
+                selectionOrder = selectionOrder.filter(v => v !== id);
+            }
+        };
+
+        // Save/load name from localStorage
+        const savedName = localStorage.getItem("yourName");
+        if (savedName) {
+            document.getElementById("yourName").value = savedName;
+        }
+
+        window.saveName = function () {
+            localStorage.setItem("yourName", document.getElementById("yourName").value.trim());
+        };
+
+        function getGreetingText() {
+            if (userGreeting.mode === "random" && userGreeting.randomList.length > 0) {
+                const i = Math.floor(Math.random() * userGreeting.randomList.length);
+                return userGreeting.randomList[i];
+            }
+            return userGreeting.text || "Hello";
+        }
+
+        function getSignatureText() {
+            if (!userSignature.enabled) return "";
+            if (userSignature.mode === "random" && userSignature.randomList.length > 0) {
+                const i = Math.floor(Math.random() * userSignature.randomList.length);
+                return userSignature.randomList[i];
+            }
+            return userSignature.text || "";
+        }
+
+        function getSelectedMessages() {
+            const messages = [];
+            selectionOrder.forEach(id => {
+                const cb = document.querySelector(`.service[value="${CSS.escape(id)}"]:checked`);
+                if (cb) {
+                    const desc = cb.getAttribute("data-description");
+                    if (desc) messages.push(desc);
+                }
+            });
+            return messages;
+        }
+
+        window.generateMessage = function () {
+            const yourName = document.getElementById("yourName").value.trim();
+            const guestName = document.getElementById("guestName").value.trim();
+
+            if (!yourName) { showToast("Please enter your name.", "error"); return; }
+            if (!guestName) { showToast("Please enter the guest's name.", "error"); return; }
+
+            const messages = getSelectedMessages();
+            const sig = getSignatureText();
+
+            let finalMessage = `${getGreetingText()} ${guestName},\n\n`;
+            if (messages.length > 0) finalMessage += messages.join("\n\n") + "\n\n";
+            if (sig) finalMessage += sig + "\n";
+            finalMessage += yourName;
+
+            document.getElementById("generatedMessage").value = finalMessage;
+
+            navigator.clipboard.writeText(finalMessage).then(() => {
+                showToast("Message copied to clipboard!");
+            }).catch(() => {
+                showToast("Message generated. Copy it manually.", "error");
+            });
+
+            document.querySelectorAll(".service").forEach(cb => cb.checked = false);
+            selectionOrder = [];
+        };
+
+        window.copyRaw = function () {
+            const yourName = document.getElementById("yourName").value.trim();
+
+            if (!yourName) { showToast("Please enter your name.", "error"); return; }
+
+            const messages = getSelectedMessages();
+            if (messages.length === 0) { showToast("Select at least one template.", "error"); return; }
+
+            const sig = getSignatureText();
+
+            let raw = messages.join("\n\n") + "\n\n";
+            if (sig) raw += sig + "\n";
+            raw += yourName;
+
+            document.getElementById("generatedMessage").value = raw;
+
+            navigator.clipboard.writeText(raw).then(() => {
+                showToast("Copied without greeting!");
+            }).catch(() => {
+                showToast("Failed to copy.", "error");
+            });
+
+            document.querySelectorAll(".service").forEach(cb => cb.checked = false);
+            selectionOrder = [];
+        };
+
+        // ========== AI SUGGEST TEMPLATES ==========
+
+        window.suggestTemplates = async function () {
+            if (!aiApiUrl) {
+                showToast("AI not configured. Ask admin to set API URL.", "error");
+                return;
+            }
+
+            const btn = document.getElementById("suggest-btn");
+            btn.disabled = true;
+            btn.textContent = "Thinking...";
+
+            let conversation = [];
+            try {
+                if (EXTENSION_ID) {
+                    const response = await new Promise((resolve) => {
+                        chrome.runtime.sendMessage(EXTENSION_ID, { action: "scrapeConversation" }, resolve);
+                    });
+                    if (response && response.success) {
+                        conversation = response.messages;
+                    }
+                }
+            } catch (e) {
+                console.error("Capture error:", e);
+            }
+
+            if (conversation.length === 0) {
+                showToast("Could not capture conversation. Open Airbnb inbox first.", "error");
+                btn.disabled = false;
+                btn.textContent = "Suggest";
+                return;
+            }
+
+            const reversed = [...conversation].reverse();
+            const lastHostIdx = reversed.findIndex(m => m.role === "host");
+            let unanswered = lastHostIdx === -1
+                ? reversed.filter(m => m.role === "guest")
+                : reversed.slice(0, lastHostIdx).filter(m => m.role === "guest");
+            unanswered.reverse();
+            if (unanswered.length === 0) {
+                unanswered = conversation.filter(m => m.role === "guest").slice(-3);
+            }
+
+            if (unanswered.length === 0) {
+                showToast("No guest messages found.", "error");
+                btn.disabled = false;
+                btn.textContent = "Suggest";
+                return;
+            }
+
+            const guestText = unanswered.map(m => m.text).join("\n");
+            const templateList = allTemplates.map(t => "[" + t.id + "] " + (t.aiSummary || t.name)).join("\n");
+
+            try {
+                const groqKey = localStorage.getItem("masterbotGroqKey") || "";
+                if (!groqKey) {
+                    showToast("Groq API key not configured. Ask admin.", "error");
+                    btn.disabled = false;
+                    btn.textContent = "Suggest";
+                    return;
+                }
+                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + groqKey
+                    },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "Pick templates matching the guest message. Reply ONLY with IDs in brackets, one per line. Max 5. If none match: NONE"
+                            },
+                            {
+                                role: "user",
+                                content: guestText + "\n\n" + templateList
+                            }
+                        ],
+                        temperature: 0,
+                        max_tokens: 100
+                    })
+                });
+
+                if (!res.ok) throw new Error("API error");
+
+                const data = await res.json();
+                const aiResponse = data.choices?.[0]?.message?.content || "";
+
+                suggestedTemplateIds = [];
+                const bracketMatches = aiResponse.match(/\[([^\]]+)\]/g) || [];
+                bracketMatches.forEach(match => {
+                    const id = match.slice(1, -1).trim();
+                    if (allTemplates.some(t => t.id === id)) {
+                        suggestedTemplateIds.push(id);
+                    }
+                });
+
+                renderCheckboxes();
+
+                if (suggestedTemplateIds.length > 0) {
+                    showToast(suggestedTemplateIds.length + " template(s) suggested!");
+                } else {
+                    showToast("No matching templates found.", "error");
+                }
+            } catch (e) {
+                console.error("Suggest error:", e);
+                showToast("AI is unavailable.", "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Suggest";
+            }
+        };
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "toast " + type + " show";
+            setTimeout(() => toast.classList.remove("show"), 2500);
+        }
+
+        window.logout = async function () {
+            await signOut();
+        };
+    </script>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <a href="messages.html" class="header-logo">
+                <img src="img/MasterLogo.jpg" alt="Logo">
+            </a>
+            <nav class="header-nav">
+                <a href="template.html" class="nav-link">Templates</a>
+                <a href="messages.html" class="nav-link active">Messages</a>
+                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
+                <a href="settings.html" class="nav-link">Settings</a>
+                <a href="resorts/" class="nav-link">Resorts</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span id="user-email" class="header-email"></span>
+            <button onclick="window.logout()" class="btn btn-sm btn-outline">Sign Out</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="msg-main">
+        <div class="msg-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="yourName">Your Name</label>
+                    <input type="text" id="yourName" placeholder="Your name" onchange="saveName()">
+                </div>
+                <div class="form-group">
+                    <label for="guestName">Guest Name</label>
+                    <input type="text" id="guestName" placeholder="Guest name">
+                </div>
+            </div>
+        </div>
+
+        <div class="services-section">
+            <div class="services-header">
+                <h3>Select Templates</h3>
+                <button id="suggest-btn" onclick="suggestTemplates()" class="btn btn-outline btn-sm" style="display:none" title="AI suggests templates based on guest message">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    Suggest
+                </button>
+                <div class="services-filters">
+                    <select id="category-filter" class="category-select" onchange="filterByCategory()">
+                        <option value="all">All</option>
+                    </select>
+                    <div class="filter-box">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="filter-input" placeholder="Filter..." oninput="filterServices()">
+                    </div>
+                </div>
+            </div>
+            <div id="checkbox-list" class="checkbox-list"></div>
+        </div>
+
+        <div class="btn-row">
+            <button onclick="generateMessage()" class="btn btn-primary btn-full btn-generate">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                Generate Message
+            </button>
+            <button onclick="copyRaw()" class="btn btn-outline btn-copy-raw" title="Copy without guest greeting">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+        </div>
+
+        <div class="msg-output">
+            <label for="generatedMessage" class="output-label">Generated Message</label>
+            <textarea id="generatedMessage" readonly placeholder="Your generated message will appear here..."></textarea>
+        </div>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+</body>
+
+</html>

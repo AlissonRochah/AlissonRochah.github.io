@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Master Vacation Homes</title>
+
+    <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+    <script src="style/theme.js"></script>
+
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/settings.css">
+
+    <script type="module">
+        import { supabase } from "./js/supabase.js";
+        import { requireAuth, signOut } from "./js/auth.js";
+
+        const session = await requireAuth();
+        if (!session) throw new Error("no session");
+
+        const currentUserId = session.user.id;
+        document.getElementById("user-email").innerText = session.user.email;
+
+        let categories = [];
+        let randomSignatures = [];
+        let randomGreetings = [];
+        let greetingText = "Hello";
+        let greetingMode = "fixed";
+        let isAdmin = false;
+
+        loadTheme();
+        await loadSettings();
+
+        // ========== THEME ==========
+
+        window.setTheme = function (theme) {
+            localStorage.setItem("theme", theme);
+            if (theme === "light") {
+                document.documentElement.classList.add("light");
+            } else {
+                document.documentElement.classList.remove("light");
+            }
+            document.getElementById("theme-dark").classList.toggle("active", theme === "dark");
+            document.getElementById("theme-light").classList.toggle("active", theme === "light");
+        };
+
+        function loadTheme() {
+            const theme = localStorage.getItem("theme") || "dark";
+            document.getElementById("theme-dark").classList.toggle("active", theme === "dark");
+            document.getElementById("theme-light").classList.toggle("active", theme === "light");
+        }
+
+        // ========== GREETING ==========
+
+        window.setGreetingMode = function (mode) {
+            greetingMode = mode;
+            document.getElementById("greeting-fixed-config").style.display = mode === "fixed" ? "block" : "none";
+            document.getElementById("greeting-random-config").style.display = mode === "random" ? "block" : "none";
+            document.getElementById("greeting-mode-fixed").classList.toggle("active", mode === "fixed");
+            document.getElementById("greeting-mode-random").classList.toggle("active", mode === "random");
+            previewSignature();
+        };
+
+        window.setGreeting = function (text) {
+            greetingText = text;
+            document.getElementById("greeting-input").value = text;
+            previewSignature();
+        };
+
+        window.onGreetingInput = function () {
+            greetingText = document.getElementById("greeting-input").value.trim() || "Hello";
+            previewSignature();
+        };
+
+        function renderRandomGreetings() {
+            const list = document.getElementById("random-greeting-list");
+            list.innerHTML = "";
+            if (randomGreetings.length === 0) {
+                list.innerHTML = '<p class="empty-categories">No greetings added yet.</p>';
+                return;
+            }
+            randomGreetings.forEach((g, index) => {
+                const item = document.createElement("div");
+                item.className = "category-item";
+                item.innerHTML = `
+                    <span class="category-name"></span>
+                    <button class="btn-icon btn-delete" title="Remove" data-remove-greeting="${index}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                `;
+                item.querySelector(".category-name").textContent = g;
+                list.appendChild(item);
+            });
+            list.querySelectorAll("[data-remove-greeting]").forEach(btn => {
+                btn.addEventListener("click", () => removeRandomGreeting(parseInt(btn.dataset.removeGreeting, 10)));
+            });
+        }
+
+        window.addRandomGreeting = function () {
+            const input = document.getElementById("new-random-greeting");
+            const val = input.value.trim();
+            if (!val) return;
+            if (randomGreetings.includes(val)) { showToast("Greeting already added.", "error"); return; }
+            randomGreetings.push(val);
+            input.value = "";
+            renderRandomGreetings();
+            previewSignature();
+        };
+
+        window.addPresetToRandomGreeting = function (text) {
+            if (randomGreetings.includes(text)) { showToast("Already added.", "error"); return; }
+            randomGreetings.push(text);
+            renderRandomGreetings();
+            previewSignature();
+        };
+
+        function removeRandomGreeting(index) {
+            randomGreetings.splice(index, 1);
+            renderRandomGreetings();
+            previewSignature();
+        }
+
+        window.handleRandomGreetingKeypress = function (e) {
+            if (e.key === "Enter") addRandomGreeting();
+        };
+
+        // ========== SIGNATURE ==========
+
+        window.toggleSignature = function () {
+            const enabled = document.getElementById("signature-toggle").checked;
+            document.getElementById("signature-config").style.display = enabled ? "block" : "none";
+            previewSignature();
+        };
+
+        window.setSignatureMode = function (mode) {
+            document.getElementById("fixed-config").style.display = mode === "fixed" ? "block" : "none";
+            document.getElementById("random-config").style.display = mode === "random" ? "block" : "none";
+            document.getElementById("mode-fixed").classList.toggle("active", mode === "fixed");
+            document.getElementById("mode-random").classList.toggle("active", mode === "random");
+            previewSignature();
+        };
+
+        window.setFixedSignature = function (text) {
+            document.getElementById("fixed-signature-input").value = text;
+            previewSignature();
+        };
+
+        function renderRandomSignatures() {
+            const list = document.getElementById("random-sig-list");
+            list.innerHTML = "";
+
+            if (randomSignatures.length === 0) {
+                list.innerHTML = '<p class="empty-categories">No signatures added yet.</p>';
+                return;
+            }
+
+            randomSignatures.forEach((sig, index) => {
+                const item = document.createElement("div");
+                item.className = "category-item";
+                item.innerHTML = `
+                    <span class="category-name"></span>
+                    <button class="btn-icon btn-delete" title="Remove" data-remove-sig="${index}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                `;
+                item.querySelector(".category-name").textContent = sig;
+                list.appendChild(item);
+            });
+            list.querySelectorAll("[data-remove-sig]").forEach(btn => {
+                btn.addEventListener("click", () => removeRandomSig(parseInt(btn.dataset.removeSig, 10)));
+            });
+        }
+
+        window.addRandomSig = function () {
+            const input = document.getElementById("new-random-sig");
+            const name = input.value.trim();
+            if (!name) return;
+            if (randomSignatures.includes(name)) { showToast("Signature already added.", "error"); return; }
+            randomSignatures.push(name);
+            input.value = "";
+            renderRandomSignatures();
+            previewSignature();
+        };
+
+        window.addPresetToRandom = function (text) {
+            if (randomSignatures.includes(text)) { showToast("Already added.", "error"); return; }
+            randomSignatures.push(text);
+            renderRandomSignatures();
+            previewSignature();
+        };
+
+        function removeRandomSig(index) {
+            randomSignatures.splice(index, 1);
+            renderRandomSignatures();
+            previewSignature();
+        }
+
+        window.handleRandomSigKeypress = function (e) {
+            if (e.key === "Enter") addRandomSig();
+        };
+
+        window.previewSignature = function () {
+            const enabled = document.getElementById("signature-toggle").checked;
+            const preview = document.getElementById("signature-preview");
+
+            let greet = greetingText;
+            if (greetingMode === "random" && randomGreetings.length > 0) {
+                const ri = Math.floor(Math.random() * randomGreetings.length);
+                greet = randomGreetings[ri] + "  (random)";
+            }
+
+            if (!enabled) {
+                preview.textContent = `${greet} Guest,\n\n[message content]\n\nYour Name`;
+                return;
+            }
+
+            const mode = document.getElementById("mode-random").classList.contains("active") ? "random" : "fixed";
+            let sig = "";
+
+            if (mode === "fixed") {
+                sig = document.getElementById("fixed-signature-input").value.trim() || "Regards,";
+            } else if (randomSignatures.length > 0) {
+                const randomIndex = Math.floor(Math.random() * randomSignatures.length);
+                sig = randomSignatures[randomIndex] + "  (random)";
+            } else {
+                sig = "[add signatures below]";
+            }
+
+            preview.textContent = `${greet} Guest,\n\n[message content]\n\n${sig}\nYour Name`;
+        };
+
+        // ========== CATEGORIES ==========
+
+        function renderCategories() {
+            const list = document.getElementById("category-list");
+            list.innerHTML = "";
+
+            if (categories.length === 0) {
+                list.innerHTML = '<p class="empty-categories">No categories yet. Add one above.</p>';
+                return;
+            }
+
+            categories.forEach((cat, index) => {
+                const item = document.createElement("div");
+                item.className = "category-item";
+                item.innerHTML = `
+                    <span class="category-name"></span>
+                    <button class="btn-icon btn-delete" title="Remove" data-remove-cat="${index}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                `;
+                item.querySelector(".category-name").textContent = cat;
+                list.appendChild(item);
+            });
+            list.querySelectorAll("[data-remove-cat]").forEach(btn => {
+                btn.addEventListener("click", () => removeCategory(parseInt(btn.dataset.removeCat, 10)));
+            });
+        }
+
+        window.addCategory = function () {
+            const input = document.getElementById("new-category");
+            const name = input.value.trim();
+            if (!name) return;
+            if (categories.includes(name)) { showToast("Category already exists.", "error"); return; }
+            categories.push(name);
+            input.value = "";
+            renderCategories();
+        };
+
+        function removeCategory(index) {
+            categories.splice(index, 1);
+            renderCategories();
+        }
+
+        window.handleCategoryKeypress = function (e) {
+            if (e.key === "Enter") addCategory();
+        };
+
+        // ========== LOAD / SAVE ==========
+
+        async function loadSettings() {
+            // Check admin via RPC
+            try {
+                const { data: adminResult } = await supabase.rpc("is_current_user_admin");
+                isAdmin = !!adminResult;
+            } catch (e) {
+                console.error("Admin check failed:", e);
+            }
+
+            const { data, error } = await supabase
+                .from("user_settings")
+                .select("*")
+                .eq("auth_user_id", currentUserId)
+                .maybeSingle();
+
+            if (error) {
+                console.error("Error loading settings:", error);
+                showToast("Error loading settings: " + error.message, "error");
+            }
+
+            if (data) {
+                if (data.ai_enabled) {
+                    document.getElementById("ai-nav-link").style.display = "";
+                    document.getElementById("extension-id-section").style.display = "";
+                    document.getElementById("user-extension-id").value = data.extension_id || localStorage.getItem("masterbotExtensionId") || "";
+                }
+
+                if (data.greeting) {
+                    greetingText = data.greeting;
+                    document.getElementById("greeting-input").value = data.greeting;
+                }
+                if (data.greeting_mode) {
+                    greetingMode = data.greeting_mode;
+                    setGreetingMode(data.greeting_mode);
+                }
+                if (Array.isArray(data.random_greetings)) {
+                    randomGreetings = data.random_greetings;
+                }
+
+                const sigEnabled = data.signature_enabled || false;
+                document.getElementById("signature-toggle").checked = sigEnabled;
+                document.getElementById("signature-config").style.display = sigEnabled ? "block" : "none";
+
+                const mode = data.signature_mode || "fixed";
+                setSignatureMode(mode);
+
+                if (data.signature_text) {
+                    document.getElementById("fixed-signature-input").value = data.signature_text;
+                }
+
+                if (Array.isArray(data.random_signatures)) {
+                    randomSignatures = data.random_signatures;
+                }
+
+                if (Array.isArray(data.categories)) {
+                    categories = data.categories;
+                }
+            }
+
+            if (isAdmin) {
+                document.getElementById("user-management-section").style.display = "";
+                document.getElementById("ai-config-section").style.display = "";
+
+                const { data: globalData } = await supabase
+                    .from("global_settings")
+                    .select("value")
+                    .eq("key", "ai_config")
+                    .maybeSingle();
+                if (globalData && globalData.value) {
+                    document.getElementById("ai-api-url").value = globalData.value.ai_api_url || "";
+                    document.getElementById("ai-groq-key").value = globalData.value.ai_groq_key || "";
+                    document.getElementById("ai-system-prompt").value = globalData.value.ai_system_prompt || "";
+                    if (globalData.value.ai_groq_key) {
+                        localStorage.setItem("masterbotGroqKey", globalData.value.ai_groq_key);
+                    }
+                }
+
+                await loadAccountsList();
+            }
+
+            renderCategories();
+            renderRandomSignatures();
+            renderRandomGreetings();
+            previewSignature();
+        }
+
+        window.saveSettings = async function () {
+            const signatureEnabled = document.getElementById("signature-toggle").checked;
+            const signatureMode = document.getElementById("mode-random").classList.contains("active") ? "random" : "fixed";
+            const signatureText = document.getElementById("fixed-signature-input").value.trim();
+
+            if (signatureEnabled && signatureMode === "fixed" && !signatureText) {
+                showToast("Please enter a signature.", "error");
+                return;
+            }
+
+            if (signatureEnabled && signatureMode === "random" && randomSignatures.length === 0) {
+                showToast("Please add at least one random signature.", "error");
+                return;
+            }
+
+            const userExtId = document.getElementById("user-extension-id")?.value?.trim() || "";
+
+            const payload = {
+                auth_user_id: currentUserId,
+                greeting: greetingText,
+                greeting_mode: greetingMode,
+                random_greetings: randomGreetings,
+                signature_enabled: signatureEnabled,
+                signature_mode: signatureMode,
+                signature_text: signatureText,
+                random_signatures: randomSignatures,
+                categories,
+                extension_id: userExtId,
+                updated_at: new Date().toISOString(),
+            };
+
+            const { error } = await supabase.from("user_settings").upsert(payload);
+
+            if (error) {
+                console.error("Error saving settings:", error);
+                showToast("Error: " + error.message, "error");
+                return;
+            }
+
+            if (userExtId) localStorage.setItem("masterbotExtensionId", userExtId);
+
+            if (isAdmin) {
+                const groqKey = document.getElementById("ai-groq-key").value.trim();
+                const globalValue = {
+                    ai_api_url: document.getElementById("ai-api-url").value.trim(),
+                    ai_groq_key: groqKey,
+                    ai_system_prompt: document.getElementById("ai-system-prompt").value.trim(),
+                };
+                const { error: gErr } = await supabase
+                    .from("global_settings")
+                    .upsert({ key: "ai_config", value: globalValue, updated_at: new Date().toISOString() });
+                if (gErr) {
+                    console.error("Error saving AI config:", gErr);
+                    showToast("Error saving AI config: " + gErr.message, "error");
+                    return;
+                }
+                if (groqKey) localStorage.setItem("masterbotGroqKey", groqKey);
+            }
+
+            showToast("Settings saved!");
+        };
+
+        // ========== ADMIN: CREATE USER ==========
+
+        window.createNewUser = async function () {
+            if (!isAdmin) {
+                showToast("Admin privileges required.", "error");
+                return;
+            }
+
+            const emailInput = document.getElementById("new-user-email");
+            const passwordInput = document.getElementById("new-user-password");
+            const roleSelect = document.getElementById("new-user-role");
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+            const role = roleSelect.value;
+
+            if (!email || !password) { showToast("Enter email and password.", "error"); return; }
+            if (password.length < 6) { showToast("Password must be at least 6 characters.", "error"); return; }
+
+            const btn = document.getElementById("create-user-btn");
+            btn.disabled = true;
+            btn.textContent = "Creating...";
+
+            try {
+                const { error } = await supabase.rpc("admin_create_account", {
+                    p_email: email,
+                    p_password: password,
+                    p_full_name: "",
+                    p_role: role,
+                });
+                if (error) throw error;
+
+                showToast("User created: " + email);
+                emailInput.value = "";
+                passwordInput.value = "";
+                await loadAccountsList();
+            } catch (e) {
+                console.error("Error creating user:", e);
+                showToast("Error: " + (e.message || "Unknown error"), "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Create User";
+            }
+        };
+
+        async function loadAccountsList() {
+            const { data, error } = await supabase
+                .from("profiles")
+                .select("id, email, role, created_at")
+                .order("created_at", { ascending: false });
+            if (error) {
+                console.error("Error loading accounts:", error);
+                return;
+            }
+            const tbody = document.getElementById("accounts-list-tbody");
+            tbody.innerHTML = "";
+            (data || []).forEach(acc => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td></td>
+                    <td>${acc.role}</td>
+                    <td></td>
+                `;
+                row.children[0].textContent = acc.email;
+                row.children[2].textContent = acc.created_at ? new Date(acc.created_at).toLocaleDateString() : "—";
+                tbody.appendChild(row);
+            });
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "toast " + type + " show";
+            setTimeout(() => toast.classList.remove("show"), 2500);
+        }
+
+        window.logout = async function () {
+            await signOut();
+        };
+    </script>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <a href="messages.html" class="header-logo">
+                <img src="img/MasterLogo.jpg" alt="Logo">
+            </a>
+            <nav class="header-nav">
+                <a href="template.html" class="nav-link">Templates</a>
+                <a href="messages.html" class="nav-link">Messages</a>
+                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
+                <a href="settings.html" class="nav-link active">Settings</a>
+                <a href="resorts/" class="nav-link">Resorts</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span id="user-email" class="header-email"></span>
+            <button onclick="window.logout()" class="btn btn-sm btn-outline">Sign Out</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="settings-main">
+        <h1>Settings</h1>
+
+        <!-- Appearance Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Appearance</h2>
+                    <p>Choose your preferred theme.</p>
+                </div>
+            </div>
+            <div class="theme-switcher">
+                <button id="theme-dark" class="theme-option active" onclick="setTheme('dark')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    Dark
+                </button>
+                <button id="theme-light" class="theme-option" onclick="setTheme('light')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    Light
+                </button>
+            </div>
+        </section>
+
+        <!-- Greeting Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Greeting</h2>
+                    <p>Customize the greeting used at the start of your messages.</p>
+                </div>
+            </div>
+
+            <div class="mode-tabs">
+                <button id="greeting-mode-fixed" class="mode-tab active" onclick="setGreetingMode('fixed')">Fixed</button>
+                <button id="greeting-mode-random" class="mode-tab" onclick="setGreetingMode('random')">Random</button>
+            </div>
+
+            <div id="greeting-fixed-config" class="sig-mode-config">
+                <div class="form-group">
+                    <label for="greeting-input">Greeting text</label>
+                    <input type="text" id="greeting-input" value="Hello" placeholder="e.g. Hello" oninput="onGreetingInput()">
+                </div>
+                <div class="preset-chips">
+                    <p>Quick pick:</p>
+                    <div class="idea-chips">
+                        <button type="button" class="chip" onclick="setGreeting('Hello')">Hello</button>
+                        <button type="button" class="chip" onclick="setGreeting('Hey')">Hey</button>
+                        <button type="button" class="chip" onclick="setGreeting('Hi')">Hi</button>
+                        <button type="button" class="chip" onclick="setGreeting('Good morning')">Good morning</button>
+                        <button type="button" class="chip" onclick="setGreeting('Good afternoon')">Good afternoon</button>
+                        <button type="button" class="chip" onclick="setGreeting('Good evening')">Good evening</button>
+                        <button type="button" class="chip" onclick="setGreeting('Dear')">Dear</button>
+                        <button type="button" class="chip" onclick="setGreeting('Welcome')">Welcome</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="greeting-random-config" class="sig-mode-config" style="display: none;">
+                <p class="random-desc">Add multiple greetings. One will be randomly picked each time you generate a message.</p>
+                <div class="category-add">
+                    <input type="text" id="new-random-greeting" placeholder="Type a greeting..." onkeypress="handleRandomGreetingKeypress(event)">
+                    <button onclick="addRandomGreeting()" class="btn btn-primary btn-sm">Add</button>
+                </div>
+                <div id="random-greeting-list" class="category-list"></div>
+                <div class="preset-chips" style="margin-top: 12px;">
+                    <p>Quick add:</p>
+                    <div class="idea-chips">
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Hello')">Hello</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Hey')">Hey</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Hi')">Hi</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Good morning')">Good morning</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Good afternoon')">Good afternoon</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Good evening')">Good evening</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Dear')">Dear</button>
+                        <button type="button" class="chip" onclick="addPresetToRandomGreeting('Welcome')">Welcome</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Categories Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Template Categories</h2>
+                    <p>Create categories to organize your templates.</p>
+                </div>
+            </div>
+            <div class="category-config">
+                <div class="category-add">
+                    <input type="text" id="new-category" placeholder="e.g. Check-in, Maintenance, General..." onkeypress="handleCategoryKeypress(event)">
+                    <button onclick="addCategory()" class="btn btn-primary btn-sm">Add</button>
+                </div>
+                <div id="category-list" class="category-list"></div>
+            </div>
+        </section>
+
+        <!-- Signature Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Message Signature</h2>
+                    <p>Add a closing signature before your name in generated messages.</p>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="signature-toggle" onchange="toggleSignature()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div id="signature-config" style="display: none;">
+                <div class="mode-tabs">
+                    <button id="mode-fixed" class="mode-tab active" onclick="setSignatureMode('fixed')">Fixed</button>
+                    <button id="mode-random" class="mode-tab" onclick="setSignatureMode('random')">Random</button>
+                </div>
+
+                <div id="fixed-config" class="sig-mode-config">
+                    <div class="form-group">
+                        <label for="fixed-signature-input">Signature text</label>
+                        <input type="text" id="fixed-signature-input" placeholder="e.g. Best Regards," oninput="previewSignature()">
+                    </div>
+                    <div class="preset-chips">
+                        <p>Quick pick:</p>
+                        <div class="idea-chips">
+                            <button type="button" class="chip" onclick="setFixedSignature('Regards,')">Regards,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Best Regards,')">Best Regards,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Kind Regards,')">Kind Regards,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Thank you,')">Thank you,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Best,')">Best,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Cheers,')">Cheers,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Sincerely,')">Sincerely,</button>
+                            <button type="button" class="chip" onclick="setFixedSignature('Have a great stay!')">Have a great stay!</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="random-config" class="sig-mode-config" style="display: none;">
+                    <p class="random-desc">Add multiple signatures. One will be randomly picked each time you generate a message.</p>
+                    <div class="category-add">
+                        <input type="text" id="new-random-sig" placeholder="Type a signature..." onkeypress="handleRandomSigKeypress(event)">
+                        <button onclick="addRandomSig()" class="btn btn-primary btn-sm">Add</button>
+                    </div>
+                    <div id="random-sig-list" class="category-list"></div>
+                    <div class="preset-chips" style="margin-top: 12px;">
+                        <p>Quick add:</p>
+                        <div class="idea-chips">
+                            <button type="button" class="chip" onclick="addPresetToRandom('Regards,')">Regards,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Best Regards,')">Best Regards,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Kind Regards,')">Kind Regards,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Thank you,')">Thank you,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Best,')">Best,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Cheers,')">Cheers,</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Have a great stay!')">Have a great stay!</button>
+                            <button type="button" class="chip" onclick="addPresetToRandom('Warm Regards,')">Warm Regards,</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-section">
+                    <h3>Preview</h3>
+                    <pre id="signature-preview" class="preview-box">Hello Guest,
+
+[message content]
+
+Your Name</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Extension ID (for AI-enabled users) -->
+        <section id="extension-id-section" class="settings-section" style="display: none;">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Browser Extension</h2>
+                    <p>Connect the MasterBot extension to enable conversation capture.</p>
+                </div>
+            </div>
+            <div style="margin-top:12px">
+                <div class="form-group">
+                    <label for="user-extension-id">Extension ID</label>
+                    <input type="text" id="user-extension-id" placeholder="Find it in chrome://extensions/">
+                    <p style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">Open chrome://extensions/, find MasterBot, copy the ID.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- User Management Section (admin only) -->
+        <section id="user-management-section" class="settings-section" style="display: none;">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>User Management</h2>
+                    <p>Create login credentials for new team members.</p>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="new-user-email">Email</label>
+                <input type="email" id="new-user-email" placeholder="newuser@example.com" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="new-user-password">Password</label>
+                <input type="password" id="new-user-password" placeholder="At least 6 characters" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label for="new-user-role">Role</label>
+                <select id="new-user-role">
+                    <option value="editor">Editor</option>
+                    <option value="admin">Admin</option>
+                    <option value="viewer">Viewer</option>
+                </select>
+            </div>
+            <button id="create-user-btn" onclick="createNewUser()" class="btn btn-primary btn-sm">Create User</button>
+
+            <h3 style="margin-top:24px; font-size: 0.95rem;">Existing accounts</h3>
+            <table class="accounts-list-table">
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody id="accounts-list-tbody"></tbody>
+            </table>
+            <p style="font-size:0.72rem; color:var(--text-muted); margin-top:8px;">Need to edit or delete accounts? <a href="resorts/" style="color:var(--primary);">Open the Resort Manager accounts tab</a>.</p>
+        </section>
+
+        <!-- AI Configuration Section (admin only) -->
+        <section id="ai-config-section" class="settings-section" style="display: none;">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>AI Configuration</h2>
+                    <p>Configure the AI assistant. These settings apply to all users.</p>
+                </div>
+            </div>
+            <div class="ai-config-fields">
+                <div class="form-group">
+                    <label for="ai-api-url">Ollama API URL</label>
+                    <input type="text" id="ai-api-url" placeholder="e.g. https://your-tunnel.trycloudflare.com">
+                </div>
+                <div class="form-group">
+                    <label for="ai-groq-key">Groq API Key (for template suggestions)</label>
+                    <input type="password" id="ai-groq-key" placeholder="gsk_...">
+                </div>
+                <div class="form-group">
+                    <label for="ai-system-prompt">System Prompt</label>
+                    <textarea id="ai-system-prompt" class="ai-prompt-textarea" placeholder="Instructions for how the AI should behave..."></textarea>
+                </div>
+            </div>
+        </section>
+
+        <button onclick="saveSettings()" class="btn btn-primary btn-save">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Settings
+        </button>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+</body>
+
+</html>

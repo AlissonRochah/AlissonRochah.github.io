@@ -1,0 +1,275 @@
+/* ========================================
+   MESSAGE GENERATOR PAGE
+   ======================================== */
+.msg-main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.msg-form {
+  flex-shrink: 0;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+/* Services Section */
+.services-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.services-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.services-header h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.services-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  color: var(--text-muted);
+}
+
+.filter-box:focus-within {
+  border-color: var(--accent);
+}
+
+.filter-box input {
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  width: 100px;
+}
+
+.filter-box input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Checkbox List - flows top-to-bottom, then wraps to next column */
+.checkbox-list {
+  columns: 3;
+  column-gap: 8px;
+}
+
+/* Category Dropdown */
+.category-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-select {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.category-select:focus {
+  border-color: var(--accent);
+}
+
+.category-select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 4px 0 0;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+  user-select: none;
+  break-inside: avoid;
+}
+
+.checkbox-item:hover {
+  background: var(--bg-hover);
+}
+
+.checkbox-item.suggested {
+  background: var(--accent-soft);
+  border-left: 2px solid var(--accent);
+}
+
+.checkbox-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px 5px 8px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.checkbox-inner input[type="checkbox"] {
+  display: none;
+}
+
+.checkmark {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.checkbox-inner input:checked ~ .checkmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox-inner input:checked ~ .checkmark::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.checkbox-inner input:checked ~ .checkbox-label {
+  color: var(--text-primary);
+}
+
+/* Favorite Button */
+.btn-fav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  opacity: 0;
+}
+
+.checkbox-item:hover .btn-fav {
+  opacity: 1;
+}
+
+.btn-fav.active {
+  color: #f59e0b;
+  opacity: 1;
+}
+
+.btn-fav:hover {
+  color: #f59e0b;
+}
+
+/* Button Row */
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-generate {
+  padding: 12px;
+  font-size: 0.9rem;
+}
+
+.btn-copy-raw {
+  padding: 12px 14px;
+  flex-shrink: 0;
+}
+
+/* Output Section */
+.msg-output {
+  display: flex;
+  flex-direction: column;
+}
+
+.output-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.msg-output textarea {
+  width: 100%;
+  min-height: 200px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.msg-output textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+@media (max-width: 700px) {
+  .checkbox-list {
+    columns: 2;
+  }
+}
+
+@media (max-width: 500px) {
+  .form-row {
+    flex-direction: column;
+  }
+
+  .checkbox-list {
+    columns: 1;
+  }
+}

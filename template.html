@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Templates - Master Vacation Homes</title>
+
+    <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+    <script src="style/theme.js"></script>
+
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/template.css">
+
+    <script type="module">
+        import { supabase } from "./js/supabase.js";
+        import { requireAuth, signOut } from "./js/auth.js";
+
+        const session = await requireAuth();
+        if (!session) throw new Error("no session");
+
+        const currentUserId = session.user.id;
+        document.getElementById("user-email").innerText = session.user.email;
+
+        let editingTemplateId = null;
+        let userCategories = [];
+        let allTemplates = [];
+        let aiApiUrl = "";
+
+        // ---------- Load settings (categories + AI flag) ----------
+
+        await loadCategories();
+        await loadAiConfig();
+        await loadTemplates();
+
+        async function loadCategories() {
+            const { data, error } = await supabase
+                .from("user_settings")
+                .select("categories, ai_enabled")
+                .eq("auth_user_id", currentUserId)
+                .maybeSingle();
+
+            if (error) {
+                console.error("Error loading categories:", error);
+            }
+            if (data) {
+                userCategories = data.categories || [];
+                if (data.ai_enabled) {
+                    document.getElementById("ai-nav-link").style.display = "";
+                }
+            }
+            populateCategorySelect();
+        }
+
+        async function loadAiConfig() {
+            const { data } = await supabase
+                .from("global_settings")
+                .select("value")
+                .eq("key", "ai_config")
+                .maybeSingle();
+            if (data && data.value) {
+                aiApiUrl = data.value.ai_api_url || "";
+            }
+        }
+
+        function populateCategorySelect() {
+            const select = document.getElementById("template-category");
+            select.innerHTML = '<option value="">No category</option>';
+            userCategories.forEach(cat => {
+                const opt = document.createElement("option");
+                opt.value = cat;
+                opt.textContent = cat;
+                select.appendChild(opt);
+            });
+        }
+
+        // ---------- Save template (add or edit) ----------
+
+        window.saveTemplate = async function () {
+            const nameInput = document.getElementById("template-name");
+            const descInput = document.getElementById("template-description");
+            const categorySelect = document.getElementById("template-category");
+            const name = nameInput.value.trim();
+            const description = descInput.value.trim();
+            const category = categorySelect.value;
+
+            if (!name || !description) {
+                showToast("Please fill in name and content.", "error");
+                return;
+            }
+
+            const manualSummary = document.getElementById("template-summary").value.trim();
+
+            try {
+                if (editingTemplateId) {
+                    const existing = allTemplates.find(t => t.id === editingTemplateId);
+                    const payload = {
+                        name,
+                        description,
+                        category: category || "",
+                        sort_order: existing ? existing.sort_order : allTemplates.length,
+                        updated_at: new Date().toISOString(),
+                    };
+                    if (manualSummary) payload.ai_summary = manualSummary;
+
+                    const { error } = await supabase
+                        .from("templates")
+                        .update(payload)
+                        .eq("id", editingTemplateId)
+                        .eq("auth_user_id", currentUserId);
+                    if (error) throw error;
+                } else {
+                    const payload = {
+                        auth_user_id: currentUserId,
+                        name,
+                        description,
+                        category: category || "",
+                        sort_order: allTemplates.length,
+                        ai_summary: manualSummary || "",
+                    };
+                    const { error } = await supabase.from("templates").insert(payload);
+                    if (error) throw error;
+                }
+            } catch (e) {
+                showToast("Error: " + (e.message || e), "error");
+                return;
+            }
+
+            const wasEditing = !!editingTemplateId;
+            nameInput.value = "";
+            descInput.value = "";
+            categorySelect.value = "";
+            editingTemplateId = null;
+            closeModal();
+            showToast(wasEditing ? "Template updated!" : "Template added!");
+
+            await loadTemplates();
+
+            // Generate AI summary in background for new templates if not manually set
+            if (!wasEditing && !manualSummary) {
+                const created = allTemplates.find(t => t.name === name);
+                if (created) generateAiSummary(created.id, created.name, created.description);
+            }
+        };
+
+        // ---------- Load templates ----------
+
+        async function loadTemplates() {
+            const { data, error } = await supabase
+                .from("templates")
+                .select("*")
+                .eq("auth_user_id", currentUserId)
+                .order("sort_order", { ascending: true })
+                .order("name", { ascending: true });
+
+            if (error) {
+                console.error("Error loading templates:", error);
+                showToast("Error loading templates: " + error.message, "error");
+                return;
+            }
+
+            allTemplates = (data || []).map(row => ({
+                id: row.id,
+                name: row.name,
+                description: row.description || "",
+                category: row.category || "",
+                sort_order: row.sort_order ?? 0,
+                aiSummary: row.ai_summary || "",
+            }));
+
+            renderTemplates();
+            generateMissingSummaries();
+        }
+
+        async function generateMissingSummaries() {
+            if (!aiApiUrl) return;
+            const missing = allTemplates.filter(t => !t.aiSummary || t.aiSummary.split(" ").length > 15);
+            if (missing.length === 0) return;
+
+            const toast = document.getElementById("toast");
+            for (let i = 0; i < missing.length; i++) {
+                const t = missing[i];
+                toast.textContent = "Generating AI summaries... " + (i + 1) + "/" + missing.length;
+                toast.className = "toast success show";
+                await generateAiSummary(t.id, t.name, t.description);
+            }
+            // Reload to pick up new summaries
+            await loadTemplates();
+            toast.textContent = "All AI summaries generated!";
+            setTimeout(() => toast.classList.remove("show"), 3000);
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function renderTemplates() {
+            const list = document.getElementById("template-list");
+            const emptyState = document.getElementById("empty-state");
+            const counter = document.getElementById("template-count");
+            const query = document.getElementById("search-input").value.toLowerCase();
+
+            list.innerHTML = "";
+
+            const filtered = allTemplates.filter(t => t.name.toLowerCase().includes(query));
+
+            counter.textContent = allTemplates.length + " template" + (allTemplates.length !== 1 ? "s" : "");
+
+            if (allTemplates.length === 0) {
+                emptyState.style.display = "flex";
+                return;
+            }
+            emptyState.style.display = "none";
+
+            filtered.forEach((data) => {
+                const formattedDescription = escapeHtml(data.description).replace(/\n/g, "<br>");
+                const categoryBadge = data.category
+                    ? `<span class="category-badge">${escapeHtml(data.category)}</span>`
+                    : "";
+                const aiBadge = (aiApiUrl && data.aiSummary)
+                    ? `<span class="category-badge ai-badge" data-summary="${escapeHtml(data.aiSummary)}">AI</span>`
+                    : "";
+
+                const item = document.createElement("div");
+                item.className = "template-card";
+                item.draggable = true;
+                item.dataset.id = data.id;
+                item.ondragstart = (e) => onDragStart(e, data.id);
+                item.ondragend = onDragEnd;
+                item.ondragover = onDragOver;
+                item.ondrop = (e) => onDropTemplate(e, data.id);
+                item.ontouchstart = (e) => {
+                    if (e.target.closest(".drag-handle")) onTouchDragStart(e, data.id);
+                };
+                item.innerHTML = `
+                    <div class="template-card-header">
+                        <div class="template-card-title-row">
+                            <span class="drag-handle" title="Drag to reorder">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>
+                            </span>
+                            <h3 class="template-card-title">${escapeHtml(data.name)}</h3>
+                            ${categoryBadge}
+                            ${aiBadge}
+                        </div>
+                        <div class="template-card-actions">
+                            <button class="btn-icon btn-edit" data-edit-id="${data.id}" title="Edit template">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                            <button class="btn-icon btn-delete" data-delete-id="${data.id}" title="Delete template">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <p class="template-card-desc">${formattedDescription}</p>
+                `;
+                list.appendChild(item);
+            });
+
+            // Wire buttons via delegation (keeps quotes safe)
+            list.querySelectorAll("[data-edit-id]").forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    editTemplate(btn.dataset.editId);
+                });
+            });
+            list.querySelectorAll("[data-delete-id]").forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    confirmDelete(btn.dataset.deleteId);
+                });
+            });
+            list.querySelectorAll(".ai-badge").forEach(badge => {
+                badge.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    showSummary(badge.dataset.summary);
+                });
+            });
+        }
+
+        // ---------- Drag and drop reordering ----------
+
+        let draggedId = null;
+
+        window.onDragStart = function (e, templateId) {
+            draggedId = templateId;
+            e.dataTransfer.effectAllowed = "move";
+            e.target.closest(".template-card").classList.add("dragging");
+        };
+
+        window.onDragEnd = function () {
+            draggedId = null;
+            document.querySelectorAll(".template-card").forEach(c => {
+                c.classList.remove("dragging", "drag-over");
+            });
+        };
+
+        window.onDragOver = function (e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            const card = e.target.closest(".template-card");
+            if (card) {
+                document.querySelectorAll(".template-card.drag-over").forEach(c => c.classList.remove("drag-over"));
+                card.classList.add("drag-over");
+            }
+        };
+
+        window.onDropTemplate = async function (e, targetId) {
+            e.preventDefault();
+            if (!draggedId || draggedId === targetId) return;
+
+            const sorted = [...allTemplates].sort((a, b) => a.sort_order - b.sort_order);
+            const fromIdx = sorted.findIndex(t => t.id === draggedId);
+            const toIdx = sorted.findIndex(t => t.id === targetId);
+            if (fromIdx === -1 || toIdx === -1) return;
+
+            const [moved] = sorted.splice(fromIdx, 1);
+            sorted.splice(toIdx, 0, moved);
+
+            sorted.forEach((t, i) => t.sort_order = i);
+            allTemplates = sorted;
+            renderTemplates();
+
+            for (const t of sorted) {
+                const { error } = await supabase
+                    .from("templates")
+                    .update({ sort_order: t.sort_order })
+                    .eq("id", t.id)
+                    .eq("auth_user_id", currentUserId);
+                if (error) console.error("Error updating order:", error);
+            }
+        };
+
+        // ---------- Touch drag ----------
+
+        let touchDragId = null;
+        let touchClone = null;
+
+        window.onTouchDragStart = function (e, templateId) {
+            const touch = e.touches[0];
+            touchDragId = templateId;
+
+            const card = e.target.closest(".template-card");
+            touchClone = card.cloneNode(true);
+            touchClone.className = "template-card drag-clone";
+            touchClone.style.width = card.offsetWidth + "px";
+            document.body.appendChild(touchClone);
+            touchClone.style.top = touch.clientY - 20 + "px";
+            touchClone.style.left = card.getBoundingClientRect().left + "px";
+
+            card.classList.add("dragging");
+            e.preventDefault();
+        };
+
+        document.addEventListener("touchmove", function (e) {
+            if (!touchDragId || !touchClone) return;
+            const touch = e.touches[0];
+            touchClone.style.top = touch.clientY - 20 + "px";
+
+            document.querySelectorAll(".template-card.drag-over").forEach(c => c.classList.remove("drag-over"));
+            const el = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (el) {
+                const card = el.closest(".template-card:not(.drag-clone)");
+                if (card) card.classList.add("drag-over");
+            }
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener("touchend", async function (e) {
+            if (!touchDragId) return;
+
+            if (touchClone) {
+                touchClone.remove();
+                touchClone = null;
+            }
+
+            const touch = e.changedTouches[0];
+            const el = document.elementFromPoint(touch.clientX, touch.clientY);
+            let targetId = null;
+            if (el) {
+                const card = el.closest(".template-card");
+                if (card && card.dataset.id) targetId = card.dataset.id;
+            }
+
+            document.querySelectorAll(".template-card").forEach(c => {
+                c.classList.remove("dragging", "drag-over");
+            });
+
+            if (targetId && targetId !== touchDragId) {
+                const sorted = [...allTemplates].sort((a, b) => a.sort_order - b.sort_order);
+                const fromIdx = sorted.findIndex(t => t.id === touchDragId);
+                const toIdx = sorted.findIndex(t => t.id === targetId);
+                if (fromIdx !== -1 && toIdx !== -1) {
+                    const [moved] = sorted.splice(fromIdx, 1);
+                    sorted.splice(toIdx, 0, moved);
+                    sorted.forEach((t, i) => t.sort_order = i);
+                    allTemplates = sorted;
+                    renderTemplates();
+                    for (const t of sorted) {
+                        await supabase
+                            .from("templates")
+                            .update({ sort_order: t.sort_order })
+                            .eq("id", t.id)
+                            .eq("auth_user_id", currentUserId);
+                    }
+                }
+            }
+
+            touchDragId = null;
+        });
+
+        // ---------- Edit / delete ----------
+
+        async function editTemplate(templateId) {
+            const t = allTemplates.find(x => x.id === templateId);
+            if (!t) return;
+
+            editingTemplateId = templateId;
+            document.getElementById("template-name").value = t.name;
+            document.getElementById("template-description").value = t.description;
+            document.getElementById("template-category").value = t.category || "";
+            if (t.aiSummary) {
+                document.getElementById("template-summary").value = t.aiSummary;
+                document.getElementById("summary-group").style.display = "";
+            }
+            document.getElementById("modal-title").textContent = "Edit Template";
+            document.getElementById("modal-save-btn").textContent = "Save Changes";
+            document.getElementById("add-modal").classList.add("active");
+            document.getElementById("template-name").focus();
+        }
+
+        function confirmDelete(templateId) {
+            const overlay = document.getElementById("confirm-overlay");
+            const confirmBtn = document.getElementById("confirm-delete-btn");
+            const cancelBtn = document.getElementById("cancel-delete-btn");
+
+            overlay.classList.add("active");
+
+            confirmBtn.onclick = async function () {
+                const { error } = await supabase
+                    .from("templates")
+                    .delete()
+                    .eq("id", templateId)
+                    .eq("auth_user_id", currentUserId);
+                overlay.classList.remove("active");
+                if (error) {
+                    showToast("Error deleting: " + error.message, "error");
+                    return;
+                }
+                showToast("Template deleted.");
+                await loadTemplates();
+            };
+
+            cancelBtn.onclick = function () {
+                overlay.classList.remove("active");
+            };
+        }
+
+        // ---------- Modal ----------
+
+        window.openModal = function () {
+            editingTemplateId = null;
+            document.getElementById("template-name").value = "";
+            document.getElementById("template-description").value = "";
+            document.getElementById("template-category").value = "";
+            document.getElementById("template-summary").value = "";
+            document.getElementById("summary-group").style.display = "none";
+            document.getElementById("modal-title").textContent = "New Template";
+            document.getElementById("modal-save-btn").textContent = "Save Template";
+            document.getElementById("add-modal").classList.add("active");
+            document.getElementById("template-name").focus();
+        };
+
+        window.closeModal = function () {
+            document.getElementById("add-modal").classList.remove("active");
+            document.getElementById("summary-group").style.display = "none";
+            document.getElementById("template-summary").value = "";
+            editingTemplateId = null;
+        };
+
+        window.filterTemplates = function () {
+            renderTemplates();
+        };
+
+        // ---------- Export / import ----------
+
+        window.exportTemplates = function () {
+            if (allTemplates.length === 0) {
+                showToast("No templates to export.", "error");
+                return;
+            }
+            const data = allTemplates.map(t => ({
+                name: t.name,
+                description: t.description,
+                category: t.category || ""
+            }));
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "templates.json";
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast("Templates exported!");
+        };
+
+        window.triggerImport = function () {
+            document.getElementById("import-file").click();
+        };
+
+        window.handleImport = async function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+
+                if (!Array.isArray(data)) {
+                    showToast("Invalid file format.", "error");
+                    return;
+                }
+
+                let count = 0;
+                const base = allTemplates.length;
+                for (let i = 0; i < data.length; i++) {
+                    const t = data[i];
+                    if (!t.name || !t.description) continue;
+                    const { error } = await supabase
+                        .from("templates")
+                        .upsert({
+                            auth_user_id: currentUserId,
+                            name: t.name,
+                            description: t.description,
+                            category: t.category || "",
+                            sort_order: base + count,
+                        }, { onConflict: "auth_user_id,name" });
+                    if (error) {
+                        console.error("Import error:", error);
+                        continue;
+                    }
+                    count++;
+                }
+
+                showToast(count + " templates imported!");
+                await loadTemplates();
+            } catch (e) {
+                console.error("Import error:", e);
+                showToast("Error importing: " + e.message, "error");
+            }
+
+            event.target.value = "";
+        };
+
+        function showSummary(text) {
+            const toast = document.getElementById("toast");
+            toast.textContent = "AI: " + text;
+            toast.className = "toast success show";
+            setTimeout(() => toast.classList.remove("show"), 5000);
+        }
+
+        // ---------- AI summary generator ----------
+
+        async function generateAiSummary(templateId, name, content) {
+            if (!aiApiUrl) return;
+            try {
+                const res = await fetch(aiApiUrl + "/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "gemma3:12b",
+                        messages: [
+                            {
+                                role: "system",
+                                content: "Write a 5-10 word tag describing when to use this template. Examples: 'wifi not working', 'guest asks about check-in time', 'pool heat request', 'guest paid charge'. Reply with ONLY the short tag. No full sentences. No periods."
+                            },
+                            {
+                                role: "user",
+                                content: "Template name: " + name + "\n\nTemplate content:\n" + content
+                            }
+                        ],
+                        temperature: 0
+                    })
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const summary = data.choices?.[0]?.message?.content || "";
+                if (summary) {
+                    await supabase
+                        .from("templates")
+                        .update({ ai_summary: summary })
+                        .eq("id", templateId)
+                        .eq("auth_user_id", currentUserId);
+                }
+            } catch (e) {
+                console.error("AI summary error:", e);
+            }
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "toast " + type + " show";
+            setTimeout(() => toast.classList.remove("show"), 2500);
+        }
+
+        window.logout = async function () {
+            await signOut();
+        };
+    </script>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <a href="messages.html" class="header-logo">
+                <img src="img/MasterLogo.jpg" alt="Logo">
+            </a>
+            <nav class="header-nav">
+                <a href="template.html" class="nav-link active">Templates</a>
+                <a href="messages.html" class="nav-link">Messages</a>
+                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
+                <a href="settings.html" class="nav-link">Settings</a>
+                <a href="resorts/" class="nav-link">Resorts</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span id="user-email" class="header-email"></span>
+            <button onclick="window.logout()" class="btn btn-sm btn-outline">Sign Out</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="search-input" placeholder="Search templates..." oninput="filterTemplates()">
+            </div>
+            <button onclick="exportTemplates()" class="btn btn-outline btn-sm" title="Export templates">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </button>
+            <button onclick="triggerImport()" class="btn btn-outline btn-sm" title="Import templates">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="handleImport(event)">
+            <button onclick="openModal()" class="btn btn-primary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add
+            </button>
+        </div>
+        <p id="template-count" class="template-count"></p>
+
+        <!-- Template List -->
+        <div id="template-list" class="template-list"></div>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="empty-state" style="display: none;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p>No templates yet</p>
+            <button onclick="openModal()" class="btn btn-primary btn-sm">Create your first template</button>
+        </div>
+    </main>
+
+    <!-- Add/Edit Template Modal -->
+    <div id="add-modal" class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modal-title">New Template</h2>
+                <button onclick="closeModal()" class="btn-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row-modal">
+                    <div class="form-group" style="flex:2">
+                        <label for="template-name">Template Name</label>
+                        <input type="text" id="template-name" placeholder="e.g. Check-in Instructions">
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label for="template-category">Category</label>
+                        <select id="template-category" class="form-select">
+                            <option value="">No category</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="template-description">Template Content</label>
+                    <textarea id="template-description" placeholder="Write your template message here..."></textarea>
+                </div>
+                <div id="summary-group" class="form-group" style="display:none">
+                    <label for="template-summary" style="font-size:0.75rem; color:var(--text-muted)">AI Summary <span style="font-weight:400">(auto-generated, edit if needed)</span></label>
+                    <input type="text" id="template-summary" placeholder="e.g. guest asks about check-in time" style="font-size:0.78rem; padding:7px 12px; color:var(--text-muted)">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal()" class="btn btn-ghost">Cancel</button>
+                <button onclick="saveTemplate()" id="modal-save-btn" class="btn btn-primary">Save Template</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation -->
+    <div id="confirm-overlay" class="modal-overlay">
+        <div class="modal modal-sm">
+            <div class="modal-body" style="text-align:center; padding: 24px;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                <h3 style="margin-top:12px; color:#f1f5f9;">Delete this template?</h3>
+                <p style="color:#94a3b8; margin-top:4px;">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer" style="justify-content:center;">
+                <button id="cancel-delete-btn" class="btn btn-ghost">Cancel</button>
+                <button id="confirm-delete-btn" class="btn btn-danger">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+</body>
+
+</html>

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant - Master Vacation Homes</title>
+
+    <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+    <script src="style/theme.js"></script>
+
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/ai.css">
+
+    <script type="module">
+        import { supabase } from "./js/supabase.js";
+        import { requireAuth, signOut } from "./js/auth.js";
+
+        const DEFAULT_SYSTEM_PROMPT = `You write Airbnb messages on behalf of Master Vacation Homes.
+
+CRITICAL RULES:
+- Output ONLY the message text. No quotes, no labels, no "Here is the message:", no explanations before or after.
+- Keep it SHORT. 1-3 sentences for simple questions. Max 4-5 sentences for complex topics.
+- Match the guest's tone — casual if they're casual, formal if they're formal.
+- Always respond in English.
+- Never promise refunds or discounts unless explicitly instructed.
+- Never share info about other guests or reservations.
+- Use the provided templates as reference for tone and style.`;
+
+        const session = await requireAuth();
+        if (!session) throw new Error("no session");
+
+        const currentUserId = session.user.id;
+        document.getElementById("user-email").innerText = session.user.email;
+
+        let allTemplates = [];
+        let capturedConversation = [];
+        let aiApiUrl = "";
+        let aiSystemPrompt = DEFAULT_SYSTEM_PROMPT;
+        let userSignature = { enabled: false, mode: "fixed", text: "", randomList: [] };
+        let EXTENSION_ID = localStorage.getItem("masterbotExtensionId") || "";
+
+        // Check AI access via user_settings.ai_enabled
+        const { data: settingsData, error: settingsError } = await supabase
+            .from("user_settings")
+            .select("ai_enabled, signature_enabled, signature_mode, signature_text, random_signatures, extension_id")
+            .eq("auth_user_id", currentUserId)
+            .maybeSingle();
+
+        if (settingsError || !settingsData || !settingsData.ai_enabled) {
+            window.location.href = "messages.html";
+            throw new Error("ai not enabled");
+        }
+
+        userSignature.enabled = settingsData.signature_enabled || false;
+        userSignature.mode = settingsData.signature_mode || "fixed";
+        userSignature.text = settingsData.signature_text || "";
+        userSignature.randomList = settingsData.random_signatures || [];
+        if (settingsData.extension_id) {
+            EXTENSION_ID = settingsData.extension_id;
+            localStorage.setItem("masterbotExtensionId", settingsData.extension_id);
+        }
+
+        // Load global AI config
+        try {
+            const { data: globalData } = await supabase
+                .from("global_settings")
+                .select("value")
+                .eq("key", "ai_config")
+                .maybeSingle();
+            if (globalData && globalData.value) {
+                aiApiUrl = globalData.value.ai_api_url || "";
+                aiSystemPrompt = globalData.value.ai_system_prompt || DEFAULT_SYSTEM_PROMPT;
+                if (globalData.value.ai_groq_key) {
+                    localStorage.setItem("masterbotGroqKey", globalData.value.ai_groq_key);
+                }
+            }
+        } catch (e) {
+            console.error("Error loading global AI config:", e);
+        }
+
+        // Load templates
+        await loadTemplates();
+
+        async function loadTemplates() {
+            const { data, error } = await supabase
+                .from("templates")
+                .select("name, description")
+                .eq("auth_user_id", currentUserId)
+                .order("sort_order", { ascending: true });
+            if (error) {
+                console.error("Error loading templates:", error);
+                return;
+            }
+            allTemplates = (data || []).map(row => ({
+                name: row.name,
+                content: row.description || "",
+            }));
+        }
+
+        // ========== CAPTURE ==========
+
+        window.captureConversation = async function () {
+            const statusEl = document.getElementById("capture-status");
+            statusEl.textContent = "Searching for Airbnb tab...";
+            statusEl.className = "capture-status";
+
+            if (!EXTENSION_ID) {
+                statusEl.textContent = "Extension ID not configured. Set it in Settings.";
+                showPasteToggle();
+                return;
+            }
+
+            try {
+                chrome.runtime.sendMessage(EXTENSION_ID, { action: "scrapeConversation" }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        statusEl.textContent = "Could not connect to extension. Is it installed?";
+                        showPasteToggle();
+                        return;
+                    }
+
+                    if (!response || !response.success) {
+                        statusEl.textContent = response?.error || "Failed to capture conversation.";
+                        showPasteToggle();
+                        return;
+                    }
+
+                    capturedConversation = response.messages;
+                    const count = capturedConversation.length;
+                    statusEl.textContent = count + " message" + (count !== 1 ? "s" : "") + " captured";
+                    statusEl.className = "capture-status captured";
+                });
+            } catch (e) {
+                console.error("Capture error:", e);
+                statusEl.textContent = "Error: " + e.message;
+                showPasteToggle();
+            }
+        };
+
+        function showPasteToggle() {
+            document.getElementById("paste-toggle").style.display = "inline";
+        }
+
+        window.togglePasteArea = function () {
+            document.getElementById("paste-area").classList.toggle("visible");
+        };
+
+        // ========== GENERATE ==========
+
+        window.generateResponse = async function () {
+            const instruction = document.getElementById("instruction-input").value.trim();
+
+            let conversation = capturedConversation;
+            const pasteArea = document.getElementById("paste-area");
+            if (pasteArea.classList.contains("visible")) {
+                const pasted = document.getElementById("paste-textarea").value.trim();
+                if (pasted) {
+                    conversation = [{ role: "guest", text: pasted }];
+                }
+            }
+
+            if (!conversation || conversation.length === 0) {
+                showToast("Please capture or paste a conversation first.", "error");
+                return;
+            }
+
+            if (!aiApiUrl) {
+                showToast("AI API URL is not configured. Contact your administrator.", "error");
+                return;
+            }
+
+            setGenerating(true);
+
+            try {
+                const messages = buildMessages(conversation, instruction);
+                const response = await fetch(aiApiUrl + "/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "gemma3:12b",
+                        messages,
+                        temperature: 0.7
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error("API error: " + response.status + " " + response.statusText);
+                }
+
+                const data = await response.json();
+                const reply = data.choices?.[0]?.message?.content || "";
+
+                if (!reply) {
+                    throw new Error("Empty response from AI.");
+                }
+
+                showResponse(reply);
+            } catch (e) {
+                console.error("Generation error:", e);
+                showToast("Error: " + e.message, "error");
+            } finally {
+                setGenerating(false);
+            }
+        };
+
+        function buildMessages(conversation, instruction) {
+            let systemContent = aiSystemPrompt;
+
+            if (allTemplates.length > 0) {
+                systemContent += "\n\nMessage Templates (use these as reference for tone and content):\n";
+                allTemplates.forEach((t) => {
+                    systemContent += "\n--- Template: " + t.name + " ---\n" + t.content;
+                });
+            }
+
+            const messages = [{ role: "system", content: systemContent }];
+
+            const conversationText = conversation
+                .map(m => (m.role === "host" ? "Host" : "Guest") + ": " + m.text)
+                .join("\n\n");
+
+            messages.push({
+                role: "user",
+                content: "Here is the conversation so far:\n\n" + conversationText +
+                    "\n\nWrite a short, direct response ONLY to the guest's LAST message above. Do NOT repeat information already given by the host in previous messages. Output only the message text, nothing else." +
+                    (instruction ? "\n\nAdditional instruction: " + instruction : "")
+            });
+
+            return messages;
+        }
+
+        // ========== ADJUST ==========
+
+        window.adjustResponse = async function () {
+            const adjustInstruction = document.getElementById("adjust-input").value.trim();
+            if (!adjustInstruction) {
+                showToast("Please enter an adjustment instruction.", "error");
+                return;
+            }
+
+            const currentResponse = document.getElementById("response-textarea").value.trim();
+            if (!currentResponse) {
+                showToast("No response to adjust.", "error");
+                return;
+            }
+
+            if (!aiApiUrl) {
+                showToast("AI API URL is not configured.", "error");
+                return;
+            }
+
+            setGenerating(true);
+
+            try {
+                const messages = [
+                    { role: "system", content: aiSystemPrompt },
+                    {
+                        role: "user",
+                        content: "Here is my current draft response to a guest:\n\n" + currentResponse +
+                            "\n\nPlease adjust it with the following instruction: " + adjustInstruction +
+                            "\n\nReturn only the adjusted response text, nothing else."
+                    }
+                ];
+
+                const response = await fetch(aiApiUrl + "/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "gemma3:12b",
+                        messages,
+                        temperature: 0.7
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error("API error: " + response.status + " " + response.statusText);
+                }
+
+                const data = await response.json();
+                const reply = data.choices?.[0]?.message?.content || "";
+
+                if (!reply) {
+                    throw new Error("Empty response from AI.");
+                }
+
+                document.getElementById("response-textarea").value = reply;
+                document.getElementById("adjust-input").value = "";
+                showToast("Response adjusted!");
+            } catch (e) {
+                console.error("Adjust error:", e);
+                showToast("Error: " + e.message, "error");
+            } finally {
+                setGenerating(false);
+            }
+        };
+
+        window.handleAdjustKeypress = function (e) {
+            if (e.key === "Enter") adjustResponse();
+        };
+
+        // ========== REGENERATE ==========
+
+        window.regenerateResponse = function () {
+            document.getElementById("response-section").classList.remove("visible");
+            document.getElementById("response-textarea").value = "";
+            generateResponse();
+        };
+
+        // ========== COPY ==========
+
+        function getSignatureText() {
+            if (!userSignature.enabled) return "";
+            if (userSignature.mode === "random" && userSignature.randomList.length > 0) {
+                const i = Math.floor(Math.random() * userSignature.randomList.length);
+                return userSignature.randomList[i];
+            }
+            return userSignature.text || "";
+        }
+
+        window.copyResponse = function () {
+            const text = document.getElementById("response-textarea").value.trim();
+            if (!text) {
+                showToast("Nothing to copy.", "error");
+                return;
+            }
+
+            const yourName = localStorage.getItem("yourName") || "";
+            const sig = getSignatureText();
+
+            let finalText = text;
+            if (sig || yourName) {
+                finalText += "\n\n";
+                if (sig) finalText += sig + "\n";
+                if (yourName) finalText += yourName;
+            }
+
+            navigator.clipboard.writeText(finalText.trim()).then(() => {
+                showToast("Response copied to clipboard!");
+            }).catch(() => {
+                showToast("Failed to copy.", "error");
+            });
+        };
+
+        // ========== HELPERS ==========
+
+        function setGenerating(loading) {
+            document.getElementById("generate-btn").classList.toggle("loading", loading);
+        }
+
+        function showResponse(text) {
+            document.getElementById("response-textarea").value = text;
+            document.getElementById("response-section").classList.add("visible");
+        }
+
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "toast " + type + " show";
+            setTimeout(() => toast.classList.remove("show"), 2500);
+        }
+
+        window.logout = async function () {
+            await signOut();
+        };
+    </script>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <a href="messages.html" class="header-logo">
+                <img src="img/MasterLogo.jpg" alt="Logo">
+            </a>
+            <nav class="header-nav">
+                <a href="template.html" class="nav-link">Templates</a>
+                <a href="messages.html" class="nav-link">Messages</a>
+                <a href="ai.html" class="nav-link active">AI</a>
+                <a href="settings.html" class="nav-link">Settings</a>
+                <a href="resorts/" class="nav-link">Resorts</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span id="user-email" class="header-email"></span>
+            <button onclick="window.logout()" class="btn btn-sm btn-outline">Sign Out</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="ai-main">
+
+        <!-- 1. Capture Section -->
+        <div class="capture-section">
+            <button onclick="captureConversation()" class="btn btn-outline btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Capture Conversation
+            </button>
+            <span id="capture-status" class="capture-status"></span>
+            <button id="paste-toggle" class="paste-toggle" style="display: none;" onclick="togglePasteArea()">or paste manually</button>
+        </div>
+
+        <!-- 2. Paste Area (hidden by default) -->
+        <div id="paste-area" class="paste-area">
+            <textarea id="paste-textarea" placeholder="Paste the conversation here..."></textarea>
+        </div>
+
+        <!-- 3. Instruction Section -->
+        <div class="instruction-section">
+            <div class="form-group">
+                <label for="instruction-input">Instruction (optional)</label>
+                <input type="text" id="instruction-input" placeholder="e.g. Keep it short, mention early check-in is available...">
+            </div>
+        </div>
+
+        <!-- 4. Generate Button -->
+        <button id="generate-btn" onclick="generateResponse()" class="btn btn-primary btn-full btn-generate-ai">
+            <svg class="btn-text" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg>
+            <span class="btn-text">Generate AI Response</span>
+            <span class="spinner"></span>
+        </button>
+
+        <!-- 5. Response Section (hidden until response generated) -->
+        <div id="response-section" class="response-section">
+            <label for="response-textarea">AI Response</label>
+            <textarea id="response-textarea" placeholder="AI response will appear here..."></textarea>
+
+            <div class="action-bar">
+                <!-- Adjust Group -->
+                <div class="adjust-group">
+                    <input
+                        type="text"
+                        id="adjust-input"
+                        placeholder="Adjustment instruction..."
+                        onkeypress="handleAdjustKeypress(event)"
+                    >
+                    <button onclick="adjustResponse()" class="btn btn-outline btn-sm">Adjust</button>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <!-- Regenerate -->
+                    <button onclick="regenerateResponse()" class="btn btn-outline btn-sm btn-icon" title="Regenerate">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+                    </button>
+                    <!-- Copy -->
+                    <button onclick="copyResponse()" class="btn btn-primary btn-sm">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+</body>
+
+</html>
