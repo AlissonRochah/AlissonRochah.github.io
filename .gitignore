@@ -2,3 +2,6 @@
 .playwright-mcp/
 .DS_Store
 /0*-*.png
+/btn-*.png
+/modal-*.png
+/add-btn-*.png

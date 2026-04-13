@@ -483,6 +483,91 @@
             }
         };
 
+        // ========== ADD TEMPLATE MODAL ==========
+
+        window.openAddTemplateModal = async function () {
+            const modal = document.getElementById("add-template-modal");
+            const nameInput = document.getElementById("new-template-name");
+            const descInput = document.getElementById("new-template-description");
+            const categorySelect = document.getElementById("new-template-category");
+
+            nameInput.value = "";
+            descInput.value = "";
+            categorySelect.value = "";
+
+            // Populate categories from settings
+            categorySelect.innerHTML = '<option value="">No category</option>';
+            if (currentUserId) {
+                try {
+                    const settingsRef = doc(db, "settings", currentUserId);
+                    const snap = await getDoc(settingsRef);
+                    if (snap.exists() && Array.isArray(snap.data().categories)) {
+                        snap.data().categories.forEach(cat => {
+                            const opt = document.createElement("option");
+                            opt.value = cat;
+                            opt.textContent = cat;
+                            categorySelect.appendChild(opt);
+                        });
+                    }
+                } catch (e) {
+                    console.error("Error loading categories:", e);
+                }
+            }
+
+            modal.classList.add("active");
+            setTimeout(() => nameInput.focus(), 50);
+        };
+
+        window.closeAddTemplateModal = function () {
+            document.getElementById("add-template-modal").classList.remove("active");
+        };
+
+        window.saveNewTemplate = async function () {
+            const name = document.getElementById("new-template-name").value.trim();
+            const description = document.getElementById("new-template-description").value.trim();
+            const category = document.getElementById("new-template-category").value;
+
+            if (!name || !description) {
+                showToast("Please fill in name and content.", "error");
+                return;
+            }
+            if (!currentUserId) return;
+
+            try {
+                const userDocRef = doc(db, "templates", currentUserId);
+                const userTemplatesRef = doc(collection(userDocRef, "userTemplates"), name);
+                const formattedDescription = description.replace(/\n/g, "\\n");
+
+                await setDoc(userTemplatesRef, {
+                    name,
+                    description: formattedDescription,
+                    category: category || "",
+                    order: allTemplates.length
+                });
+
+                closeAddTemplateModal();
+                showToast("Template added!");
+                await loadTemplates(currentUserId);
+            } catch (e) {
+                console.error("Error saving template:", e);
+                showToast("Error saving template.", "error");
+            }
+        };
+
+        // Submit on Enter when focus is inside the modal (except in textarea)
+        document.addEventListener("keydown", function (e) {
+            const modal = document.getElementById("add-template-modal");
+            if (!modal || !modal.classList.contains("active")) return;
+            if (e.key === "Escape") {
+                closeAddTemplateModal();
+                return;
+            }
+            if (e.key === "Enter" && !e.shiftKey && e.target.tagName !== "TEXTAREA") {
+                e.preventDefault();
+                saveNewTemplate();
+            }
+        });
+
         function showToast(message, type = "success") {
             const toast = document.getElementById("toast");
             toast.textContent = message;
@@ -530,9 +615,9 @@
                     <label for="guestName">Guest Name</label>
                     <div class="input-with-add">
                         <input type="text" id="guestName" placeholder="Guest name">
-                        <a href="template.html?new=1" class="btn btn-primary btn-add-inline" title="Add new template">
+                        <button type="button" onclick="openAddTemplateModal()" class="btn btn-primary btn-add-inline" title="Add new template">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        </a>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -573,6 +658,40 @@
             <textarea id="generatedMessage" readonly placeholder="Your generated message will appear here..."></textarea>
         </div>
     </main>
+
+    <!-- Add Template Modal -->
+    <div id="add-template-modal" class="modal-overlay" onclick="if(event.target===this)closeAddTemplateModal()">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>New Template</h2>
+                <button type="button" onclick="closeAddTemplateModal()" class="btn-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row-modal">
+                    <div class="form-group" style="flex:2">
+                        <label for="new-template-name">Template Name</label>
+                        <input type="text" id="new-template-name" placeholder="e.g. Check-in Instructions">
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label for="new-template-category">Category</label>
+                        <select id="new-template-category" class="form-select">
+                            <option value="">No category</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="new-template-description">Template Content</label>
+                    <textarea id="new-template-description" placeholder="Write your template message here..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="closeAddTemplateModal()" class="btn btn-ghost">Cancel</button>
+                <button type="button" onclick="saveNewTemplate()" class="btn btn-primary">Save Template</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast -->
     <div id="toast" class="toast"></div>
