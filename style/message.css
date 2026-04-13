@@ -37,9 +37,10 @@
 
 .btn-add-inline {
   flex-shrink: 0;
-  width: 40px;
   padding: 0;
   aspect-ratio: 1 / 1;
+  /* Height is inherited from the row via align-items: stretch, and
+     aspect-ratio makes the width equal to that height. */
 }
 
 /* Services Section */
