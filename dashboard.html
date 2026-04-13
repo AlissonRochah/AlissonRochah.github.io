@@ -94,46 +94,70 @@
     <section id="templates-view" class="page-view" hidden>
         <div class="page-header">
             <div>
-                <h2 class="page-title">Manage Templates</h2>
-                <p class="page-subtitle">Add, edit, and remove message templates. Re-adding with the same title overwrites the existing one.</p>
+                <h2 class="page-title">Message Templates</h2>
+                <p class="page-subtitle">Reusable text blocks for guest messages. Use <code>{guest}</code> and <code>{host}</code> as placeholders.</p>
+            </div>
+            <button id="add-template" class="btn btn-primary btn-sm">+ New Template</button>
+        </div>
+
+        <div id="template-form-wrapper" class="form-card" hidden>
+            <h3 id="template-form-title">New Template</h3>
+            <div class="field">
+                <label>Name</label>
+                <input type="text" id="template-name" placeholder="e.g. Welcome Message">
+            </div>
+            <div class="field">
+                <label>Body</label>
+                <textarea id="template-body" rows="10" placeholder="Hi {guest},&#10;&#10;Welcome to our place! ...&#10;&#10;Best,&#10;{host}"></textarea>
+                <p class="field-hint">Placeholders: <code>{guest}</code> · <code>{host}</code></p>
+            </div>
+            <div class="form-actions">
+                <button id="template-save-btn" class="btn btn-primary btn-sm">Save</button>
+                <button id="template-cancel-btn" class="btn btn-outline btn-sm">Cancel</button>
             </div>
         </div>
 
-        <div class="templates-form">
-            <input type="text" id="template-name" placeholder="Template Title">
-            <textarea id="template-body" placeholder="Template" rows="6"></textarea>
-            <button id="template-save-btn" class="btn btn-primary">Add Template</button>
-        </div>
-
-        <div id="templates-list" class="templates-list"></div>
-        <p id="templates-empty" class="empty-message" hidden>No templates yet.</p>
+        <div id="templates-list" class="templates-grid"></div>
+        <p id="templates-empty" class="empty-message" hidden>No templates yet. Create your first one.</p>
     </section>
 
     <section id="messages-view" class="page-view" hidden>
         <div class="page-header">
             <div>
                 <h2 class="page-title">Message Generator</h2>
-                <p class="page-subtitle">Pick services, fill in host and guest names, then generate.</p>
+                <p class="page-subtitle">Pick templates, fill host and guest names, generate and copy.</p>
             </div>
         </div>
 
         <div class="msg-generator">
-            <div class="msg-field">
-                <label>Your Name</label>
-                <input type="text" id="msg-host" placeholder="Enter your name">
+            <div class="msg-form">
+                <div class="field-row">
+                    <div class="field">
+                        <label>Your name</label>
+                        <input type="text" id="msg-host" placeholder="Host name">
+                    </div>
+                    <div class="field">
+                        <label>Guest name</label>
+                        <input type="text" id="msg-guest" placeholder="Guest name">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Templates to include</label>
+                    <div id="msg-template-picker" class="msg-template-picker"></div>
+                </div>
+
+                <div class="form-actions">
+                    <button id="generate-msg-btn" class="btn btn-primary">Generate &amp; Copy</button>
+                    <button id="copy-msg-btn" class="btn btn-outline btn-sm">Copy Again</button>
+                    <button id="clear-msg-btn" class="btn btn-outline btn-sm">Clear</button>
+                </div>
             </div>
 
-            <div class="msg-field">
-                <label>Guest's Name</label>
-                <input type="text" id="msg-guest" placeholder="Guest Name">
+            <div class="msg-output-wrapper">
+                <label>Generated Message</label>
+                <textarea id="msg-output" rows="18" readonly placeholder="Your generated message will appear here..."></textarea>
             </div>
-
-            <h3 class="msg-section-title">Select Services</h3>
-            <div id="msg-template-picker" class="msg-template-picker"></div>
-
-            <button id="generate-msg-btn" class="btn btn-primary generate-btn">Generate Message</button>
-
-            <textarea id="msg-output" rows="14" readonly placeholder="Your generated message will appear here..."></textarea>
         </div>
     </section>
 
