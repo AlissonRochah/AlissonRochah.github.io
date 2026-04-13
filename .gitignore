@@ -1,0 +1,8 @@
+.superpowers/
+.playwright-mcp/
+.DS_Store
+/main-*.png
+/btn-*.png
+/modal-*.png
+/add-btn-*.png
+/0*-*.png

@@ -2,25 +2,39 @@
    SETTINGS PAGE
    ======================================== */
 .settings-main {
-  max-width: 640px;
+  max-width: 680px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: 28px 18px 40px;
+  animation: set-in 300ms var(--ease);
+}
+
+@keyframes set-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .settings-main h1 {
-  font-size: 1.4rem;
-  font-weight: 700;
+  font-size: 1.5rem;
+  font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.015em;
   margin-bottom: 24px;
 }
 
-/* Section */
+/* ========================================
+   SECTION CARD
+   ======================================== */
 .settings-section {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 20px;
-  margin-bottom: 20px;
+  padding: 22px;
+  margin-bottom: 16px;
+  transition: border-color var(--dur) var(--ease);
+}
+
+.settings-section:hover {
+  border-color: var(--border-strong);
 }
 
 .section-header {
@@ -34,15 +48,19 @@
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.005em;
 }
 
 .section-info p {
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
+  line-height: 1.5;
 }
 
-/* Toggle Switch */
+/* ========================================
+   TOGGLE SWITCH
+   ======================================== */
 .toggle {
   position: relative;
   display: inline-block;
@@ -61,10 +79,14 @@
 .toggle-slider {
   position: absolute;
   inset: 0;
-  background: var(--bg-hover);
+  background: var(--bg-input);
   border-radius: 24px;
-  border: 1px solid var(--border);
-  transition: all 0.2s ease;
+  border: 1px solid var(--border-strong);
+  transition: all var(--dur) var(--ease);
+}
+
+.toggle:hover .toggle-slider {
+  border-color: var(--text-subtle);
 }
 
 .toggle-slider::before {
@@ -76,7 +98,8 @@
   bottom: 2px;
   background: var(--text-muted);
   border-radius: 50%;
-  transition: all 0.2s ease;
+  transition: all var(--dur) var(--ease);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 .toggle input:checked + .toggle-slider {
@@ -87,13 +110,20 @@
 .toggle input:checked + .toggle-slider::before {
   transform: translateX(20px);
   background: #fff;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
 }
 
-/* Theme Switcher */
+.toggle input:focus-visible + .toggle-slider {
+  box-shadow: var(--shadow-ring);
+}
+
+/* ========================================
+   THEME SWITCHER
+   ======================================== */
 .theme-switcher {
   display: flex;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .theme-option {
@@ -102,47 +132,56 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px;
-  border: 2px solid var(--border);
+  padding: 14px;
+  border: 1.5px solid var(--border);
   border-radius: var(--radius);
+  font-family: var(--font-sans);
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-secondary);
-  background: var(--bg-primary);
+  background: var(--bg-input);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--dur) var(--ease);
 }
 
 .theme-option:hover {
-  border-color: var(--text-muted);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .theme-option.active {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--text-primary);
   background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.3);
 }
 
-/* Mode Tabs */
+/* ========================================
+   MODE TABS
+   ======================================== */
 .mode-tabs {
   display: flex;
   gap: 4px;
-  margin-top: 16px;
-  padding: 3px;
-  background: var(--bg-primary);
+  margin-top: 18px;
+  padding: 4px;
+  background: var(--bg-input);
   border-radius: var(--radius);
   border: 1px solid var(--border);
 }
 
 .mode-tab {
   flex: 1;
-  padding: 7px 16px;
+  padding: 8px 16px;
   border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 500;
   color: var(--text-muted);
   text-align: center;
-  transition: all 0.15s ease;
+  transition: all var(--dur) var(--ease);
+  border: none;
+  background: transparent;
+  cursor: pointer;
 }
 
 .mode-tab:hover {
@@ -150,30 +189,43 @@
 }
 
 .mode-tab.active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3),
+              inset 0 0 0 1px var(--border-strong);
 }
 
-/* Signature Mode Config */
+html.light .mode-tab.active {
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08),
+              inset 0 0 0 1px var(--border-strong);
+}
+
+/* ========================================
+   SIGNATURE MODE CONFIG
+   ======================================== */
 .sig-mode-config {
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .random-desc {
   font-size: 0.8rem;
   color: var(--text-muted);
   margin-bottom: 12px;
+  line-height: 1.5;
 }
 
 .preset-chips {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .preset-chips p {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .idea-chips {
@@ -183,79 +235,99 @@
 }
 
 .chip {
-  background: var(--bg-hover);
-  border: 1px solid var(--border);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
   color: var(--text-secondary);
-  padding: 5px 12px;
-  border-radius: 20px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-sans);
   font-size: 0.75rem;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--dur) var(--ease);
 }
 
 .chip:hover {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
+  transform: translateY(-1px);
 }
 
-/* Preview */
+html.light .chip:hover {
+  color: var(--accent);
+}
+
+/* ========================================
+   PREVIEW
+   ======================================== */
 .preview-section {
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 22px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
 }
 
 .preview-section h3 {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   margin-bottom: 10px;
 }
 
 .preview-box {
-  background: var(--bg-primary);
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
   font-size: 0.82rem;
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.65;
   white-space: pre-wrap;
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* ========================================
    CATEGORIES
    ======================================== */
 .category-config {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
 }
 
 .category-add {
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .category-add input {
   flex: 1;
+  height: 36px;
   background: var(--bg-input);
-  padding: 8px 14px;
+  padding: 0 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-primary);
+  font-family: var(--font-sans);
   font-size: 0.85rem;
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+
+.category-add input:hover {
+  border-color: var(--border-strong);
 }
 
 .category-add input:focus {
+  outline: none;
   border-color: var(--accent);
+  box-shadow: var(--shadow-ring);
 }
 
 .category-add input::placeholder {
-  color: var(--text-muted);
+  color: var(--text-subtle);
 }
 
 .category-list {
@@ -268,9 +340,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background: var(--bg-hover);
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  transition: border-color var(--dur) var(--ease);
+}
+
+.category-item:hover {
+  border-color: var(--border-strong);
 }
 
 .category-name {
@@ -282,26 +360,32 @@
   font-size: 0.8rem;
   color: var(--text-muted);
   text-align: center;
-  padding: 16px;
+  padding: 20px;
 }
 
-/* Save Button */
+/* ========================================
+   SAVE BUTTON
+   ======================================== */
 .btn-save {
-  padding: 12px 24px;
-  font-size: 0.9rem;
+  height: 42px;
+  padding: 0 22px;
+  font-size: 0.88rem;
+  font-weight: 600;
 }
 
-/* AI Configuration */
+/* ========================================
+   AI CONFIGURATION
+   ======================================== */
 .ai-config-fields {
-  margin-top: 16px;
+  margin-top: 18px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
 .ai-prompt-textarea {
-  min-height: 200px;
-  font-family: monospace;
-  font-size: 0.82rem;
-  line-height: 1.5;
+  min-height: 220px;
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
 }
