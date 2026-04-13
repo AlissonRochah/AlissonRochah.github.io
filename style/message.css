@@ -2,21 +2,31 @@
    MESSAGE GENERATOR PAGE
    ======================================== */
 .msg-main {
-  max-width: 900px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 22px 18px 40px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  animation: msg-in 300ms var(--ease);
+}
+
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .msg-form {
   flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
 }
 
 .form-row {
   display: flex;
-  gap: 12px;
+  gap: 14px;
 }
 
 .form-row .form-group {
@@ -43,23 +53,32 @@
      aspect-ratio makes the width equal to that height. */
 }
 
-/* Services Section */
+/* ========================================
+   SERVICES SECTION
+   ======================================== */
 .services-section {
   display: flex;
   flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
 }
 
 .services-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
 }
 
 .services-header h3 {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.005em;
 }
 
 .services-filters {
@@ -71,36 +90,43 @@
 .filter-box {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--bg-secondary);
+  gap: 8px;
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 4px 10px;
+  padding: 6px 12px;
   color: var(--text-muted);
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
 }
 
 .filter-box:focus-within {
   border-color: var(--accent);
+  box-shadow: var(--shadow-ring);
 }
 
 .filter-box input {
   background: transparent;
   color: var(--text-primary);
+  font-family: var(--font-sans);
   font-size: 0.8rem;
-  width: 100px;
+  width: 120px;
+  border: none;
+  outline: none;
 }
 
 .filter-box input::placeholder {
-  color: var(--text-muted);
+  color: var(--text-subtle);
 }
 
-/* Checkbox List - flows top-to-bottom, then wraps to next column */
+/* ========================================
+   CHECKBOX LIST
+   ======================================== */
 .checkbox-list {
   columns: 3;
-  column-gap: 8px;
+  column-gap: 10px;
 }
 
-/* Category Dropdown */
 .category-filter {
   display: flex;
   align-items: center;
@@ -108,22 +134,34 @@
 }
 
 .category-select {
-  background: var(--bg-secondary);
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 4px 10px;
+  padding: 6px 28px 6px 12px;
   color: var(--text-primary);
+  font-family: var(--font-sans);
   font-size: 0.8rem;
   cursor: pointer;
   outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23818a9c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+
+.category-select:hover {
+  border-color: var(--border-strong);
 }
 
 .category-select:focus {
   border-color: var(--accent);
+  box-shadow: var(--shadow-ring);
 }
 
 .category-select option {
-  background: var(--bg-secondary);
+  background: var(--bg-card);
   color: var(--text-primary);
 }
 
@@ -133,25 +171,27 @@
   gap: 0;
   padding: 0 4px 0 0;
   border-radius: var(--radius-sm);
-  transition: background 0.15s ease;
+  transition: background var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
   user-select: none;
   break-inside: avoid;
+  margin-bottom: 2px;
 }
 
 .checkbox-item:hover {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
 }
 
 .checkbox-item.suggested {
   background: var(--accent-soft);
-  border-left: 2px solid var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .checkbox-inner {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 4px 5px 8px;
+  gap: 10px;
+  padding: 6px 4px 6px 8px;
   cursor: pointer;
   flex: 1;
   min-width: 0;
@@ -164,16 +204,22 @@
 .checkmark {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--border);
+  border: 1.5px solid var(--border-strong);
   border-radius: 4px;
   flex-shrink: 0;
   position: relative;
-  transition: all 0.15s ease;
+  transition: all var(--dur) var(--ease);
+  background: var(--bg-input);
+}
+
+.checkbox-item:hover .checkmark {
+  border-color: var(--text-subtle);
 }
 
 .checkbox-inner input:checked ~ .checkmark {
   background: var(--accent);
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .checkbox-inner input:checked ~ .checkmark::after {
@@ -191,17 +237,20 @@
 .checkbox-label {
   font-size: 0.82rem;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color var(--dur) var(--ease);
 }
 
 .checkbox-inner input:checked ~ .checkbox-label {
   color: var(--text-primary);
 }
 
-/* Favorite Button */
+/* ========================================
+   FAVORITE BUTTON
+   ======================================== */
 .btn-fav {
   display: flex;
   align-items: center;
@@ -211,8 +260,11 @@
   border-radius: 4px;
   color: var(--text-muted);
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: all var(--dur) var(--ease);
   opacity: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .checkbox-item:hover .btn-fav {
@@ -220,76 +272,122 @@
 }
 
 .btn-fav.active {
-  color: #f59e0b;
+  color: var(--warning);
   opacity: 1;
 }
 
 .btn-fav:hover {
-  color: #f59e0b;
+  color: var(--warning);
+  background: var(--warning-soft);
 }
 
-/* Button Row */
+/* ========================================
+   BUTTON ROW
+   ======================================== */
 .btn-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
 .btn-generate {
-  padding: 12px;
-  font-size: 0.9rem;
+  padding: 0 20px;
+  height: 46px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
 .btn-copy-raw {
-  padding: 12px 14px;
+  height: 46px;
+  padding: 0 16px;
   flex-shrink: 0;
 }
 
-/* Output Section */
+/* ========================================
+   OUTPUT SECTION
+   ======================================== */
 .msg-output {
   display: flex;
   flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
 }
 
 .output-label {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 500;
   color: var(--text-secondary);
-  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
 }
 
 .msg-output textarea {
   width: 100%;
   min-height: 200px;
-  background: var(--bg-secondary);
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 14px 16px;
   color: var(--text-primary);
-  font-size: 0.82rem;
-  line-height: 1.6;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  line-height: 1.65;
   resize: vertical;
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+
+.msg-output textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.msg-output textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-ring);
 }
 
 .msg-output textarea::placeholder {
-  color: var(--text-muted);
+  color: var(--text-subtle);
 }
 
 /* ========================================
    RESPONSIVE
    ======================================== */
-@media (max-width: 700px) {
+@media (max-width: 780px) {
   .checkbox-list {
     columns: 2;
   }
+  .services-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .services-filters {
+    justify-content: space-between;
+  }
+  .filter-box input {
+    width: 100%;
+  }
 }
 
-@media (max-width: 500px) {
+@media (max-width: 520px) {
+  .msg-main {
+    padding: 16px 12px 32px;
+  }
   .form-row {
     flex-direction: column;
   }
-
   .checkbox-list {
     columns: 1;
+  }
+  .btn-row {
+    flex-direction: column;
+  }
+  .btn-copy-raw {
+    width: 100%;
   }
 }

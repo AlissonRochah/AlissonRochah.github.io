@@ -2,17 +2,25 @@
    TEMPLATE PAGE
    ======================================== */
 .main-content {
-  padding: 20px 16px;
-  max-width: 900px;
+  padding: 22px 18px 40px;
+  max-width: 960px;
   margin: 0 auto;
   width: 100%;
+  animation: tpl-in 300ms var(--ease);
 }
 
-/* Toolbar */
+@keyframes tpl-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================================
+   TOOLBAR
+   ======================================== */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 20px;
 }
 
@@ -20,43 +28,60 @@
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: var(--bg-secondary);
+  gap: 10px;
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px 14px;
+  padding: 0 14px;
+  height: 38px;
   color: var(--text-muted);
-  transition: border-color 0.2s ease;
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+
+.search-box:hover {
+  border-color: var(--border-strong);
 }
 
 .search-box:focus-within {
   border-color: var(--accent);
+  box-shadow: var(--shadow-ring);
 }
 
 .search-box input {
   flex: 1;
   background: transparent;
   color: var(--text-primary);
+  font-family: var(--font-sans);
   font-size: 0.85rem;
+  border: none;
+  outline: none;
+  height: 100%;
 }
 
 .search-box input::placeholder {
-  color: var(--text-muted);
+  color: var(--text-subtle);
 }
 
 .btn-sort {
-  padding: 8px 12px;
+  height: 38px;
+  padding: 0 14px;
   font-size: 0.8rem;
-  gap: 4px;
+  gap: 6px;
 }
 
 .template-count {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
 }
 
-/* Template List */
+/* ========================================
+   TEMPLATE LIST
+   ======================================== */
 .template-list {
   display: flex;
   flex-direction: column;
@@ -66,13 +91,17 @@
 .template-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-  transition: border-color 0.2s ease;
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  transition: border-color var(--dur) var(--ease),
+              transform var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
 }
 
 .template-card:hover {
-  border-color: var(--text-muted);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 .template-card-header {
@@ -80,11 +109,18 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+  gap: 10px;
 }
 
 .template-card-actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.template-card:hover .template-card-actions {
+  opacity: 1;
 }
 
 .btn-edit:hover {
@@ -95,17 +131,24 @@
 .template-card-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
 }
 
 .drag-handle {
   display: flex;
   align-items: center;
   cursor: grab;
-  color: var(--text-muted);
-  opacity: 0.4;
-  transition: opacity 0.15s ease;
+  color: var(--text-subtle);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease),
+              color var(--dur) var(--ease);
   touch-action: none;
+}
+
+.drag-handle:hover {
+  color: var(--text-muted);
 }
 
 .drag-handle:active {
@@ -122,14 +165,14 @@
 
 .template-card.drag-over {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-ring);
 }
 
 .drag-clone {
   position: fixed;
   z-index: 1000;
   pointer-events: none;
-  opacity: 0.85;
+  opacity: 0.9;
   box-shadow: var(--shadow-lg);
   transform: rotate(1deg);
 }
@@ -138,48 +181,80 @@
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .category-badge {
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 500;
   color: var(--accent);
   background: var(--accent-soft);
+  border: 1px solid rgba(59, 130, 246, 0.25);
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+html.light .category-badge {
+  color: var(--accent);
 }
 
 .ai-badge {
   color: var(--success);
   background: var(--success-soft);
+  border-color: rgba(16, 185, 129, 0.25);
   cursor: pointer;
+  transition: all var(--dur) var(--ease);
 }
 
-/* Modal form row */
+html.light .ai-badge {
+  color: #047857;
+}
+
+.ai-badge:hover {
+  transform: translateY(-1px);
+}
+
+/* ========================================
+   MODAL FORM
+   ======================================== */
 .form-row-modal {
   display: flex;
   gap: 12px;
 }
 
-/* Form select */
 .form-select {
   width: 100%;
+  height: 38px;
   background: var(--bg-input);
-  padding: 10px 14px;
+  padding: 0 36px 0 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-primary);
-  font-size: 0.875rem;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
   cursor: pointer;
   outline: none;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23818a9c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 12px center;
+  background-position: right 14px center;
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+
+.form-select:hover {
+  border-color: var(--border-strong);
 }
 
 .form-select:focus {
   border-color: var(--accent);
+  box-shadow: var(--shadow-ring);
 }
 
 .form-select option {
@@ -189,24 +264,34 @@
 
 .template-card-desc {
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   line-height: 1.6;
   max-height: 80px;
   overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   text-overflow: ellipsis;
+  white-space: pre-wrap;
 }
 
-/* Empty State */
+/* ========================================
+   EMPTY STATE
+   ======================================== */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 60px 20px;
+  padding: 72px 20px;
   color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
 }
 
 .empty-state p {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
 }
