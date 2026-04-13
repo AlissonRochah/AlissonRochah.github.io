@@ -52,6 +52,12 @@
                     }
                 } catch (e) {}
                 await loadTemplates(user.uid);
+
+                // If we arrived via the "+" shortcut from messages.html,
+                // auto-open the New Template modal.
+                if (new URLSearchParams(window.location.search).get("new") === "1") {
+                    window.openModal();
+                }
             } else {
                 window.location.href = "index.html";
             }

@@ -21,6 +21,25 @@
 
 .form-row .form-group {
   flex: 1;
+  min-width: 0;
+}
+
+.input-with-add {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input-with-add input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-add-inline {
+  flex-shrink: 0;
+  width: 40px;
+  padding: 0;
+  aspect-ratio: 1 / 1;
 }
 
 /* Services Section */
