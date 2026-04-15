@@ -281,3 +281,56 @@ ul { list-style: none; }
     font-size: 0.7rem;
     border-top: 1px solid var(--border);
 }
+
+/* ============ MAPRO debug section ============ */
+.mapro-debug {
+    padding: 12px 14px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.mapro-debug h2 {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.mapro-row {
+    display: flex;
+    gap: 8px;
+}
+.mapro-row input {
+    flex: 1;
+    padding: 8px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    outline: none;
+    color: var(--text-primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.mapro-row input:focus { border-color: var(--accent); }
+.mapro-row .btn { width: auto; flex-shrink: 0; }
+.mapro-status {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    min-height: 1em;
+}
+.mapro-status.error { color: var(--danger); }
+.mapro-status.success { color: var(--success); }
+.mapro-result {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 280px;
+    overflow-y: auto;
+}

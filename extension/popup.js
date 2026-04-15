@@ -1,4 +1,5 @@
 import { getSession, signIn, signOut, listResorts } from "./js/api.js";
+import { getReservationByCode } from "./js/mapro-client.js";
 
 const MODE_KEY = "rm_panel_mode";
 const RESORTS_CACHE_KEY = "rm_resorts_cache";
@@ -37,6 +38,10 @@ async function init() {
 
     document.querySelectorAll("[data-toggle-mode]").forEach(btn => {
         btn.addEventListener("click", toggleMode);
+    });
+    document.getElementById("mapro-lookup-btn").addEventListener("click", onMaproLookup);
+    document.getElementById("mapro-code").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") onMaproLookup();
     });
     await refreshToggleLabels();
 
@@ -291,6 +296,51 @@ function showDetail(resort) {
     }
 
     showView("detail-view");
+}
+
+// ============ MAPRO lookup (debug / MVP) ============
+
+async function onMaproLookup() {
+    const input = document.getElementById("mapro-code");
+    const status = document.getElementById("mapro-status");
+    const result = document.getElementById("mapro-result");
+    const btn = document.getElementById("mapro-lookup-btn");
+
+    const code = input.value.trim();
+    status.className = "mapro-status";
+    result.hidden = true;
+    result.textContent = "";
+
+    if (!code) {
+        status.classList.add("error");
+        status.textContent = "Enter a confirmation code.";
+        return;
+    }
+
+    btn.disabled = true;
+    status.textContent = "Looking up...";
+
+    try {
+        const reservation = await getReservationByCode(code);
+        if (!reservation) {
+            status.classList.add("error");
+            status.textContent = `No reservation found for ${code}.`;
+            return;
+        }
+        status.classList.add("success");
+        status.textContent = `Found booking ${reservation.bookingID}.`;
+        result.textContent = JSON.stringify(reservation, null, 2);
+        result.hidden = false;
+    } catch (err) {
+        status.classList.add("error");
+        if (err.message === "MAPRO_NOT_LOGGED_IN") {
+            status.innerHTML = 'Not logged into MAPRO. <a href="https://app.mapro.us" target="_blank">Open app.mapro.us</a> and sign in.';
+        } else {
+            status.textContent = err.message || "Lookup failed.";
+        }
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 init();

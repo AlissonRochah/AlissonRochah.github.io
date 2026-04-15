@@ -6,7 +6,8 @@
     "permissions": ["storage", "sidePanel", "tabs"],
     "host_permissions": [
         "https://ahpubmxpfmmpkfwbhtwf.supabase.co/*",
-        "https://*.airbnb.com/*"
+        "https://*.airbnb.com/*",
+        "https://app.mapro.us/*"
     ],
     "content_scripts": [
         {
