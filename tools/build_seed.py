@@ -17,8 +17,9 @@ import openpyxl
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-REPO = Path(__file__).resolve().parent.parent
-XLSX = REPO / "data" / "Resort Info.xlsx"
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parent
+XLSX = HERE / "data" / "Resort Info.xlsx"
 OUT = REPO / "db" / "seed_all_resorts.sql"
 
 SKIP_SHEETS = {"Gates", "Sheet116", "Sheet127", "Sheet129", "Sheet130"}
