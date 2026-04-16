@@ -4,6 +4,9 @@ import { getReservationByCode } from "./js/mapro-client.js";
 const MODE_KEY = "rm_panel_mode";
 const RESORTS_CACHE_KEY = "rm_resorts_cache";
 const MATCHED_KEY = "rm_matched_resort";
+const RESERVATION_KEY = "rm_current_reservation";
+
+let lastAutoLookupCode = "";
 
 const SECTION_ICONS = {
     gate:       "🚪",
@@ -50,9 +53,42 @@ async function init() {
         await loadAndShowList();
         await autoSelectFromStorage();
         subscribeToListingChanges();
+        await autoLookupFromReservation();
+        subscribeToReservationChanges();
     } else {
         showView("login-view");
     }
+}
+
+// ============ Auto MAPRO lookup from captured reservation ============
+
+async function autoLookupFromReservation() {
+    try {
+        const obj = await chrome.storage.local.get(RESERVATION_KEY);
+        const res = obj[RESERVATION_KEY];
+        if (!res || !res.confirmation_code) return;
+        triggerMaproLookup(res.confirmation_code);
+    } catch (err) {
+        console.warn("Resort Info: auto-lookup failed", err);
+    }
+}
+
+function subscribeToReservationChanges() {
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== "local" || !changes[RESERVATION_KEY]) return;
+        const next = changes[RESERVATION_KEY].newValue;
+        if (!next || !next.confirmation_code) return;
+        triggerMaproLookup(next.confirmation_code);
+    });
+}
+
+function triggerMaproLookup(code) {
+    if (!code || code === lastAutoLookupCode) return;
+    lastAutoLookupCode = code;
+    const input = document.getElementById("mapro-code");
+    if (!input) return;
+    input.value = code;
+    onMaproLookup();
 }
 
 // ============ Auto-select from Airbnb listing title ============
