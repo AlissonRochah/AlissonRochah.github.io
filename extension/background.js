@@ -14,6 +14,7 @@ const MODE_KEY = "rm_panel_mode";
 const LISTING_KEY = "rm_current_listing";
 const RESORTS_CACHE_KEY = "rm_resorts_cache";
 const MATCHED_KEY = "rm_matched_resort";
+const RESERVATION_KEY = "rm_current_reservation";
 
 // ============ Panel mode ============
 
@@ -114,6 +115,24 @@ chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => 
     if (request.action === "getMatchedResort") {
         chrome.storage.local.get(MATCHED_KEY, (data) => {
             sendResponse({ success: true, resort: data[MATCHED_KEY] || null });
+        });
+        return true; // async
+    }
+
+    if (request.action === "getReservation") {
+        chrome.storage.local.get(RESERVATION_KEY, (data) => {
+            sendResponse({ success: true, reservation: data[RESERVATION_KEY] || null });
+        });
+        return true; // async
+    }
+
+    if (request.action === "getContext") {
+        chrome.storage.local.get([MATCHED_KEY, RESERVATION_KEY], (data) => {
+            sendResponse({
+                success: true,
+                resort: data[MATCHED_KEY] || null,
+                reservation: data[RESERVATION_KEY] || null,
+            });
         });
         return true; // async
     }

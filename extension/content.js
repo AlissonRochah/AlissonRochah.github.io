@@ -10,16 +10,23 @@
 
 const LISTING_KEY = "rm_current_listing";
 const MATCHED_KEY = "rm_matched_resort";
+const RESERVATION_KEY = "rm_current_reservation";
 const BUTTON_ID = "rm-gate-code-btn";
 const DIVIDER_ID = "rm-gate-code-divider";
 const DEBOUNCE_MS = 250;
 const SVG_NS = "http://www.w3.org/2000/svg";
+const MORE_ACTIONS_SELECTOR = '[data-testid="hosting-details-header-section-actions-menu-entry-point"]';
+const MANAGE_MODAL_SELECTOR = '[role="dialog"][aria-label="Manage reservation"]';
+const MODAL_WAIT_MS = 2000;
+const MODAL_POLL_MS = 50;
 
 // Material Design vpn_key — visually distinct from Airbnb's keypad icon.
 const KEY_PATH = "M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z";
 
 let lastText = "";
 let debounceTimer = null;
+let lastReservationSignature = "";
+let reservationInFlight = false;
 
 // ============ Listing title extraction ============
 
@@ -162,6 +169,155 @@ async function injectFromStorage() {
     }
 }
 
+// ============ Reservation details capture ============
+//
+// The confirmation code, phone number, and booking date live inside the
+// "Manage reservation" modal that only opens when the "..." button in the
+// details panel header is clicked. We open it invisibly, read the rows,
+// and close it. A signature check (listing text + guest panel text) prevents
+// repeatedly re-opening the modal on every mutation.
+
+function currentSignature() {
+    const panel = document.getElementById("thread_details_panel");
+    if (!panel) return "";
+    // Use the visible listing title + datespan as a stable key for the
+    // currently open conversation.
+    return (panel.textContent || "").slice(0, 300);
+}
+
+function waitFor(selector, timeout) {
+    return new Promise((resolve) => {
+        const start = Date.now();
+        const tick = () => {
+            const el = document.querySelector(selector);
+            if (el) { resolve(el); return; }
+            if (Date.now() - start >= timeout) { resolve(null); return; }
+            setTimeout(tick, MODAL_POLL_MS);
+        };
+        tick();
+    });
+}
+
+function waitForGone(selector, timeout) {
+    return new Promise((resolve) => {
+        const start = Date.now();
+        const tick = () => {
+            if (!document.querySelector(selector)) { resolve(true); return; }
+            if (Date.now() - start >= timeout) { resolve(false); return; }
+            setTimeout(tick, MODAL_POLL_MS);
+        };
+        tick();
+    });
+}
+
+function parseManageModal(modal) {
+    const out = {};
+
+    const codeRow = modal.querySelector("#hosting-details-action-row-confirmation-code");
+    if (codeRow) {
+        const texts = Array.from(codeRow.querySelectorAll("div"))
+            .map(d => (d.textContent || "").trim())
+            .filter(Boolean);
+        const idx = texts.indexOf("Confirmation code");
+        if (idx >= 0 && texts[idx + 1]) {
+            out.confirmation_code = texts[idx + 1];
+        }
+    }
+
+    const phoneRows = modal.querySelectorAll('[id^="hosting-details-action-row-"][id$="-phone-number"]');
+    for (const row of phoneRows) {
+        const texts = Array.from(row.querySelectorAll("div"))
+            .map(d => (d.textContent || "").trim())
+            .filter(Boolean);
+        // Title is "<Name>'s phone number" → next is the number.
+        const titleIdx = texts.findIndex(t => /phone number$/i.test(t));
+        if (titleIdx >= 0 && texts[titleIdx + 1]) {
+            out.guest_name = texts[titleIdx].replace(/'s phone number$/i, "").trim();
+            out.phone = texts[titleIdx + 1];
+            break;
+        }
+    }
+
+    const bookingRow = modal.querySelector("#hosting-details-action-row-booking-date");
+    if (bookingRow) {
+        const texts = Array.from(bookingRow.querySelectorAll("div"))
+            .map(d => (d.textContent || "").trim())
+            .filter(Boolean);
+        const idx = texts.indexOf("Booking date");
+        if (idx >= 0 && texts[idx + 1]) {
+            out.booking_date = texts[idx + 1];
+        }
+    }
+
+    // Listing id from the "View on calendar" link.
+    const calLink = modal.querySelector('a[href^="/multicalendar/"]');
+    if (calLink) {
+        const m = calLink.getAttribute("href").match(/\/multicalendar\/(\d+)/);
+        if (m) out.listing_id = m[1];
+    }
+
+    // Confirmation code also appears in /reservation/change?code=... — use as
+    // a fallback if the row parse missed.
+    if (!out.confirmation_code) {
+        const changeLink = modal.querySelector('a[href*="/reservation/change?code="]');
+        if (changeLink) {
+            const m = changeLink.getAttribute("href").match(/code=([A-Z0-9]+)/);
+            if (m) out.confirmation_code = m[1];
+        }
+    }
+
+    return out;
+}
+
+async function captureReservationDetails() {
+    if (reservationInFlight) return;
+    const panel = document.getElementById("thread_details_panel");
+    if (!panel) return;
+
+    const sig = currentSignature();
+    if (!sig || sig === lastReservationSignature) return;
+
+    const moreBtn = panel.querySelector(MORE_ACTIONS_SELECTOR);
+    if (!moreBtn) return;
+
+    // If the modal is already open (user opened it manually), just scrape.
+    let modal = document.querySelector(MANAGE_MODAL_SELECTOR);
+    let openedByUs = false;
+
+    reservationInFlight = true;
+    try {
+        if (!modal) {
+            moreBtn.click();
+            modal = await waitFor(MANAGE_MODAL_SELECTOR, MODAL_WAIT_MS);
+            openedByUs = true;
+        }
+        if (!modal) {
+            reservationInFlight = false;
+            return;
+        }
+
+        const details = parseManageModal(modal);
+
+        if (openedByUs) {
+            const closeBtn = modal.querySelector('button[aria-label="Close"]');
+            if (closeBtn) closeBtn.click();
+            // Wait until the modal is gone so the next mutation batch is clean.
+            await waitForGone(MANAGE_MODAL_SELECTOR, MODAL_WAIT_MS);
+        }
+
+        if (details && details.confirmation_code) {
+            lastReservationSignature = sig;
+            await chrome.storage.local.set({
+                [RESERVATION_KEY]: { ...details, ts: Date.now() },
+            });
+        }
+    } catch (err) {
+        console.warn("Resort Info: reservation capture failed", err);
+    } finally {
+        reservationInFlight = false;
+    }
+}
+
 // ============ Mutation loop ============
 
 function scheduleUpdate() {
@@ -170,6 +326,8 @@ function scheduleUpdate() {
         publishListingTitle();
         // Re-inject in case Airbnb's SPA tore down or re-mounted the panel.
         injectFromStorage();
+        // Fire-and-forget — it self-guards against concurrent runs.
+        captureReservationDetails();
     }, DEBOUNCE_MS);
 }
 
