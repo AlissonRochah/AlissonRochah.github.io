@@ -113,6 +113,41 @@ export async function getReservationByCode(code) {
     return items[0];
 }
 
+// Search the reservation grid by guest name. Returns an array of matches
+// so the caller can decide what to do when the name is ambiguous (MAPRO
+// may have multiple reservations under the same guest name across
+// different properties/dates). Current check-in window is assumed — we
+// ask for upcoming/in-stay reservations by filtering checkout >= today.
+export async function searchReservationsByGuestName(guestName) {
+    if (!guestName) return [];
+    // Today in MAPRO server-ish local time (America/New_York). A plain
+    // YYYY-MM-DD from the user's locale is close enough for filtering out
+    // ancient history.
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    // DevExtreme filter grammar: ["field","op","value"], combined with "and".
+    const filter = JSON.stringify([
+        ["guest", "contains", guestName],
+        "and",
+        ["checkout", ">=", todayStr],
+    ]);
+    const sort = JSON.stringify([{ selector: "checkin", desc: false }]);
+    const data = await maproGet("/booking/check-reservation", {
+        gridAjax: "",
+        skip: 0,
+        take: 5,
+        requireTotalCount: false,
+        sort,
+        filter,
+    });
+    const items = (data && Array.isArray(data.items)) ? data.items : [];
+    return items;
+}
+
 // Same grid, looked up by MAPRO's internal booking id (the numeric id in
 // /booking/reservation/<bookingID>). Used to resolve full reservation
 // details — including doorCode — for a reservation that we only have a

@@ -13,6 +13,7 @@ const MATCHED_KEY = "rm_matched_resort";
 const RESERVATION_KEY = "rm_current_reservation";
 const PREVIOUS_KEY = "rm_previous_reservation";
 const PROPERTY_MANAGER_KEY = "rm_property_manager";
+const GUEST_NAME_KEY = "rm_current_guest_name";
 const BUTTON_ID = "rm-gate-code-btn";
 const DIVIDER_ID = "rm-gate-code-divider";
 const PREV_BUTTON_ID = "rm-previous-gate-code-btn";
@@ -55,21 +56,55 @@ function extractListingText() {
     return (titleEl.textContent || "").trim();
 }
 
+function extractGuestName() {
+    const panel = document.getElementById("thread_details_panel");
+    if (!panel) return "";
+    // The Guests section is rendered behind a button with
+    // data-testid="hosting-details-whos-coming". The first <li> inside it
+    // holds the primary guest with their full name in a div whose text is
+    // just the name (no children).
+    const guestsBtn = panel.querySelector('[data-testid="hosting-details-whos-coming"]');
+    if (!guestsBtn) return "";
+    const firstLi = guestsBtn.querySelector("ul li");
+    if (!firstLi) return "";
+    // Walk the descendants looking for the first text-only div that isn't
+    // "Enjoys …" trivia text. The name div is wrapped in class t183ylsr in
+    // the captured HTML — we don't depend on the class, only on it being
+    // the first leaf-text div inside the first list item.
+    const candidates = firstLi.querySelectorAll("div");
+    for (const d of candidates) {
+        if (d.children.length !== 0) continue;
+        const text = (d.textContent || "").trim();
+        if (!text) continue;
+        // Skip obvious non-name fields that may appear as leaf divs.
+        if (/^enjoys\b/i.test(text)) continue;
+        if (/infants?\s+attend/i.test(text)) continue;
+        if (/child|infant/i.test(text)) continue;
+        return text;
+    }
+    return "";
+}
+
 async function publishListingTitle() {
     const text = extractListingText();
     if (!text || text === lastText) return;
     const isSwitch = lastText !== "";
     lastText = text;
+    const guestName = extractGuestName();
     try {
-        await chrome.storage.local.set({
-            [LISTING_KEY]: { text, ts: Date.now() },
-        });
+        const writes = { [LISTING_KEY]: { text, ts: Date.now() } };
+        if (guestName) {
+            writes[GUEST_NAME_KEY] = { name: guestName, ts: Date.now() };
+        }
+        await chrome.storage.local.set(writes);
         // Switching conversations — drop the previous conversation's
         // reservation/previous-stay caches so we don't show the wrong
         // Previous Gate Code on the new panel.
         if (isSwitch) {
             lastReservationSignature = "";
-            await chrome.storage.local.remove([RESERVATION_KEY, PREVIOUS_KEY, PROPERTY_MANAGER_KEY]);
+            const removeKeys = [RESERVATION_KEY, PREVIOUS_KEY, PROPERTY_MANAGER_KEY];
+            if (!guestName) removeKeys.push(GUEST_NAME_KEY);
+            await chrome.storage.local.remove(removeKeys);
         }
     } catch (err) {
         console.warn("Resort Info: failed to write listing title", err);

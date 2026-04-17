@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Resort Info",
-    "version": "0.10.0",
+    "version": "0.11.0",
     "description": "Quick lookup of resort information for customer service agents.",
     "permissions": ["storage", "sidePanel", "tabs"],
     "host_permissions": [

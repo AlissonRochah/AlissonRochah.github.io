@@ -13,6 +13,7 @@
 import {
     getPreviousReservationByHouseCID,
     getReservationByCode,
+    searchReservationsByGuestName,
 } from "./js/mapro-client.js";
 
 const MODE_KEY = "rm_panel_mode";
@@ -22,6 +23,7 @@ const MATCHED_KEY = "rm_matched_resort";
 const RESERVATION_KEY = "rm_current_reservation";
 const PREVIOUS_KEY = "rm_previous_reservation";
 const PROPERTY_MANAGER_KEY = "rm_property_manager";
+const GUEST_NAME_KEY = "rm_current_guest_name";
 
 // ============ Panel mode ============
 
@@ -106,6 +108,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
             resolveFromConfirmationCode(next.confirmation_code);
         }
     }
+    if (changes[GUEST_NAME_KEY]) {
+        const next = changes[GUEST_NAME_KEY].newValue;
+        if (next && next.name) {
+            resolveFromGuestName(next.name);
+        }
+    }
 });
 
 // On worker wake-up (install / startup / message), reconcile once so a
@@ -128,6 +136,54 @@ chrome.runtime.onStartup.addListener(recomputeMatch);
 // and writes rm_current_reservation. We pick it up here, resolve the full
 // current reservation in MAPRO (to get maproHouseCID), then chase down the
 // previous stay on the same property. All without the popup being open.
+let resolveGuestInFlight = "";
+async function resolveFromGuestName(name) {
+    if (!name || name === resolveGuestInFlight) return;
+    resolveGuestInFlight = name;
+    try {
+        // Skip if the user already opened the modal for this conversation
+        // and we have a current reservation cached — the confirmation-code
+        // path is authoritative.
+        const existing = await chrome.storage.local.get(RESERVATION_KEY);
+        if (existing[RESERVATION_KEY] && existing[RESERVATION_KEY].confirmation_code) {
+            return;
+        }
+        const matches = await searchReservationsByGuestName(name);
+        if (!Array.isArray(matches) || matches.length !== 1) {
+            // Zero or ambiguous — bail and wait for the user to open the
+            // Manage reservation modal.
+            return;
+        }
+        const current = matches[0];
+        if (!current || !current.maproHouseCID) return;
+        // Publish the resolved current reservation so downstream handlers
+        // and the Airbnb panel UI update. Use codReference as the
+        // confirmation code so the existing pipeline recognises it as a
+        // "current" reservation.
+        await chrome.storage.local.set({
+            [RESERVATION_KEY]: {
+                confirmation_code: current.codReference || "",
+                guest_name: current.guest || name,
+                booking_date: null,
+                listing_id: String(current.maproHouseCID),
+                phone: current.guestPhone || "",
+                source: "guest-name-lookup",
+                ts: Date.now(),
+            },
+        });
+        // We already have the full MAPRO row, so drive previous/PM directly
+        // without round-tripping through /booking/check-reservation again.
+        await Promise.all([
+            resolvePreviousReservation(current),
+            resolvePropertyManager(current),
+        ]);
+    } catch (err) {
+        console.warn("Resort Info: resolve from guest name failed", err);
+    } finally {
+        if (resolveGuestInFlight === name) resolveGuestInFlight = "";
+    }
+}
+
 let resolveInFlight = "";
 async function resolveFromConfirmationCode(code) {
     if (!code || code === resolveInFlight) return;
