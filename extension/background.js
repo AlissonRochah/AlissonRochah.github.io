@@ -10,11 +10,18 @@
 // The resort cache is written by the popup (extension/popup.js) whenever
 // it loads the list from Supabase. The background worker only reads it.
 
+import {
+    getPropertyUlidByHouseCID,
+    getPreviousGuestReservation,
+    getReservationByBookingId,
+} from "./js/mapro-client.js";
+
 const MODE_KEY = "rm_panel_mode";
 const LISTING_KEY = "rm_current_listing";
 const RESORTS_CACHE_KEY = "rm_resorts_cache";
 const MATCHED_KEY = "rm_matched_resort";
 const RESERVATION_KEY = "rm_current_reservation";
+const PREVIOUS_KEY = "rm_previous_reservation";
 
 // ============ Panel mode ============
 
@@ -100,6 +107,57 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // while we were asleep.
 chrome.runtime.onInstalled.addListener(recomputeMatch);
 chrome.runtime.onStartup.addListener(recomputeMatch);
+
+// ============ Previous reservation resolution ============
+//
+// Given the current reservation (full object from /booking/check-reservation,
+// sent by the popup after its auto-lookup), find the most recent real guest
+// reservation on the same property that ended at or before the current
+// check-in. Blocks are skipped. The resolved previous stay — including its
+// door code — is written to rm_previous_reservation so the content script
+// can inject a "Previous Gate Code" card.
+
+async function resolvePreviousReservation(currentRes) {
+    if (!currentRes) return;
+    const houseCID = currentRes.maproHouseCID;
+    const currentCheckin = currentRes.checkin;
+    if (!houseCID || !currentCheckin) return;
+
+    try {
+        const propertyUlid = await getPropertyUlidByHouseCID(houseCID);
+        if (!propertyUlid) {
+            await chrome.storage.local.remove(PREVIOUS_KEY);
+            return;
+        }
+        const prev = await getPreviousGuestReservation(propertyUlid, currentCheckin);
+        if (!prev || !prev.bookingID) {
+            await chrome.storage.local.remove(PREVIOUS_KEY);
+            return;
+        }
+        const full = await getReservationByBookingId(prev.bookingID);
+        const payload = {
+            bookingID: prev.bookingID,
+            checkin: prev.checkin,
+            checkout: prev.checkout,
+            guest: prev.guest,
+            door_code: (full && full.doorCode) || "",
+            confirmation_code: (full && full.codReference) || "",
+            ts: Date.now(),
+        };
+        await chrome.storage.local.set({ [PREVIOUS_KEY]: payload });
+    } catch (err) {
+        console.warn("Resort Info: previous reservation lookup failed", err);
+    }
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request && request.action === "resolvePreviousReservation") {
+        resolvePreviousReservation(request.reservation);
+        sendResponse({ ok: true });
+        return false;
+    }
+    return false;
+});
 
 // ============ External messaging (from the webapp) ============
 //

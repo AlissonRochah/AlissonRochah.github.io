@@ -11,8 +11,11 @@
 const LISTING_KEY = "rm_current_listing";
 const MATCHED_KEY = "rm_matched_resort";
 const RESERVATION_KEY = "rm_current_reservation";
+const PREVIOUS_KEY = "rm_previous_reservation";
 const BUTTON_ID = "rm-gate-code-btn";
 const DIVIDER_ID = "rm-gate-code-divider";
+const PREV_BUTTON_ID = "rm-previous-gate-code-btn";
+const PREV_DIVIDER_ID = "rm-previous-gate-code-divider";
 const DEBOUNCE_MS = 250;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MORE_ACTIONS_SELECTOR = '[data-testid="hosting-details-header-section-actions-menu-entry-point"]';
@@ -166,6 +169,86 @@ async function injectFromStorage() {
         injectGateCodeButton(obj[MATCHED_KEY]);
     } catch (err) {
         console.warn("Resort Info: failed to read matched resort", err);
+    }
+}
+
+// ============ Previous-stay gate code injection ============
+//
+// Same shape as the current gate-code button, placed immediately after it.
+// The label is "Previous Gate Code" and the value is the door code MAPRO
+// stored for the prior reservation on the same property.
+
+function removePreviousInjected() {
+    const btn = document.getElementById(PREV_BUTTON_ID);
+    const div = document.getElementById(PREV_DIVIDER_ID);
+    if (btn) btn.remove();
+    if (div) div.remove();
+}
+
+function injectPreviousGateCodeButton(prev) {
+    if (!prev || !prev.door_code) {
+        removePreviousInjected();
+        return;
+    }
+
+    // Anchor relative to the already-injected current gate-code button so
+    // the previous card always sits right after it.
+    const anchor = document.getElementById(BUTTON_ID);
+    if (!anchor) {
+        removePreviousInjected();
+        return;
+    }
+
+    const codeValue = prev.door_code;
+    const existing = document.getElementById(PREV_BUTTON_ID);
+    if (existing &&
+        existing.parentNode === anchor.parentNode &&
+        existing.dataset.gateCode === codeValue) {
+        return;
+    }
+
+    const newBtn = anchor.cloneNode(true);
+    newBtn.id = PREV_BUTTON_ID;
+    newBtn.dataset.gateCode = codeValue;
+
+    // Relabel.
+    const divs = newBtn.querySelectorAll("div");
+    for (const div of divs) {
+        if (div.children.length === 0 &&
+            /gate\s+code/i.test((div.textContent || "").trim())) {
+            div.textContent = "Previous Gate Code";
+            const codeDiv = div.nextElementSibling;
+            if (codeDiv) codeDiv.textContent = codeValue;
+            break;
+        }
+    }
+
+    if (existing) {
+        existing.replaceWith(newBtn);
+        return;
+    }
+
+    // Clone the divider preceding the current gate-code button for rhythm.
+    const sourceDivider = document.getElementById(DIVIDER_ID);
+    let divider = null;
+    if (sourceDivider) {
+        divider = sourceDivider.cloneNode(true);
+        divider.id = PREV_DIVIDER_ID;
+    }
+
+    if (divider) {
+        anchor.after(divider, newBtn);
+    } else {
+        anchor.after(newBtn);
+    }
+}
+
+async function injectPreviousFromStorage() {
+    try {
+        const obj = await chrome.storage.local.get(PREVIOUS_KEY);
+        injectPreviousGateCodeButton(obj[PREVIOUS_KEY]);
+    } catch (err) {
+        console.warn("Resort Info: failed to read previous reservation", err);
     }
 }
 
@@ -326,6 +409,7 @@ function scheduleUpdate() {
         publishListingTitle();
         // Re-inject in case Airbnb's SPA tore down or re-mounted the panel.
         injectFromStorage();
+        injectPreviousFromStorage();
         // Fire-and-forget — it self-guards against concurrent runs.
         captureReservationDetails();
     }, DEBOUNCE_MS);
@@ -344,6 +428,21 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes[MATCHED_KEY]) {
         injectGateCodeButton(changes[MATCHED_KEY].newValue);
+    }
+    if (changes[PREVIOUS_KEY]) {
+        injectPreviousGateCodeButton(changes[PREVIOUS_KEY].newValue);
+    }
+    // When the current reservation changes, clear the stale previous one so
+    // the UI doesn't show last conversation's previous code next to the new
+    // current code until the background resolves the new previous.
+    if (changes[RESERVATION_KEY]) {
+        const next = changes[RESERVATION_KEY].newValue;
+        const prev = changes[RESERVATION_KEY].oldValue;
+        const nextCode = next && next.confirmation_code;
+        const prevCode = prev && prev.confirmation_code;
+        if (nextCode !== prevCode) {
+            chrome.storage.local.remove(PREVIOUS_KEY);
+        }
     }
 });
 

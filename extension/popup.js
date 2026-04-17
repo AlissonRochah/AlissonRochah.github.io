@@ -367,6 +367,13 @@ async function onMaproLookup() {
         status.textContent = `Found booking ${reservation.bookingID}.`;
         result.textContent = JSON.stringify(reservation, null, 2);
         result.hidden = false;
+
+        // Kick off previous-reservation resolution in the background worker
+        // so the content script can inject a "Previous Gate Code" card.
+        chrome.runtime.sendMessage({
+            action: "resolvePreviousReservation",
+            reservation,
+        });
     } catch (err) {
         status.classList.add("error");
         if (err.message === "MAPRO_NOT_LOGGED_IN") {
