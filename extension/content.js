@@ -357,37 +357,18 @@ async function captureReservationDetails() {
     const panel = document.getElementById("thread_details_panel");
     if (!panel) return;
 
+    // Lazy mode: only scrape if the user already has the "Manage reservation"
+    // modal open. We never auto-click the "..." button — the reservation
+    // details capture is fully opt-in.
+    const modal = document.querySelector(MANAGE_MODAL_SELECTOR);
+    if (!modal) return;
+
     const sig = currentSignature();
     if (!sig || sig === lastReservationSignature) return;
 
-    const moreBtn = panel.querySelector(MORE_ACTIONS_SELECTOR);
-    if (!moreBtn) return;
-
-    // If the modal is already open (user opened it manually), just scrape.
-    let modal = document.querySelector(MANAGE_MODAL_SELECTOR);
-    let openedByUs = false;
-
     reservationInFlight = true;
     try {
-        if (!modal) {
-            moreBtn.click();
-            modal = await waitFor(MANAGE_MODAL_SELECTOR, MODAL_WAIT_MS);
-            openedByUs = true;
-        }
-        if (!modal) {
-            reservationInFlight = false;
-            return;
-        }
-
         const details = parseManageModal(modal);
-
-        if (openedByUs) {
-            const closeBtn = modal.querySelector('button[aria-label="Close"]');
-            if (closeBtn) closeBtn.click();
-            // Wait until the modal is gone so the next mutation batch is clean.
-            await waitForGone(MANAGE_MODAL_SELECTOR, MODAL_WAIT_MS);
-        }
-
         if (details && details.confirmation_code) {
             lastReservationSignature = sig;
             await chrome.storage.local.set({
