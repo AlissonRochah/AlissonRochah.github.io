@@ -32,6 +32,69 @@ async function maproGet(path, params = {}) {
     return res.json();
 }
 
+async function maproPost(path) {
+    const res = await fetch(MAPRO_BASE + path, {
+        method: "POST",
+        credentials: "include",
+        redirect: "manual",
+        headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+        },
+    });
+    if (res.type === "opaqueredirect" || res.status === 0 || res.status === 401) {
+        throw new Error("MAPRO_NOT_LOGGED_IN");
+    }
+    if (!res.ok) throw new Error(`MAPRO ${res.status}`);
+    return res.json();
+}
+
+// Resolve the numeric responsible id on a reservation (e.g. "927152") into
+// the employee's display name via /api/internal/datasources/CompanyEmployees.
+// Cached in chrome.storage.local with a 24h TTL — the staff roster rarely
+// changes.
+const EMPLOYEE_MAP_KEY = "rm_mapro_employee_map";
+const EMPLOYEE_MAP_TTL_MS = 24 * 60 * 60 * 1000;
+let inMemoryEmployeeMap = null;
+
+async function readCachedEmployeeMap() {
+    if (inMemoryEmployeeMap) return inMemoryEmployeeMap;
+    try {
+        const obj = await chrome.storage.local.get(EMPLOYEE_MAP_KEY);
+        const cached = obj[EMPLOYEE_MAP_KEY];
+        if (cached && cached.map && (Date.now() - cached.ts) < EMPLOYEE_MAP_TTL_MS) {
+            inMemoryEmployeeMap = cached.map;
+            return cached.map;
+        }
+    } catch (_) { /* ignore */ }
+    return null;
+}
+
+async function refreshEmployeeMap() {
+    const data = await maproPost("/api/internal/datasources/CompanyEmployees/load");
+    const items = (data && Array.isArray(data.items)) ? data.items : [];
+    const map = {};
+    for (const it of items) {
+        if (it && it.key && it.value) map[String(it.key)] = it.value;
+    }
+    inMemoryEmployeeMap = map;
+    try {
+        await chrome.storage.local.set({
+            [EMPLOYEE_MAP_KEY]: { map, ts: Date.now() },
+        });
+    } catch (_) { /* ignore */ }
+    return map;
+}
+
+export async function getEmployeeNameById(employeeId) {
+    if (!employeeId) return "";
+    const key = String(employeeId);
+    const cached = await readCachedEmployeeMap();
+    if (cached && cached[key]) return cached[key];
+    const fresh = await refreshEmployeeMap();
+    return fresh[key] || "";
+}
+
 // Look up an Airbnb reservation in MAPRO by its confirmation code (e.g.
 // HMQ8PK2R2F). MAPRO stores it in the codReference column on the
 // /booking/check-reservation grid. Returns the first matching item, or null

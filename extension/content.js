@@ -12,10 +12,13 @@ const LISTING_KEY = "rm_current_listing";
 const MATCHED_KEY = "rm_matched_resort";
 const RESERVATION_KEY = "rm_current_reservation";
 const PREVIOUS_KEY = "rm_previous_reservation";
+const PROPERTY_MANAGER_KEY = "rm_property_manager";
 const BUTTON_ID = "rm-gate-code-btn";
 const DIVIDER_ID = "rm-gate-code-divider";
 const PREV_BUTTON_ID = "rm-previous-gate-code-btn";
 const PREV_DIVIDER_ID = "rm-previous-gate-code-divider";
+const PM_BUTTON_ID = "rm-property-manager-btn";
+const PM_DIVIDER_ID = "rm-property-manager-divider";
 const DEBOUNCE_MS = 250;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MORE_ACTIONS_SELECTOR = '[data-testid="hosting-details-header-section-actions-menu-entry-point"]';
@@ -25,6 +28,10 @@ const MODAL_POLL_MS = 50;
 
 // Material Design vpn_key — visually distinct from Airbnb's keypad icon.
 const KEY_PATH = "M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z";
+// Material Design history — clock with an arrow, signals "previous".
+const HISTORY_PATH = "M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z";
+// Material Design person — filled silhouette for the property manager.
+const PERSON_PATH = "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
 
 let lastText = "";
 let debounceTimer = null;
@@ -62,7 +69,7 @@ async function publishListingTitle() {
         // Previous Gate Code on the new panel.
         if (isSwitch) {
             lastReservationSignature = "";
-            await chrome.storage.local.remove([RESERVATION_KEY, PREVIOUS_KEY]);
+            await chrome.storage.local.remove([RESERVATION_KEY, PREVIOUS_KEY, PROPERTY_MANAGER_KEY]);
         }
     } catch (err) {
         console.warn("Resort Info: failed to write listing title", err);
@@ -231,6 +238,17 @@ function injectPreviousGateCodeButton(prev) {
         }
     }
 
+    // Swap the key icon for a history (clock-with-arrow) icon so the two
+    // gate-code cards are visually distinguishable at a glance.
+    const svg = newBtn.querySelector("svg");
+    if (svg) {
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        svg.setAttribute("viewBox", "0 0 24 24");
+        const path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("d", HISTORY_PATH);
+        svg.appendChild(path);
+    }
+
     if (existing) {
         existing.replaceWith(newBtn);
         return;
@@ -257,6 +275,94 @@ async function injectPreviousFromStorage() {
         injectPreviousGateCodeButton(obj[PREVIOUS_KEY]);
     } catch (err) {
         console.warn("Resort Info: failed to read previous reservation", err);
+    }
+}
+
+// ============ Property Manager row ============
+
+function removePropertyManagerInjected() {
+    const btn = document.getElementById(PM_BUTTON_ID);
+    const div = document.getElementById(PM_DIVIDER_ID);
+    if (btn) btn.remove();
+    if (div) div.remove();
+}
+
+function injectPropertyManagerRow(pm) {
+    if (!pm || !pm.name) {
+        removePropertyManagerInjected();
+        return;
+    }
+
+    // Anchor after the Previous Gate Code card if present, otherwise after
+    // the current Gate Code card. If neither exists, bail.
+    const anchor = document.getElementById(PREV_BUTTON_ID)
+        || document.getElementById(BUTTON_ID);
+    if (!anchor) {
+        removePropertyManagerInjected();
+        return;
+    }
+
+    const value = pm.name;
+    const existing = document.getElementById(PM_BUTTON_ID);
+    if (existing &&
+        existing.parentNode === anchor.parentNode &&
+        existing.dataset.pmName === value) {
+        return;
+    }
+
+    const newBtn = anchor.cloneNode(true);
+    newBtn.id = PM_BUTTON_ID;
+    newBtn.dataset.pmName = value;
+    delete newBtn.dataset.gateCode;
+
+    // Relabel.
+    const divs = newBtn.querySelectorAll("div");
+    for (const div of divs) {
+        if (div.children.length === 0 &&
+            /gate\s+code/i.test((div.textContent || "").trim())) {
+            div.textContent = "Property Manager";
+            const valDiv = div.nextElementSibling;
+            if (valDiv) valDiv.textContent = value;
+            break;
+        }
+    }
+
+    // Swap icon for a person silhouette.
+    const svg = newBtn.querySelector("svg");
+    if (svg) {
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        svg.setAttribute("viewBox", "0 0 24 24");
+        const path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("d", PERSON_PATH);
+        svg.appendChild(path);
+    }
+
+    if (existing) {
+        existing.replaceWith(newBtn);
+        return;
+    }
+
+    const sourceDivider = document.getElementById(PREV_DIVIDER_ID)
+        || document.getElementById(DIVIDER_ID);
+    let divider = null;
+    if (sourceDivider) {
+        divider = sourceDivider.cloneNode(true);
+        divider.id = PM_DIVIDER_ID;
+    }
+
+    if (divider) {
+        anchor.after(divider, newBtn);
+    } else {
+        anchor.after(newBtn);
+    }
+}
+
+async function injectPropertyManagerFromStorage() {
+    try {
+        const obj = await chrome.storage.local.get(PROPERTY_MANAGER_KEY);
+        injectPropertyManagerRow(obj[PROPERTY_MANAGER_KEY]);
+    } catch (err) {
+        console.warn("Resort Info: failed to read property manager", err);
     }
 }
 
@@ -399,6 +505,7 @@ function scheduleUpdate() {
         // Re-inject in case Airbnb's SPA tore down or re-mounted the panel.
         injectFromStorage();
         injectPreviousFromStorage();
+        injectPropertyManagerFromStorage();
         // Fire-and-forget — it self-guards against concurrent runs.
         captureReservationDetails();
     }, DEBOUNCE_MS);
@@ -421,6 +528,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (changes[PREVIOUS_KEY]) {
         injectPreviousGateCodeButton(changes[PREVIOUS_KEY].newValue);
     }
+    if (changes[PROPERTY_MANAGER_KEY]) {
+        injectPropertyManagerRow(changes[PROPERTY_MANAGER_KEY].newValue);
+    }
     // When the current reservation changes, clear the stale previous one so
     // the UI doesn't show last conversation's previous code next to the new
     // current code until the background resolves the new previous.
@@ -430,7 +540,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
         const nextCode = next && next.confirmation_code;
         const prevCode = prev && prev.confirmation_code;
         if (nextCode !== prevCode) {
-            chrome.storage.local.remove(PREVIOUS_KEY);
+            chrome.storage.local.remove([PREVIOUS_KEY, PROPERTY_MANAGER_KEY]);
         }
     }
 });

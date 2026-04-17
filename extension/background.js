@@ -21,6 +21,7 @@ const RESORTS_CACHE_KEY = "rm_resorts_cache";
 const MATCHED_KEY = "rm_matched_resort";
 const RESERVATION_KEY = "rm_current_reservation";
 const PREVIOUS_KEY = "rm_previous_reservation";
+const PROPERTY_MANAGER_KEY = "rm_property_manager";
 
 // ============ Panel mode ============
 
@@ -134,11 +135,34 @@ async function resolveFromConfirmationCode(code) {
     try {
         const current = await getReservationByCode(code);
         if (!current || !current.maproHouseCID || !current.checkin) return;
-        await resolvePreviousReservation(current);
+
+        // Fire the previous-stay chase and the property-manager lookup in
+        // parallel — neither depends on the other.
+        await Promise.all([
+            resolvePreviousReservation(current),
+            resolvePropertyManager(current),
+        ]);
     } catch (err) {
         console.warn("Resort Info: resolve from confirmation code failed", err);
     } finally {
         if (resolveInFlight === code) resolveInFlight = "";
+    }
+}
+
+async function resolvePropertyManager(currentRes) {
+    const responsible = currentRes && currentRes.responsible;
+    // MAPRO returns the responsible as the display name directly on the
+    // check-reservation row — no extra lookup needed.
+    if (!responsible) {
+        await chrome.storage.local.remove(PROPERTY_MANAGER_KEY);
+        return;
+    }
+    try {
+        await chrome.storage.local.set({
+            [PROPERTY_MANAGER_KEY]: { name: String(responsible), ts: Date.now() },
+        });
+    } catch (err) {
+        console.warn("Resort Info: property manager write failed", err);
     }
 }
 
