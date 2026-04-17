@@ -51,11 +51,19 @@ function extractListingText() {
 async function publishListingTitle() {
     const text = extractListingText();
     if (!text || text === lastText) return;
+    const isSwitch = lastText !== "";
     lastText = text;
     try {
         await chrome.storage.local.set({
             [LISTING_KEY]: { text, ts: Date.now() },
         });
+        // Switching conversations — drop the previous conversation's
+        // reservation/previous-stay caches so we don't show the wrong
+        // Previous Gate Code on the new panel.
+        if (isSwitch) {
+            lastReservationSignature = "";
+            await chrome.storage.local.remove([RESERVATION_KEY, PREVIOUS_KEY]);
+        }
     } catch (err) {
         console.warn("Resort Info: failed to write listing title", err);
     }
