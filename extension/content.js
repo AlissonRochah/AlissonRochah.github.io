@@ -186,7 +186,7 @@ function removePreviousInjected() {
 }
 
 function injectPreviousGateCodeButton(prev) {
-    if (!prev || !prev.door_code) {
+    if (!prev) {
         removePreviousInjected();
         return;
     }
@@ -199,7 +199,7 @@ function injectPreviousGateCodeButton(prev) {
         return;
     }
 
-    const codeValue = prev.door_code;
+    const codeValue = prev.door_code ? prev.door_code : "No Code";
     const existing = document.getElementById(PREV_BUTTON_ID);
     if (existing &&
         existing.parentNode === anchor.parentNode &&
