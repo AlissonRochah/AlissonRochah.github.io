@@ -24,6 +24,23 @@ const RESERVATION_KEY = "rm_current_reservation";
 const PREVIOUS_KEY = "rm_previous_reservation";
 const PROPERTY_MANAGER_KEY = "rm_property_manager";
 const GUEST_NAME_KEY = "rm_current_guest_name";
+const EXTRAS_KEY = "rm_current_extras";
+
+const EXTRAS_FIELDS = [
+    "hasPoolHeat",
+    "hasBBQGrill",
+    "hasPet",
+    "hasLaundry",
+    "hasEarlyCheckin",
+    "hasLateCheckout",
+];
+
+function pickExtras(reservation) {
+    const out = {};
+    for (const f of EXTRAS_FIELDS) out[f] = reservation && reservation[f];
+    out.ts = Date.now();
+    return out;
+}
 
 // ============ Panel mode ============
 
@@ -173,6 +190,7 @@ async function resolveFromGuestName(name) {
         });
         // We already have the full MAPRO row, so drive previous/PM directly
         // without round-tripping through /booking/check-reservation again.
+        await chrome.storage.local.set({ [EXTRAS_KEY]: pickExtras(current) });
         await Promise.all([
             resolvePreviousReservation(current),
             resolvePropertyManager(current),
@@ -194,6 +212,7 @@ async function resolveFromConfirmationCode(code) {
 
         // Fire the previous-stay chase and the property-manager lookup in
         // parallel — neither depends on the other.
+        await chrome.storage.local.set({ [EXTRAS_KEY]: pickExtras(current) });
         await Promise.all([
             resolvePreviousReservation(current),
             resolvePropertyManager(current),
