@@ -1,6 +1,7 @@
 .superpowers/
 .playwright-mcp/
 .DS_Store
+graphify-out/
 /main-*.png
 /btn-*.png
 /modal-*.png
