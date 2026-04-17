@@ -134,6 +134,22 @@ async function resolvePreviousReservation(currentRes) {
             await chrome.storage.local.remove(PREVIOUS_KEY);
             return;
         }
+
+        // Publish a partial record immediately so the UI can show the card
+        // (with "No Code" as a placeholder) while we wait on the slower
+        // /booking/check-reservation call for the full doorCode.
+        const partial = {
+            bookingID: prev.bookingID,
+            checkin: prev.checkin,
+            checkout: prev.checkout,
+            guest: prev.guest,
+            door_code: "",
+            confirmation_code: "",
+            ts: Date.now(),
+            partial: true,
+        };
+        await chrome.storage.local.set({ [PREVIOUS_KEY]: partial });
+
         const full = await getReservationByBookingId(prev.bookingID);
         const payload = {
             bookingID: prev.bookingID,

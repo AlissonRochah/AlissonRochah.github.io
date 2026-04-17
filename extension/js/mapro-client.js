@@ -72,9 +72,32 @@ export async function getReservationByBookingId(bookingId) {
 // numeric maproHouseCID (e.g. 15816) that the check-reservation item gives
 // us. The mapping lives in /calendar/settings under properties[].url, which
 // ends with /manage/houses/register/<maproHouseCID>.
-let propertySettingsCache = null;
-async function loadCalendarProperties() {
-    if (propertySettingsCache) return propertySettingsCache;
+//
+// The settings payload is large (~1 MB with every property and integrator)
+// and /calendar/settings is the slowest call in the chain. We persist just
+// the numeric-id → ULID mapping in chrome.storage.local so the second
+// lookup in this browser (and every lookup after the service worker wakes
+// from sleep) is instant. The map is refreshed in the background on a
+// cache miss so a newly-onboarded property eventually resolves.
+
+const PROPERTY_MAP_KEY = "rm_mapro_property_map";
+const PROPERTY_MAP_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+let inMemoryPropertyMap = null;
+
+async function readCachedPropertyMap() {
+    if (inMemoryPropertyMap) return inMemoryPropertyMap;
+    try {
+        const obj = await chrome.storage.local.get(PROPERTY_MAP_KEY);
+        const cached = obj[PROPERTY_MAP_KEY];
+        if (cached && cached.map && (Date.now() - cached.ts) < PROPERTY_MAP_TTL_MS) {
+            inMemoryPropertyMap = cached.map;
+            return cached.map;
+        }
+    } catch (_) { /* ignore */ }
+    return null;
+}
+
+async function refreshPropertyMap() {
     const today = new Date();
     const yyyy = today.getUTCFullYear();
     const mm = String(today.getUTCMonth() + 1).padStart(2, "0");
@@ -85,18 +108,31 @@ async function loadCalendarProperties() {
         fresh: "",
     });
     const props = (data && Array.isArray(data.properties)) ? data.properties : [];
-    propertySettingsCache = props;
-    return props;
+    const map = {};
+    for (const p of props) {
+        if (!p || !p.url || !p.id) continue;
+        const m = String(p.url).match(/\/(\d+)$/);
+        if (m) map[m[1]] = p.id;
+    }
+    inMemoryPropertyMap = map;
+    try {
+        await chrome.storage.local.set({
+            [PROPERTY_MAP_KEY]: { map, ts: Date.now() },
+        });
+    } catch (_) { /* ignore */ }
+    return map;
 }
 
 export async function getPropertyUlidByHouseCID(maproHouseCID) {
     if (!maproHouseCID) return null;
-    const props = await loadCalendarProperties();
-    const needle = `/${maproHouseCID}`;
-    for (const p of props) {
-        if (p && p.url && String(p.url).endsWith(needle)) return p.id;
-    }
-    return null;
+    const key = String(maproHouseCID);
+
+    const cached = await readCachedPropertyMap();
+    if (cached && cached[key]) return cached[key];
+
+    // Cache miss (or no cache yet) — refresh once and retry.
+    const fresh = await refreshPropertyMap();
+    return fresh[key] || null;
 }
 
 // Given a property ULID and the current reservation's checkin date, list
