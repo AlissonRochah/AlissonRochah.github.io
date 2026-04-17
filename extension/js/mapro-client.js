@@ -191,3 +191,40 @@ export async function getPreviousGuestReservation(propertyUlid, currentCheckinIs
         link: best.l,
     };
 }
+
+// Fast path: skip /calendar/settings and /calendar/reservation entirely.
+// /booking/check-reservation can be filtered by the numeric maproHouseCID
+// directly (the same id that the current reservation item already carries)
+// and sorted by checkin desc. We page through a few recent entries and
+// return the most recent one with a checkin strictly before the current
+// one. Blocks do not appear on this grid — it's the "reservations" grid —
+// so no type filtering is needed.
+//
+// Returns the full reservation row (with doorCode, codReference, etc.) so
+// the caller only needs this one call to build the previous-stay payload.
+export async function getPreviousReservationByHouseCID(maproHouseCID, currentCheckinIso) {
+    if (!maproHouseCID || !currentCheckinIso) return null;
+    const currentCheckin = new Date(currentCheckinIso.replace(" ", "T"));
+    if (isNaN(currentCheckin.getTime())) return null;
+
+    const filter = JSON.stringify(["maproHouseCID", "=", String(maproHouseCID)]);
+    const sort = JSON.stringify([{ selector: "checkin", desc: true }]);
+    const data = await maproGet("/booking/check-reservation", {
+        gridAjax: "",
+        skip: 0,
+        take: 20,
+        requireTotalCount: false,
+        sort,
+        filter,
+    });
+    const items = (data && Array.isArray(data.items)) ? data.items : [];
+
+    const currentMs = currentCheckin.getTime();
+    for (const it of items) {
+        if (!it || !it.checkin) continue;
+        const ci = new Date(String(it.checkin).replace(" ", "T")).getTime();
+        if (isNaN(ci)) continue;
+        if (ci < currentMs) return it;
+    }
+    return null;
+}
