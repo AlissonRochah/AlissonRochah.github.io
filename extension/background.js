@@ -12,6 +12,7 @@
 
 import {
     getPreviousReservationByHouseCID,
+    getReservationByCode,
 } from "./js/mapro-client.js";
 
 const MODE_KEY = "rm_panel_mode";
@@ -98,6 +99,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (changes[LISTING_KEY] || changes[RESORTS_CACHE_KEY]) {
         recomputeMatch();
     }
+    if (changes[RESERVATION_KEY]) {
+        const next = changes[RESERVATION_KEY].newValue;
+        if (next && next.confirmation_code) {
+            resolveFromConfirmationCode(next.confirmation_code);
+        }
+    }
 });
 
 // On worker wake-up (install / startup / message), reconcile once so a
@@ -114,6 +121,26 @@ chrome.runtime.onStartup.addListener(recomputeMatch);
 // check-in. Blocks are skipped. The resolved previous stay — including its
 // door code — is written to rm_previous_reservation so the content script
 // can inject a "Previous Gate Code" card.
+
+// End-to-end resolution driven by the content script. When the user opens
+// the "Manage reservation" modal, content.js captures the confirmation code
+// and writes rm_current_reservation. We pick it up here, resolve the full
+// current reservation in MAPRO (to get maproHouseCID), then chase down the
+// previous stay on the same property. All without the popup being open.
+let resolveInFlight = "";
+async function resolveFromConfirmationCode(code) {
+    if (!code || code === resolveInFlight) return;
+    resolveInFlight = code;
+    try {
+        const current = await getReservationByCode(code);
+        if (!current || !current.maproHouseCID || !current.checkin) return;
+        await resolvePreviousReservation(current);
+    } catch (err) {
+        console.warn("Resort Info: resolve from confirmation code failed", err);
+    } finally {
+        if (resolveInFlight === code) resolveInFlight = "";
+    }
+}
 
 async function resolvePreviousReservation(currentRes) {
     if (!currentRes) return;
