@@ -195,13 +195,26 @@ export async function getPreviousGuestReservation(propertyUlid, currentCheckinIs
 // Fast path: skip /calendar/settings and /calendar/reservation entirely.
 // /booking/check-reservation can be filtered by the numeric maproHouseCID
 // directly (the same id that the current reservation item already carries)
-// and sorted by checkin desc. We page through a few recent entries and
-// return the most recent one with a checkin strictly before the current
-// one. Blocks do not appear on this grid — it's the "reservations" grid —
-// so no type filtering is needed.
+// and sorted by checkin desc. We page through recent entries, skip any
+// that look like blocks (manual property holds have guest="unknown guest"
+// or start with "Block", and typically rental=0), and return the most
+// recent real guest stay whose check-in precedes the current one.
 //
 // Returns the full reservation row (with doorCode, codReference, etc.) so
 // the caller only needs this one call to build the previous-stay payload.
+function isBlockLikeReservation(it) {
+    if (!it) return true;
+    const guest = String(it.guest || "").trim().toLowerCase();
+    if (!guest) return true;
+    if (guest === "unknown guest") return true;
+    if (guest.startsWith("block")) return true;
+    // The integrator column is HTML on this grid; sniff its text for the
+    // word "block" as a secondary safeguard.
+    const integrator = String(it.integrator || "");
+    if (/>\s*block/i.test(integrator)) return true;
+    return false;
+}
+
 export async function getPreviousReservationByHouseCID(maproHouseCID, currentCheckinIso) {
     if (!maproHouseCID || !currentCheckinIso) return null;
     const currentCheckin = new Date(currentCheckinIso.replace(" ", "T"));
@@ -212,7 +225,7 @@ export async function getPreviousReservationByHouseCID(maproHouseCID, currentChe
     const data = await maproGet("/booking/check-reservation", {
         gridAjax: "",
         skip: 0,
-        take: 20,
+        take: 30,
         requireTotalCount: false,
         sort,
         filter,
@@ -224,7 +237,9 @@ export async function getPreviousReservationByHouseCID(maproHouseCID, currentChe
         if (!it || !it.checkin) continue;
         const ci = new Date(String(it.checkin).replace(" ", "T")).getTime();
         if (isNaN(ci)) continue;
-        if (ci < currentMs) return it;
+        if (ci >= currentMs) continue;
+        if (isBlockLikeReservation(it)) continue;
+        return it;
     }
     return null;
 }
