@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Units - Master Vacation Homes</title>
+
+    <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
+    <script src="style/theme.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+
+    <link rel="stylesheet" href="style/reset.css">
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/units.css">
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
+            authDomain: "templatemaster-a2d6e.firebaseapp.com",
+            projectId: "templatemaster-a2d6e",
+            storageBucket: "templatemaster-a2d6e.firebasestorage.app",
+            messagingSenderId: "208432538664",
+            appId: "1:208432538664:web:10a29a55efbb824ae1411d",
+            measurementId: "G-LLVT6XW024"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth();
+        const db = getFirestore(app);
+
+        const DEFAULT_PROXY_URL = "https://master-vh-proxy.vercel.app";
+        let proxyUrl = localStorage.getItem("masterbotProxyUrl") || DEFAULT_PROXY_URL;
+        let currentUser = null;
+        let allUnits = [];
+        let filteredUnits = [];
+        let expandedKey = null;
+
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                window.location.href = "index.html";
+                return;
+            }
+            currentUser = user;
+            document.getElementById("user-email").innerText = user.email;
+
+            try {
+                const globalRef = doc(db, "settings", "global");
+                const snap = await getDoc(globalRef);
+                if (snap.exists() && snap.data().proxyUrl) {
+                    proxyUrl = snap.data().proxyUrl;
+                }
+            } catch (_) { /* ignore */ }
+
+            await loadUnits();
+        });
+
+        async function loadUnits() {
+            const status = document.getElementById("status");
+            status.innerText = "Loading units…";
+            status.className = "units-status loading";
+
+            try {
+                const idToken = await currentUser.getIdToken();
+                const res = await fetch(proxyUrl + "/api/mapro/units", {
+                    headers: { "Authorization": "Bearer " + idToken },
+                });
+                if (res.status === 503) {
+                    const body = await res.json().catch(() => ({}));
+                    if (body.error === "MAPRO_NOT_LOGGED_IN") {
+                        status.innerText = "MAPRO session expired. An admin needs to refresh the cookie in the proxy.";
+                        status.className = "units-status error";
+                        return;
+                    }
+                }
+                if (!res.ok) {
+                    status.innerText = `Error ${res.status} loading units.`;
+                    status.className = "units-status error";
+                    return;
+                }
+                const data = await res.json();
+                allUnits = Array.isArray(data.units) ? data.units : [];
+                filteredUnits = allUnits;
+                document.getElementById("count").innerText = `${allUnits.length} units`;
+                status.innerText = "";
+                status.className = "units-status";
+                render();
+            } catch (e) {
+                status.innerText = "Network error: " + e.message;
+                status.className = "units-status error";
+            }
+        }
+
+        function escapeHtml(s) {
+            if (s === null || s === undefined) return "";
+            return String(s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        function imageThumb(htmlStr) {
+            if (!htmlStr) return "";
+            const m = String(htmlStr).match(/src=['"]([^'"]+)['"]/);
+            return m ? `<img src="${escapeHtml(m[1])}" alt="" class="unit-thumb">` : "";
+        }
+
+        function applyFilter() {
+            const q = document.getElementById("search").value.trim().toLowerCase();
+            if (!q) { filteredUnits = allUnits; }
+            else {
+                filteredUnits = allUnits.filter((u) => {
+                    return (u.code || "").toLowerCase().includes(q)
+                        || (u.title || "").toLowerCase().includes(q)
+                        || (u.address || "").toLowerCase().includes(q)
+                        || (u.resort || "").toLowerCase().includes(q)
+                        || (u.homeowner || "").toLowerCase().includes(q);
+                });
+            }
+            render();
+        }
+
+        function toggleExpand(key) {
+            expandedKey = (expandedKey === key) ? null : key;
+            render();
+        }
+
+        function detailsHtml(u) {
+            const rows = [
+                ["Address", u.address],
+                ["Resort", u.resort],
+                ["County", u.County],
+                ["Bedrooms", u.BedroomCount],
+                ["Bathrooms", u.BathroomCount],
+                ["Max occupancy", u.MaxOccupancy],
+                ["Layout (beds)", u.Layoutbeds],
+                ["Living area (sqft)", u.total_living_area_sqft],
+                ["Type", u.Type],
+                ["Contract", u.Contract],
+                ["Pet friendly", u.petFriendly],
+                ["Homeowner", u.homeowner],
+                ["Responsible", u.responsible],
+                ["Cleaner", u.cleaner],
+                ["Wifi network", u.wifiNetworkName],
+                ["Wifi password", u.wifiNetworkPassword],
+                ["Door password", u.doorPassword],
+                ["Gate password", u.gatePassword],
+                ["Lockbox code", u.lockboxCode],
+                ["BBQ door code", u.BBQDoorCode],
+                ["City license #", u.cityLicenseNumber],
+                ["Tourist tax #", u.TouristTaxAccountNumber],
+            ].filter(([_, v]) => v !== null && v !== undefined && v !== "");
+
+            const detailsRows = rows.map(([k, v]) => `
+                <div class="unit-detail-row">
+                    <span class="unit-detail-key">${escapeHtml(k)}</span>
+                    <span class="unit-detail-val">${escapeHtml(v)}</span>
+                </div>
+            `).join("");
+
+            return `<div class="unit-details">${detailsRows}</div>`;
+        }
+
+        function render() {
+            const tbody = document.getElementById("units-tbody");
+            if (filteredUnits.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="empty">No units match your search.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = filteredUnits.map((u) => {
+                const expanded = expandedKey === u.key;
+                const beds = (u.BedroomCount || "?") + " BD / " + (u.BathroomCount || "?") + " BA";
+                return `
+                    <tr class="unit-row ${expanded ? "expanded" : ""}" data-key="${escapeHtml(u.key)}">
+                        <td class="col-thumb">${imageThumb(u.image)}</td>
+                        <td class="col-code">${escapeHtml(u.code)}</td>
+                        <td>${escapeHtml(u.resort)}</td>
+                        <td>${escapeHtml(beds)}</td>
+                        <td>${escapeHtml(u.responsible)}</td>
+                        <td><span class="status-pill status-${escapeHtml(u.status)}">${escapeHtml(u.status)}</span></td>
+                    </tr>
+                    ${expanded ? `<tr class="unit-row-details"><td colspan="6">${detailsHtml(u)}</td></tr>` : ""}
+                `;
+            }).join("");
+
+            tbody.querySelectorAll(".unit-row").forEach((tr) => {
+                tr.addEventListener("click", () => toggleExpand(tr.dataset.key));
+            });
+        }
+
+        window.logout = function () {
+            signOut(auth).then(() => { window.location.href = "index.html"; });
+        };
+        window.applyFilter = applyFilter;
+        window.refreshUnits = loadUnits;
+    </script>
+</head>
+
+<body>
+    <header class="app-header">
+        <div class="header-left">
+            <a href="messages.html" class="header-logo">
+                <img src="img/MasterLogo.jpg" alt="Logo">
+            </a>
+            <nav class="header-nav">
+                <a href="template.html" class="nav-link">Templates</a>
+                <a href="messages.html" class="nav-link">Messages</a>
+                <a href="units.html" class="nav-link active">Units</a>
+                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
+                <a href="settings.html" class="nav-link">Settings</a>
+            </nav>
+        </div>
+        <div class="header-right">
+            <span id="user-email" class="header-email"></span>
+            <button onclick="window.logout()" class="btn btn-sm btn-outline">Sign Out</button>
+        </div>
+    </header>
+
+    <main class="units-main">
+        <div class="units-toolbar">
+            <input type="text" id="search" placeholder="Search by code, title, address, resort, owner…" oninput="window.applyFilter()" class="units-search">
+            <span id="count" class="units-count"></span>
+            <button onclick="window.refreshUnits()" class="btn btn-sm btn-outline">Refresh</button>
+        </div>
+
+        <div id="status" class="units-status"></div>
+
+        <div class="units-table-wrap">
+            <table class="units-table">
+                <thead>
+                    <tr>
+                        <th class="col-thumb"></th>
+                        <th>Code</th>
+                        <th>Resort</th>
+                        <th>Beds/Baths</th>
+                        <th>Responsible</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="units-tbody"></tbody>
+            </table>
+        </div>
+    </main>
+</body>
+
+</html>
