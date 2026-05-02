@@ -169,10 +169,17 @@
             return `<div class="unit-details">${detailsRows}</div>`;
         }
 
+        function extrasHtml(u) {
+            const parts = [];
+            if (u.bbq) parts.push('<span class="extra-pill extra-bbq">BBQ</span>');
+            if (u.poolHeater) parts.push(`<span class="extra-pill extra-ph">PH $${u.poolHeater}</span>`);
+            return parts.join(" ");
+        }
+
         function render() {
             const tbody = document.getElementById("units-tbody");
             if (filteredUnits.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="empty">No units match your search.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="empty">No units match your search.</td></tr>`;
                 return;
             }
             tbody.innerHTML = filteredUnits.map((u) => {
@@ -185,9 +192,10 @@
                         <td>${escapeHtml(u.resort)}</td>
                         <td>${escapeHtml(beds)}</td>
                         <td>${escapeHtml(u.responsible)}</td>
+                        <td class="col-extras">${extrasHtml(u)}</td>
                         <td><span class="status-pill status-${escapeHtml(u.status)}">${escapeHtml(u.status)}</span></td>
                     </tr>
-                    ${expanded ? `<tr class="unit-row-details"><td colspan="6">${detailsHtml(u)}</td></tr>` : ""}
+                    ${expanded ? `<tr class="unit-row-details"><td colspan="7">${detailsHtml(u)}</td></tr>` : ""}
                 `;
             }).join("");
 
@@ -201,6 +209,16 @@
         };
         window.applyFilter = applyFilter;
         window.refreshUnits = loadUnits;
+
+        document.addEventListener("keydown", function (e) {
+            const active = document.activeElement;
+            const tag = active ? active.tagName : "";
+            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (e.key.length === 1) {
+                document.getElementById("search").focus();
+            }
+        });
     </script>
 </head>
 
@@ -242,6 +260,7 @@
                         <th>Resort</th>
                         <th>Beds/Baths</th>
                         <th>Responsible</th>
+                        <th>Extras</th>
                         <th>Status</th>
                     </tr>
                 </thead>

@@ -83,3 +83,22 @@ export async function listUnits() {
     const all = extractLocalDataArray(html);
     return all.map(pickFields);
 }
+
+const EXTRA_SERVICE_IDS = { bbq: 6969, ph35: 6960, ph75: 6704 };
+
+async function fetchCheckedPropertyIds(serviceId) {
+    const html = await maproFetchHtml(`/settings/services/register/${serviceId}`);
+    const re = /<input\s+checked[^>]*id="casa-(\d+)"/g;
+    const ids = new Set();
+    for (const m of html.matchAll(re)) ids.add(m[1]);
+    return ids;
+}
+
+export async function listExtras() {
+    const [bbq, ph35, ph75] = await Promise.all([
+        fetchCheckedPropertyIds(EXTRA_SERVICE_IDS.bbq),
+        fetchCheckedPropertyIds(EXTRA_SERVICE_IDS.ph35),
+        fetchCheckedPropertyIds(EXTRA_SERVICE_IDS.ph75),
+    ]);
+    return { bbq, ph35, ph75 };
+}
