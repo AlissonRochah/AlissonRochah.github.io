@@ -152,12 +152,17 @@ function parseChannel(title) {
     return m ? m[1].trim() : "";
 }
 
+function inputValueByName(html, name) {
+    const re = new RegExp(`<input\\b[^>]*?\\bname="${name}"[^>]*?\\bvalue="([^"]*)"|<input\\b[^>]*?\\bvalue="([^"]*)"[^>]*?\\bname="${name}"`, "i");
+    const m = html.match(re);
+    return m ? (m[1] ?? m[2] ?? "") : "";
+}
+
 async function fetchReservationExtras(linkPath) {
     try {
         const html = await maproFetchHtml(linkPath);
-        const door = (html.match(/listagem-door-code[^>]*>\s*([^<]+?)\s*</) ||
-                      html.match(/<input[^>]*name="codigo_guest"[^>]*value="([^"]+)"/) || [])[1] || "";
-        const confirmation = (html.match(/<input[^>]*name="cod_refente_integrador"[^>]*value="([^"]+)"/) || [])[1] || "";
+        const door = (html.match(/listagem-door-code[^>]*>\s*([^<]+?)\s*</) || [])[1] || inputValueByName(html, "codigo_guest");
+        const confirmation = inputValueByName(html, "cod_refente_integrador");
         return { doorCode: door.trim(), confirmation: confirmation.trim() };
     } catch (_) {
         return { doorCode: "", confirmation: "" };
