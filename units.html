@@ -320,6 +320,7 @@
                             propertyId: c.id,
                             clientId: c.client && c.client.id || "",
                             propertyName: c.propertyName || "",
+                            clientName: c.client && c.client.name || "",
                             label,
                             ts: Date.now(),
                         };
@@ -338,15 +339,24 @@
             }
         }
 
-        window.confirmJobberMatch = function (key, propertyId, clientId, label) {
-            const map = readJobberMapping();
-            map[key] = { propertyId, clientId, label, ts: Date.now() };
-            writeJobberMapping(map);
+        window.confirmJobberMatch = function (key, idx) {
             const u = filteredUnits.find((x) => x.key === key);
-            if (u) {
-                u._jobber = { match: map[key] };
-                if (expandedKey === key) render();
-            }
+            if (!u || !u._jobber || !Array.isArray(u._jobber.candidates)) return;
+            const c = u._jobber.candidates[Number(idx)];
+            if (!c) return;
+            const label = c.street || c.propertyName || (c.client && c.client.name) || c.id;
+            const map = readJobberMapping();
+            map[key] = {
+                propertyId: c.id,
+                clientId: c.client && c.client.id || "",
+                propertyName: c.propertyName || "",
+                clientName: c.client && c.client.name || "",
+                label,
+                ts: Date.now(),
+            };
+            writeJobberMapping(map);
+            u._jobber = { match: map[key] };
+            if (expandedKey === key) render();
         };
 
         window.clearJobberMatch = function (key) {
@@ -484,13 +494,10 @@
                         <div class="extras-empty">No Jobber property found for this address.</div>
                     </div>`;
                 }
-                const items = candidates.map((c) => {
+                const items = candidates.map((c, idx) => {
                     const street = c.street || c.propertyName || "";
                     const clientName = c.client && c.client.name || "";
-                    const propId = escapeHtml(JSON.stringify(c.id));
-                    const cliId = escapeHtml(JSON.stringify(c.client && c.client.id || ""));
-                    const labelArg = escapeHtml(JSON.stringify(street || clientName || c.id));
-                    return `<button class="extras-candidate" type="button" onclick="confirmJobberMatch('${escapeHtml(u.key)}', ${propId}, ${cliId}, ${labelArg})">
+                    return `<button class="extras-candidate" type="button" onclick="confirmJobberMatch('${escapeHtml(u.key)}', ${idx})">
                         <div class="cand-addr">${escapeHtml(street)}</div>
                         ${clientName ? `<div class="cand-client">${escapeHtml(clientName)}</div>` : ""}
                     </button>`;
@@ -507,11 +514,18 @@
 
             const createdHtml = created.length === 0 ? "" : `<div class="extras-created">${
                 created.map((cj) => {
-                    const url = `https://secure.getjobber.com/jobs/${encodeURIComponent(cj.id)}`;
+                    const numericId = decodeJobberId(cj.id);
+                    const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
+                    const display = cj.jobNumber || numericId;
                     return `<div class="extras-created-row">
                         <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
                         <span class="created-title">${escapeHtml(cj.title)}</span>
-                        ${cj.jobNumber ? `<a class="created-link" href="${url}" target="_blank" rel="noopener">#${escapeHtml(String(cj.jobNumber))} ↗</a>` : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`}
+                        ${cj.status === "ok"
+                            ? (url
+                                ? `<a class="created-link" href="${url}" target="_blank" rel="noopener">#${escapeHtml(String(display))} ↗</a>`
+                                : `<span class="created-link">#${escapeHtml(String(display))}</span>`)
+                            : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`
+                        }
                     </div>`;
                 }).join("")
             }</div>`;
@@ -552,15 +566,30 @@
 
         const CREATE_JOB_MUTATION = `mutation CreateJob($input: JobCreateAttributes!) {
             jobCreate(input: $input) {
-                job { id jobNumber title }
+                job {
+                    id
+                    jobNumber
+                    title
+                    visits(first: 1) { nodes { id } }
+                }
                 userErrors { message path }
             }
         }`;
 
-        function detectAreaSuffix(propertyName) {
-            const m = String(propertyName || "").match(/\b([WE])\d+\b/i);
-            if (!m) return null;
-            return m[1].toUpperCase() === "W" ? "West" : "East";
+        const JOBBER_BBQ_TEAM_IDS = { West: "MTcyMjQwMg==", East: "NjUwNTcz" };
+
+        function decodeJobberId(encoded) {
+            try { return atob(String(encoded || "")).replace(/^\D+/, ""); }
+            catch (_) { return ""; }
+        }
+
+        function detectAreaSuffix(match) {
+            const sources = [match && match.clientName, match && match.propertyName, match && match.label];
+            for (const s of sources) {
+                const m = String(s || "").match(/\b([WE])\d+\b/);
+                if (m) return m[1].toUpperCase() === "W" ? "West" : "East";
+            }
+            return null;
         }
 
         function fmtMonthDay(iso) {
@@ -570,7 +599,7 @@
             return `${Number(parts[1])}/${Number(parts[2])}`;
         }
 
-        async function createJobberJob({ propertyId, title, startAt, assigneeName }) {
+        async function createJobberJob({ propertyId, title, startAt, assigneeName, assignedTo }) {
             const yourName = (localStorage.getItem("yourName") || "").trim();
             const customFields = yourName ? [{
                 valueDropdown: yourName,
@@ -595,7 +624,7 @@
                 progressInvoicingSchedule: null,
                 propertyId,
                 salespersonId: null,
-                scheduling: { assignedTo: [], createVisits: true, notifyTeam: false },
+                scheduling: { assignedTo: Array.isArray(assignedTo) ? assignedTo : [], createVisits: true, notifyTeam: false },
                 timeframe: { durationUnits: "DAYS", durationValue: 0, startAt },
                 title,
                 trackingOrigin: "property",
@@ -636,6 +665,7 @@
                         title: j.title,
                         startAt: j.startAt,
                         assigneeName: j.assigneeName,
+                        assignedTo: j.assignedTo,
                     });
                     u._extraJobs.push({ status: "ok", title: j.title, id: created?.id, jobNumber: created?.jobNumber });
                 } catch (e) {
@@ -663,10 +693,12 @@
             if (!u || !u._extraDraft || u._extraDraft.submitting) return;
             const date = readDateInput(`bbq-${key}`);
             if (!date) { showToast("Pick a date"); return; }
-            const area = detectAreaSuffix(u._jobber && u._jobber.match && u._jobber.match.propertyName);
+            const area = detectAreaSuffix(u._jobber && u._jobber.match);
             const assigneeName = area ? `BBQ ${area}` : "BBQ";
+            const teamId = area ? JOBBER_BBQ_TEAM_IDS[area] : null;
+            const assignedTo = teamId ? [teamId] : [];
             runCreateAndRecord(u, [
-                { title: "BBQ Clean", startAt: date, assigneeName },
+                { title: "BBQ Clean", startAt: date, assigneeName, assignedTo },
             ]);
         };
 
