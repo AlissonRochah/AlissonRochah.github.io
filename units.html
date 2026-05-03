@@ -631,19 +631,37 @@
                 const offAssignees = chosenArea ? computePHOffAssignees(chosenArea) : [];
                 const onLabels = labelsFromTeamIds(onAssignees);
                 const offLabels = labelsFromTeamIds(offAssignees);
+                const conflicts = findPHConflicts(draft.existingPHJobs, onDate, offDate);
+                const conflictsHtml = draft.loadingExisting
+                    ? `<div class="extras-preview-muted">Checking existing PH jobs…</div>`
+                    : (conflicts.length
+                        ? `<div class="extras-conflicts">
+                                <div class="extras-conflicts-title">⚠ ${conflicts.length} existing PH job${conflicts.length > 1 ? "s" : ""} between these dates:</div>
+                                ${conflicts.map((c) => {
+                                    const numericId = decodeJobberId(c.id);
+                                    const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
+                                    return `<div class="extras-conflict-row">
+                                        <span>${escapeHtml(c.title)} on ${escapeHtml(c.startDate)}</span>
+                                        ${url ? `<a class="created-open" href="${url}" target="_blank" rel="noopener">#${escapeHtml(String(c.jobNumber || numericId))} ↗</a>` : ""}
+                                    </div>`;
+                                }).join("")}
+                            </div>`
+                        : "");
                 const previewHtml = chosenArea ? `<div class="extras-preview">
                     <div><span class="created-meta-label">PH ON →</span> ${escapeHtml(onLabels.join(" + ") || "(no team)")}</div>
                     <div><span class="created-meta-label">PH OFF →</span> ${escapeHtml(offLabels.join(" + ") || "(no team)")}</div>
                 </div>` : "";
-                const canSubmit = !!chosenArea && !draft.submitting;
+                const canSubmit = !!chosenArea && !draft.submitting && !draft.loadingExisting;
+                const createLabel = draft.submitting ? "Creating…" : (conflicts.length ? "Create anyway" : "Create");
                 formHtml = `<div class="extras-form">
                     <label>PH ON date <input type="date" id="ph-on-${escapeHtml(u.key)}" value="${escapeHtml(onDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','onDate', this.value)"></label>
                     <label>PH OFF date <input type="date" id="ph-off-${escapeHtml(u.key)}" value="${escapeHtml(offDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','offDate', this.value)"></label>
                     ${areaPicker}
                     ${areaWarn}
+                    ${conflictsHtml}
                     ${previewHtml}
                     <div class="extras-form-actions">
-                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraPH('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create"}</button>
+                        <button class="btn-extra ${conflicts.length ? "btn-extra-warn" : "btn-extra-primary"}" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraPH('${escapeHtml(u.key)}')">${createLabel}</button>
                         <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
                     </div>
                 </div>`;
@@ -734,6 +752,61 @@
 
         function labelsFromTeamIds(ids) {
             return (ids || []).map((id) => JOBBER_TEAM_NAMES[id] || id);
+        }
+
+        const PH_JOB_TITLES = new Set(["PH ON", "PH OFF"]);
+
+        async function fetchPropertyPHJobs(clientId, propertyId) {
+            if (!clientId || !propertyId) return [];
+            try {
+                const data = await jobberQuery(
+                    "MasterBotPropertyJobs",
+                    `query MasterBotPropertyJobs($clientId: EncodedId!, $propertyIds: [EncodedId!], $first: Int) {
+                        client(id: $clientId) {
+                            id
+                            requestedWorkObjects(
+                                first: $first
+                                filter: { types: [JOB], propertyIds: $propertyIds, status: ALL }
+                            ) {
+                                edges {
+                                    node {
+                                        __typename
+                                        ... on Job {
+                                            id
+                                            jobNumber
+                                            jobStatus
+                                            startAt
+                                            title
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }`,
+                    { clientId, propertyIds: [propertyId], first: 50 }
+                );
+                const edges = (data && data.client && data.client.requestedWorkObjects && data.client.requestedWorkObjects.edges) || [];
+                return edges
+                    .map((e) => e.node)
+                    .filter((n) => n && n.__typename === "Job" && PH_JOB_TITLES.has(n.title))
+                    .map((n) => ({
+                        id: n.id,
+                        jobNumber: n.jobNumber,
+                        title: n.title,
+                        jobStatus: n.jobStatus,
+                        startAt: n.startAt,
+                        startDate: (n.startAt || "").slice(0, 10),
+                    }));
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function findPHConflicts(existing, onDate, offDate) {
+            if (!onDate || !offDate || !existing || !existing.length) return [];
+            const lo = onDate < offDate ? onDate : offDate;
+            const hi = onDate < offDate ? offDate : onDate;
+            return existing.filter((j) => j.startDate >= lo && j.startDate <= hi && j.jobStatus !== "archived");
         }
 
         function decodeJobberId(encoded) {
@@ -924,6 +997,17 @@
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._jobber || !u._jobber.match) return;
             u._extraDraft = { type };
+            if (type === "PH") {
+                u._extraDraft.existingPHJobs = null;
+                u._extraDraft.loadingExisting = true;
+                fetchPropertyPHJobs(u._jobber.match.clientId, u._jobber.match.propertyId).then((jobs) => {
+                    if (u._extraDraft && u._extraDraft.type === "PH") {
+                        u._extraDraft.existingPHJobs = jobs;
+                        u._extraDraft.loadingExisting = false;
+                        render();
+                    }
+                });
+            }
             render();
         };
 

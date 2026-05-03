@@ -548,6 +548,40 @@
     border-radius: 6px;
     border: 1px solid var(--border);
 }
+.extras-preview-muted {
+    flex-basis: 100%;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.extras-conflicts {
+    flex-basis: 100%;
+    padding: 8px 10px;
+    background: rgba(255, 155, 61, 0.08);
+    border: 1px solid rgba(255, 155, 61, 0.4);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.extras-conflicts-title {
+    font-size: 12px;
+    color: #ff9b3d;
+    font-weight: 600;
+}
+.extras-conflict-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+.btn-extra-warn {
+    background: #ff9b3d;
+    color: #1c1c1c;
+    border-color: #ff9b3d;
+}
+.btn-extra-warn:hover { opacity: 0.9; color: #1c1c1c; }
 .extras-candidates {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
