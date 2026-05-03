@@ -128,14 +128,40 @@
             render();
         }
 
+        function isAddressFull(addr) {
+            if (!addr) return false;
+            return /,/.test(addr) && /\b(FL|Florida)\b/i.test(addr);
+        }
+
+        async function fetchFullAddress(u) {
+            if (u._fullAddress || u._addressFetching) return;
+            u._addressFetching = true;
+            try {
+                const idToken = await currentUser.getIdToken();
+                const res = await fetch(proxyUrl + "/api/mapro/unit-address?id=" + encodeURIComponent(u.idMAPRO), {
+                    headers: { "Authorization": "Bearer " + idToken },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    u._fullAddress = data.address || u.address;
+                    if (expandedKey === u.key) render();
+                }
+            } catch (_) { /* fall back to bulk address */ }
+            finally { u._addressFetching = false; }
+        }
+
         function toggleExpand(key) {
             expandedKey = (expandedKey === key) ? null : key;
             render();
+            if (expandedKey) {
+                const u = filteredUnits.find((x) => x.key === key);
+                if (u && !isAddressFull(u.address)) fetchFullAddress(u);
+            }
         }
 
         function detailsHtml(u) {
             const rows = [
-                ["Address", u.address],
+                ["Address", u._fullAddress || u.address],
                 ["Gate code", u.gatePassword],
                 ["Responsible", u.responsible],
                 ["Cleaner", u.cleaner],

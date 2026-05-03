@@ -102,3 +102,30 @@ export async function listExtras() {
     ]);
     return { bbq, ph35, ph75 };
 }
+
+function inputValue(html, name) {
+    const re = new RegExp(`<input[^>]*name="${name}"[^>]*value="([^"]*)"`, "i");
+    const m = html.match(re);
+    return m ? m[1] : "";
+}
+
+function titleCase(s) {
+    return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function stateAbbr(s) {
+    if (!s) return "";
+    if (s.length === 2) return s.toUpperCase();
+    if (/florida/i.test(s)) return "FL";
+    return s;
+}
+
+export async function getUnitAddress(id) {
+    const html = await maproFetchHtml(`/manage/houses/register/${id}`);
+    const street = inputValue(html, "endereco");
+    const city = titleCase(inputValue(html, "cidade"));
+    const state = stateAbbr(inputValue(html, "estado"));
+    const zip = inputValue(html, "cep");
+    const tail = [state, zip].filter(Boolean).join(" ");
+    return [street, city, tail].filter(Boolean).join(", ");
+}
