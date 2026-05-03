@@ -699,7 +699,7 @@
         let _memberOptions = null;
         const JOBBER_MEMBER_CACHE_KEY = "masterbotJobberMember";
         const JOBBER_MEMBER_VERSION_KEY = "masterbotJobberMemberV";
-        const JOBBER_MEMBER_VERSION = "v2";
+        const JOBBER_MEMBER_VERSION = "v3";
         if (localStorage.getItem(JOBBER_MEMBER_VERSION_KEY) !== JOBBER_MEMBER_VERSION) {
             localStorage.removeItem(JOBBER_MEMBER_CACHE_KEY);
             localStorage.setItem(JOBBER_MEMBER_VERSION_KEY, JOBBER_MEMBER_VERSION);
@@ -757,33 +757,28 @@
                 _jobberMember = cached;
                 return cached;
             }
-            const probes = [
-                { op: "JobberCurrentUser", body: `query JobberCurrentUser { currentUser { id name } }`, path: "currentUser" },
-                { op: "JobberCurrentUserFL", body: `query JobberCurrentUserFL { currentUser { id firstName lastName } }`, path: "currentUser" },
-                { op: "JobberViewer", body: `query JobberViewer { viewer { id name } }`, path: "viewer" },
-                { op: "JobberViewerFL", body: `query JobberViewerFL { viewer { id firstName lastName } }`, path: "viewer" },
-                { op: "JobberAccountUser", body: `query JobberAccountUser { account { user { id name } } }`, path: "account.user" },
-                { op: "JobberAccountUserFL", body: `query JobberAccountUserFL { account { user { id firstName lastName } } }`, path: "account.user" },
-                { op: "JobberAccountCurrentUser", body: `query JobberAccountCurrentUser { account { currentUser { id name } } }`, path: "account.currentUser" },
-                { op: "JobberAccountCurrentUserFL", body: `query JobberAccountCurrentUserFL { account { currentUser { id firstName lastName } } }`, path: "account.currentUser" },
-                { op: "JobberMe", body: `query JobberMe { me { id name } }`, path: "me" },
-                { op: "JobberMeFL", body: `query JobberMeFL { me { id firstName lastName } }`, path: "me" },
-                { op: "JobberAuthAccountUser", body: `query JobberAuthAccountUser { authenticatedAccountUser { id name } }`, path: "authenticatedAccountUser" },
-                { op: "JobberAuthAccountUserFL", body: `query JobberAuthAccountUserFL { authenticatedAccountUser { id firstName lastName } }`, path: "authenticatedAccountUser" },
-            ];
-            for (const p of probes) {
-                try {
-                    const data = await jobberQuery(p.op, p.body, {});
-                    const user = p.path.split(".").reduce((acc, k) => acc && acc[k], data);
-                    if (!user) continue;
-                    const name = user.name || [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
-                    if (name) {
-                        _jobberMember = name;
-                        localStorage.setItem(JOBBER_MEMBER_CACHE_KEY, name);
-                        return name;
-                    }
-                } catch (_) {}
-            }
+            try {
+                const data = await jobberQuery(
+                    "JobberCurrentAccount",
+                    `query JobberCurrentAccount {
+                        account {
+                            currentUser {
+                                id
+                                name { first full last }
+                            }
+                        }
+                    }`,
+                    {}
+                );
+                const user = data && data.account && data.account.currentUser;
+                const nm = user && user.name;
+                const name = (nm && (nm.full || [nm.first, nm.last].filter(Boolean).join(" "))) || "";
+                if (name) {
+                    _jobberMember = name;
+                    localStorage.setItem(JOBBER_MEMBER_CACHE_KEY, name);
+                    return name;
+                }
+            } catch (_) {}
             return null;
         }
 
