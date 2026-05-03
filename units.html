@@ -282,30 +282,37 @@
                     if (expandedKey === u.key) render();
                     return;
                 }
-                const data = await jobberQuery(
-                    "GlobalSearch",
-                    `query GlobalSearch($searchTerm: String!, $before: String, $after: String, $first: Int, $last: Int) {
-                        search(searchTerm: $searchTerm, first: $first, last: $last, before: $before, after: $after) {
-                            nodes {
+                const streetNumber = (street.match(/^\S+/) || [""])[0];
+                const searchQuery = `query GlobalSearch($searchTerm: String!, $before: String, $after: String, $first: Int, $last: Int) {
+                    search(searchTerm: $searchTerm, first: $first, last: $last, before: $before, after: $after) {
+                        nodes {
+                            __typename
+                            ... on Property {
+                                id
+                                propertyName: name
+                                street
+                                propertySc: client { id name __typename }
                                 __typename
-                                ... on Property {
-                                    id
-                                    propertyName: name
-                                    street
-                                    propertySc: client { id name __typename }
-                                    __typename
-                                }
                             }
                         }
-                    }`,
-                    { searchTerm: street, first: 10 }
-                ).catch((e) => ({ _error: e.message || String(e) }));
+                    }
+                }`;
+                async function runSearch(term) {
+                    return jobberQuery("GlobalSearch", searchQuery, { searchTerm: term, first: 10 })
+                        .catch((e) => ({ _error: e.message || String(e) }));
+                }
+                let data = await runSearch(street);
+                let nodes = (data && !data._error && data.search && data.search.nodes) || [];
+                let propertyNodes = nodes.filter((n) => n && n.__typename === "Property");
+                if (propertyNodes.length === 0 && streetNumber && streetNumber !== street) {
+                    data = await runSearch(streetNumber);
+                    nodes = (data && !data._error && data.search && data.search.nodes) || [];
+                    propertyNodes = nodes.filter((n) => n && n.__typename === "Property");
+                }
                 if (data && data._error) {
                     u._jobber = { error: data._error };
                 } else {
-                    const nodes = (data && data.search && data.search.nodes) || [];
-                    const candidates = nodes
-                        .filter((n) => n && n.__typename === "Property")
+                    const candidates = propertyNodes
                         .map((n) => ({
                             id: n.id,
                             propertyName: n.propertyName,
