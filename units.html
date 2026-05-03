@@ -302,15 +302,18 @@
                         .catch((e) => ({ _error: e.message || String(e) }));
                 }
                 const tried = [];
-                let data = await runSearch(street);
-                tried.push(street);
-                let nodes = (data && !data._error && data.search && data.search.nodes) || [];
-                let propertyNodes = nodes.filter((n) => n && n.__typename === "Property");
-                if (propertyNodes.length === 0 && streetNumber && streetNumber !== street) {
-                    data = await runSearch(streetNumber);
-                    tried.push(streetNumber);
-                    nodes = (data && !data._error && data.search && data.search.nodes) || [];
+                const attempts = [];
+                if (street) attempts.push(street);
+                if (streetNumber && streetNumber !== street) attempts.push(streetNumber);
+                if (u.code) attempts.push(u.code);
+                let data, propertyNodes = [];
+                for (const term of attempts) {
+                    data = await runSearch(term);
+                    tried.push(term);
+                    if (data && data._error) break;
+                    const nodes = (data && data.search && data.search.nodes) || [];
                     propertyNodes = nodes.filter((n) => n && n.__typename === "Property");
+                    if (propertyNodes.length > 0) break;
                 }
                 if (data && data._error) {
                     u._jobber = { error: data._error };
