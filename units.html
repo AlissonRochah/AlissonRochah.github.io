@@ -312,7 +312,21 @@
                             street: n.street,
                             client: n.propertySc || null,
                         }));
-                    u._jobber = { candidates };
+                    if (candidates.length === 1) {
+                        const c = candidates[0];
+                        const label = c.street || (c.client && c.client.name) || c.id;
+                        const map = readJobberMapping();
+                        map[u.key] = {
+                            propertyId: c.id,
+                            clientId: c.client && c.client.id || "",
+                            label,
+                            ts: Date.now(),
+                        };
+                        writeJobberMapping(map);
+                        u._jobber = { match: map[u.key] };
+                    } else {
+                        u._jobber = { candidates };
+                    }
                 }
                 if (expandedKey === u.key) render();
             } catch (e) {
@@ -472,9 +486,9 @@
                 const items = candidates.map((c) => {
                     const street = c.street || c.propertyName || "";
                     const clientName = c.client && c.client.name || "";
-                    const propId = JSON.stringify(c.id);
-                    const cliId = JSON.stringify(c.client && c.client.id || "");
-                    const labelArg = JSON.stringify(street || clientName || c.id);
+                    const propId = escapeHtml(JSON.stringify(c.id));
+                    const cliId = escapeHtml(JSON.stringify(c.client && c.client.id || ""));
+                    const labelArg = escapeHtml(JSON.stringify(street || clientName || c.id));
                     return `<button class="extras-candidate" type="button" onclick="confirmJobberMatch('${escapeHtml(u.key)}', ${propId}, ${cliId}, ${labelArg})">
                         <div class="cand-addr">${escapeHtml(street)}</div>
                         ${clientName ? `<div class="cand-client">${escapeHtml(clientName)}</div>` : ""}
