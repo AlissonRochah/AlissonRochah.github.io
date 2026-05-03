@@ -239,23 +239,19 @@
         function render() {
             const tbody = document.getElementById("units-tbody");
             if (filteredUnits.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="empty">No units match your search.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" class="empty">No units match your search.</td></tr>`;
                 return;
             }
             tbody.innerHTML = filteredUnits.map((u) => {
                 const expanded = expandedKey === u.key;
-                const beds = (u.BedroomCount || "?") + " BD / " + (u.BathroomCount || "?") + " BA";
                 return `
                     <tr class="unit-row ${expanded ? "expanded" : ""}" data-key="${escapeHtml(u.key)}">
                         <td class="col-thumb">${imageThumb(u.image)}</td>
                         <td class="col-code">${escapeHtml(u.code)}</td>
-                        <td>${escapeHtml(u.resort)}</td>
-                        <td>${escapeHtml(beds)}</td>
-                        <td>${escapeHtml(u.responsible)}</td>
                         <td class="col-extras">${extrasHtml(u)}</td>
                         <td><span class="status-pill status-${escapeHtml(u.status)}">${escapeHtml(u.status)}</span></td>
                     </tr>
-                    ${expanded ? `<tr class="unit-row-details"><td colspan="7">${detailsHtml(u)}</td></tr>` : ""}
+                    ${expanded ? `<tr class="unit-row-details"><td colspan="4">${detailsHtml(u)}</td></tr>` : ""}
                 `;
             }).join("");
 
@@ -317,9 +313,6 @@
                     <tr>
                         <th class="col-thumb"></th>
                         <th>Code</th>
-                        <th>Resort</th>
-                        <th>Beds/Baths</th>
-                        <th>Responsible</th>
                         <th>Extras</th>
                         <th>Status</th>
                     </tr>
