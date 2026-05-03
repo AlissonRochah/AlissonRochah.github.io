@@ -829,15 +829,16 @@
 
         function buildExtrasTitle(action, items, customItems) {
             const parts = [];
+            const fmt = (count, name) => `${count} ${count === 1 ? "extra" : "extras"} ${String(name || "").toLowerCase()}`;
             for (const i of items) {
-                if (i.count > 0) parts.push(`${i.count} ${i.label}`);
+                if (i.count > 0) parts.push(fmt(i.count, i.label));
             }
             for (const c of (customItems || [])) {
                 const name = (c.label || "").trim();
                 const count = Number(c.count) || 0;
-                if (name && count > 0) parts.push(`${count} ${name}`);
+                if (name && count > 0) parts.push(fmt(count, name));
             }
-            return parts.length ? `${action}: ${parts.join(", ")}` : action;
+            return parts.length ? `${action} ${parts.join(" + ")}` : action;
         }
 
         function labelsFromTeamIds(ids) {
