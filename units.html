@@ -260,9 +260,9 @@
             return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
         }
 
-        function stayCard(label, r) {
+        function stayCard(label, r, kind) {
             if (!r) {
-                return `<div class="stay-card stay-empty">
+                return `<div class="stay-card stay-empty stay-${kind}">
                     <div class="stay-label">${label}</div>
                     <div class="stay-empty-text">No guest</div>
                 </div>`;
@@ -275,7 +275,7 @@
             const conf = r.confirmation ? `<span class="copyable stay-conf" data-copy="${escapeHtml(r.confirmation)}">${escapeHtml(r.confirmation)}</span>` : "";
             const door = r.doorCode ? `<span class="copyable stay-door" data-copy="${escapeHtml(r.doorCode)}">Door ${escapeHtml(r.doorCode)}</span>` : "";
             const link = r.link ? `<a class="btn-mapro" href="https://app.mapro.us${escapeHtml(r.link)}" target="_blank" rel="noopener">MAPRO ↗</a>` : "";
-            return `<div class="stay-card">
+            return `<div class="stay-card stay-${kind}">
                 <div class="stay-label">${label}</div>
                 <div class="stay-guest">${escapeHtml(r.guest || "Unknown")}</div>
                 <div class="stay-dates">${dates}</div>
@@ -290,8 +290,8 @@
                 return `<div class="unit-stays-loading">Loading stays…</div>`;
             }
             return `<div class="unit-stays">
-                ${stayCard("NOW", u._stays.active)}
-                ${stayCard("PREV", u._stays.previous)}
+                ${stayCard("Previous guest", u._stays.previous, "prev")}
+                ${stayCard("Current guest", u._stays.active, "now")}
             </div>`;
         }
 
