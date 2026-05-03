@@ -1,0 +1,41 @@
+name: build-extension-zip
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "extension/**"
+      - ".github/workflows/build-extension-zip.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-extension-zip
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Build extension.zip
+        run: |
+          rm -f extension.zip
+          cd "$GITHUB_WORKSPACE"
+          zip -r extension.zip extension -x "*.DS_Store"
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet --exit-code -- extension.zip; then
+            echo "extension.zip unchanged, nothing to commit"
+            exit 0
+          fi
+          git add extension.zip
+          git commit -m "chore: rebuild extension.zip"
+          git push

@@ -778,6 +778,28 @@ Your Name</pre>
             </div>
         </section>
 
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>MasterBot Bridge (Jobber)</h2>
+                    <p>Browser extension that lets the units page create Jobber jobs using your existing browser session. Nothing is stored on the server — all data stays in your browser.</p>
+                </div>
+            </div>
+            <div style="margin-top:12px; display:flex; flex-direction:column; gap:12px;">
+                <a href="extension.zip" download class="btn-primary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 16px; border-radius:8px; text-decoration:none; max-width:fit-content;">Download Bridge Extension (.zip)</a>
+                <ol style="font-size:0.85rem; color:var(--text-secondary); margin-left:20px; display:flex; flex-direction:column; gap:6px;">
+                    <li>Click the button above to download <code>extension.zip</code>.</li>
+                    <li>Unzip it anywhere on your computer (you'll get a folder called <code>extension</code>).</li>
+                    <li>Open <code>brave://extensions</code> (or <code>chrome://extensions</code>).</li>
+                    <li>Toggle <strong>Developer mode</strong> ON (top-right).</li>
+                    <li>Click <strong>Load unpacked</strong> and select the unzipped <code>extension</code> folder.</li>
+                    <li>Make sure you're logged into <a href="https://secure.getjobber.com" target="_blank" rel="noopener">secure.getjobber.com</a> in the same browser.</li>
+                    <li>Reload the units page — the Extras section will now work.</li>
+                </ol>
+                <p style="font-size:0.72rem; color:var(--text-muted);">The extension's id is fixed (<code>dmaenamjjgeclplnofeoiipddinihhhl</code>) thanks to the embedded public key in <code>manifest.json</code>, so it works the same on any computer without configuration.</p>
+            </div>
+        </section>
+
         <!-- User Management Section (admin only) -->
         <section id="user-management-section" class="settings-section" style="display: none;">
             <div class="section-header">
