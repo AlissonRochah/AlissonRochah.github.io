@@ -38,7 +38,7 @@
 
         const DEFAULT_PROXY_URL = "https://alisson-rochah-github-io.vercel.app";
         const CACHE_KEY = "masterbotUnitsCache";
-        const CACHE_TTL_MS = 5 * 60 * 1000;
+        const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
         let proxyUrl = localStorage.getItem("masterbotProxyUrl") || DEFAULT_PROXY_URL;
         let currentUser = null;
         let allUnits = [];
