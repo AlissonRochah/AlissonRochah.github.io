@@ -301,11 +301,14 @@
                     return jobberQuery("GlobalSearch", searchQuery, { searchTerm: term, first: 10 })
                         .catch((e) => ({ _error: e.message || String(e) }));
                 }
+                const tried = [];
                 let data = await runSearch(street);
+                tried.push(street);
                 let nodes = (data && !data._error && data.search && data.search.nodes) || [];
                 let propertyNodes = nodes.filter((n) => n && n.__typename === "Property");
                 if (propertyNodes.length === 0 && streetNumber && streetNumber !== street) {
                     data = await runSearch(streetNumber);
+                    tried.push(streetNumber);
                     nodes = (data && !data._error && data.search && data.search.nodes) || [];
                     propertyNodes = nodes.filter((n) => n && n.__typename === "Property");
                 }
@@ -334,7 +337,7 @@
                         writeJobberMapping(map);
                         u._jobber = { match: map[u.key] };
                     } else {
-                        u._jobber = { candidates };
+                        u._jobber = { candidates, tried };
                     }
                 }
                 if (expandedKey === u.key) render();
@@ -345,6 +348,50 @@
                 u._jobberFetching = false;
             }
         }
+
+        window.manualJobberSearch = async function (key) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u) return;
+            const input = document.getElementById(`manual-search-${key}`);
+            const term = input && input.value.trim();
+            if (!term) { showToast("Type something to search"); return; }
+            const tried = (u._jobber && u._jobber.tried) || [];
+            u._jobber = { candidates: u._jobber && u._jobber.candidates || [], tried, searching: true };
+            render();
+            try {
+                const data = await jobberQuery(
+                    "GlobalSearch",
+                    `query GlobalSearch($searchTerm: String!, $first: Int) {
+                        search(searchTerm: $searchTerm, first: $first) {
+                            nodes {
+                                __typename
+                                ... on Property {
+                                    id
+                                    propertyName: name
+                                    street
+                                    propertySc: client { id name __typename }
+                                    __typename
+                                }
+                            }
+                        }
+                    }`,
+                    { searchTerm: term, first: 20 }
+                );
+                const nodes = (data && data.search && data.search.nodes) || [];
+                const candidates = nodes
+                    .filter((n) => n && n.__typename === "Property")
+                    .map((n) => ({
+                        id: n.id,
+                        propertyName: n.propertyName,
+                        street: n.street,
+                        client: n.propertySc || null,
+                    }));
+                u._jobber = { candidates, tried: [...tried, term] };
+            } catch (e) {
+                u._jobber = { error: String(e && e.message || e) };
+            }
+            render();
+        };
 
         window.confirmJobberMatch = function (key, idx) {
             const u = filteredUnits.find((x) => x.key === key);
@@ -495,10 +542,16 @@
             }
             if (!j.match) {
                 const candidates = j.candidates || [];
+                const tried = (j.tried || []).map((t) => `"${escapeHtml(t)}"`).join(", ");
+                const manualInput = `<div class="extras-manual-search">
+                    <input type="text" id="manual-search-${escapeHtml(u.key)}" placeholder="Search Jobber by name/address" ${j.searching ? "disabled" : ""}>
+                    <button type="button" class="btn-extra" ${j.searching ? "disabled" : ""} onclick="manualJobberSearch('${escapeHtml(u.key)}')">${j.searching ? "Searching…" : "Search"}</button>
+                </div>`;
                 if (candidates.length === 0) {
                     return `<div class="unit-extras">
                         <div class="extras-label">Extras</div>
-                        <div class="extras-empty">No Jobber property found for this address.</div>
+                        <div class="extras-empty">No Jobber property found.${tried ? ` Tried: ${tried}` : ""}</div>
+                        ${manualInput}
                     </div>`;
                 }
                 const items = candidates.map((c, idx) => {
@@ -510,8 +563,9 @@
                     </button>`;
                 }).join("");
                 return `<div class="unit-extras">
-                    <div class="extras-label">Pick the matching Jobber property</div>
+                    <div class="extras-label">Pick the matching Jobber property${tried ? ` <span class="extras-tried">(searched ${tried})</span>` : ""}</div>
                     <div class="extras-candidates">${items}</div>
+                    ${manualInput}
                 </div>`;
             }
 
