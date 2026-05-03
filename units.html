@@ -40,6 +40,8 @@
         const CACHE_KEY = "masterbotUnitsCache";
         const CACHE_SCHEMA = 2;
         const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+        const JOBBER_EXTENSION_ID = "dmaenamjjgeclplnofeoiipddinihhhl";
+        const JOBBER_MAPPING_KEY = "masterbotJobberMapping";
         let proxyUrl = localStorage.getItem("masterbotProxyUrl") || DEFAULT_PROXY_URL;
         let currentUser = null;
         let allUnits = [];
@@ -217,6 +219,129 @@
             finally { u._staysFetching = false; }
         }
 
+        function jobberMessage(action, payload) {
+            return new Promise((resolve) => {
+                if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) {
+                    resolve({ ok: false, error: "no_extension_api" });
+                    return;
+                }
+                try {
+                    chrome.runtime.sendMessage(JOBBER_EXTENSION_ID, { action, payload }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            resolve({ ok: false, error: "extension_unreachable" });
+                            return;
+                        }
+                        resolve(response || { ok: false, error: "no_response" });
+                    });
+                } catch (e) {
+                    resolve({ ok: false, error: String(e && e.message || e) });
+                }
+            });
+        }
+
+        async function jobberQuery(operationName, query, variables) {
+            const res = await jobberMessage("jobber-query", { operationName, query, variables: variables || {} });
+            if (!res || !res.ok) {
+                const err = new Error(res && res.error || "jobber_unknown_error");
+                err.code = res && res.error;
+                throw err;
+            }
+            return res.data;
+        }
+
+        function readJobberMapping() {
+            try { return JSON.parse(localStorage.getItem(JOBBER_MAPPING_KEY) || "{}"); }
+            catch (_) { return {}; }
+        }
+
+        function writeJobberMapping(map) {
+            try { localStorage.setItem(JOBBER_MAPPING_KEY, JSON.stringify(map)); }
+            catch (_) { /* quota — ignore */ }
+        }
+
+        async function fetchJobberMatch(u) {
+            if (u._jobber || u._jobberFetching) return;
+            u._jobberFetching = true;
+            try {
+                const map = readJobberMapping();
+                const cached = map[u.key];
+                if (cached) {
+                    u._jobber = { match: cached };
+                    if (expandedKey === u.key) render();
+                    return;
+                }
+                const ping = await jobberMessage("ping");
+                if (!ping || !ping.ok) {
+                    u._jobber = { error: ping && ping.error || "extension_unreachable" };
+                    if (expandedKey === u.key) render();
+                    return;
+                }
+                const street = (u._fullAddress || u.address || "").split(",")[0].trim();
+                if (!street) {
+                    u._jobber = { error: "no_address" };
+                    if (expandedKey === u.key) render();
+                    return;
+                }
+                const data = await jobberQuery(
+                    "GlobalSearch",
+                    `query GlobalSearch($searchTerm: String!, $first: Int) {
+                        globalSearch(searchTerm: $searchTerm, first: $first) {
+                            edges {
+                                node {
+                                    __typename
+                                    ... on Property {
+                                        id
+                                        address { street street1 street2 city province postalCode }
+                                        client { id name }
+                                    }
+                                }
+                            }
+                        }
+                    }`,
+                    { searchTerm: street, first: 10 }
+                ).catch((e) => ({ _error: e.message || String(e) }));
+                if (data && data._error) {
+                    u._jobber = { error: data._error };
+                } else {
+                    const edges = (data && data.globalSearch && data.globalSearch.edges) || [];
+                    const candidates = edges
+                        .map((e) => e.node)
+                        .filter((n) => n && n.__typename === "Property");
+                    u._jobber = { candidates };
+                }
+                if (expandedKey === u.key) render();
+            } catch (e) {
+                u._jobber = { error: String(e && e.message || e) };
+                if (expandedKey === u.key) render();
+            } finally {
+                u._jobberFetching = false;
+            }
+        }
+
+        window.confirmJobberMatch = function (key, propertyId, clientId, label) {
+            const map = readJobberMapping();
+            map[key] = { propertyId, clientId, label, ts: Date.now() };
+            writeJobberMapping(map);
+            const u = filteredUnits.find((x) => x.key === key);
+            if (u) {
+                u._jobber = { match: map[key] };
+                if (expandedKey === key) render();
+            }
+        };
+
+        window.clearJobberMatch = function (key) {
+            const map = readJobberMapping();
+            delete map[key];
+            writeJobberMapping(map);
+            const u = filteredUnits.find((x) => x.key === key);
+            if (u) {
+                u._jobber = null;
+                if (expandedKey === key) {
+                    fetchJobberMatch(u);
+                }
+            }
+        };
+
         function toggleExpand(key) {
             expandedKey = (expandedKey === key) ? null : key;
             render();
@@ -224,6 +349,7 @@
                 const u = filteredUnits.find((x) => x.key === key);
                 if (u && !isAddressFull(u.address)) fetchFullAddress(u);
                 if (u) fetchStays(u);
+                if (u) fetchJobberMatch(u);
             }
         }
 
@@ -250,7 +376,7 @@
                 </div>
             `).join("");
 
-            return `<div class="unit-details">${detailsRows}</div>${staysHtml(u)}`;
+            return `<div class="unit-details">${detailsRows}</div>${staysHtml(u)}${jobberExtrasHtml(u)}`;
         }
 
         function fmtDate(s) {
@@ -310,6 +436,189 @@
                 ${right}
             </div>`;
         }
+
+        function todayIso() {
+            const d = new Date();
+            return d.toISOString().slice(0, 10);
+        }
+
+        function jobberExtrasHtml(u) {
+            const j = u._jobber;
+            if (!j) {
+                return `<div class="unit-extras"><div class="extras-label">Extras</div><div class="extras-empty">Loading…</div></div>`;
+            }
+            if (j.error === "extension_unreachable" || j.error === "no_extension_api") {
+                return `<div class="unit-extras"><div class="extras-label">Extras</div><div class="extras-empty">Install the MasterBot Bridge extension to enable Jobber.</div></div>`;
+            }
+            if (j.error === "no_address") {
+                return `<div class="unit-extras"><div class="extras-label">Extras</div><div class="extras-empty">Load the full address first.</div></div>`;
+            }
+            if (j.error) {
+                return `<div class="unit-extras"><div class="extras-label">Extras</div><div class="extras-empty">Error: ${escapeHtml(j.error)}</div></div>`;
+            }
+            if (!j.match) {
+                const candidates = j.candidates || [];
+                if (candidates.length === 0) {
+                    return `<div class="unit-extras">
+                        <div class="extras-label">Extras</div>
+                        <div class="extras-empty">No Jobber property found for this address.</div>
+                    </div>`;
+                }
+                const items = candidates.map((c) => {
+                    const a = c.address || {};
+                    const street = a.street || a.street1 || "";
+                    const cityLine = [a.city, a.province, a.postalCode].filter(Boolean).join(" ");
+                    const label = [street, cityLine].filter(Boolean).join(", ");
+                    const clientName = c.client && c.client.name || "";
+                    const propId = JSON.stringify(c.id);
+                    const cliId = JSON.stringify(c.client && c.client.id || "");
+                    const labelArg = JSON.stringify(label || clientName || c.id);
+                    return `<button class="extras-candidate" type="button" onclick="confirmJobberMatch('${escapeHtml(u.key)}', ${propId}, ${cliId}, ${labelArg})">
+                        <div class="cand-addr">${escapeHtml(label)}</div>
+                        ${clientName ? `<div class="cand-client">${escapeHtml(clientName)}</div>` : ""}
+                    </button>`;
+                }).join("");
+                return `<div class="unit-extras">
+                    <div class="extras-label">Pick the matching Jobber property</div>
+                    <div class="extras-candidates">${items}</div>
+                </div>`;
+            }
+
+            const matchLabel = escapeHtml(j.match.label || j.match.propertyId);
+            const draft = u._extraDraft;
+            const created = u._extraJobs || [];
+
+            const createdHtml = created.length === 0 ? "" : `<div class="extras-created">${
+                created.map((cj) => {
+                    const url = `https://secure.getjobber.com/jobs/${encodeURIComponent(cj.id)}`;
+                    return `<div class="extras-created-row">
+                        <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
+                        <span class="created-title">${escapeHtml(cj.title)}</span>
+                        ${cj.jobNumber ? `<a class="created-link" href="${url}" target="_blank" rel="noopener">#${escapeHtml(String(cj.jobNumber))} ↗</a>` : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`}
+                    </div>`;
+                }).join("")
+            }</div>`;
+
+            let formHtml = "";
+            if (!draft) {
+                formHtml = `<div class="extras-actions">
+                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','PH')">+ PH on/off</button>
+                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','BBQ')">+ BBQ clean</button>
+                </div>`;
+            } else if (draft.type === "PH") {
+                formHtml = `<div class="extras-form">
+                    <label>PH ON date <input type="date" id="ph-on-${escapeHtml(u.key)}" value="${escapeHtml(draft.onDate || todayIso())}"></label>
+                    <label>PH OFF date <input type="date" id="ph-off-${escapeHtml(u.key)}" value="${escapeHtml(draft.offDate || todayIso())}"></label>
+                    <div class="extras-form-actions">
+                        <button class="btn-extra btn-extra-primary" type="button" ${draft.submitting ? "disabled" : ""} onclick="submitExtraPH('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create"}</button>
+                        <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
+                    </div>
+                </div>`;
+            } else if (draft.type === "BBQ") {
+                formHtml = `<div class="extras-form">
+                    <label>BBQ date <input type="date" id="bbq-${escapeHtml(u.key)}" value="${escapeHtml(draft.date || todayIso())}"></label>
+                    <div class="extras-form-actions">
+                        <button class="btn-extra btn-extra-primary" type="button" ${draft.submitting ? "disabled" : ""} onclick="submitExtraBBQ('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create"}</button>
+                        <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
+                    </div>
+                </div>`;
+            }
+
+            return `<div class="unit-extras">
+                <div class="extras-label">Extras
+                    <span class="extras-match">→ ${matchLabel} <button class="btn-link" type="button" onclick="clearJobberMatch('${escapeHtml(u.key)}')">unlink</button></span>
+                </div>
+                ${formHtml}
+                ${createdHtml}
+            </div>`;
+        }
+
+        const CREATE_JOB_MUTATION = `mutation CreateJob($input: JobCreateAttributes!) {
+            jobCreate(input: $input) {
+                job { id jobNumber title }
+                userErrors { message path }
+            }
+        }`;
+
+        async function createJobberJob({ propertyId, title, startAt }) {
+            const input = {
+                customFields: [],
+                instructions: "",
+                invoicing: { invoicingSchedule: "NEVER", invoicingType: "FIXED_PRICE" },
+                jobFormIds: [],
+                jobType: "ONE_OFF",
+                lineItems: [],
+                notes: [],
+                progressInvoicingSchedule: null,
+                propertyId,
+                salespersonId: null,
+                scheduling: { assignedTo: [], createVisits: true, notifyTeam: false },
+                timeframe: { durationUnits: "DAYS", durationValue: 0, startAt },
+                title,
+                trackingOrigin: "property",
+            };
+            const data = await jobberQuery("CreateJob", CREATE_JOB_MUTATION, { input });
+            const errs = data?.jobCreate?.userErrors || [];
+            if (errs.length) throw new Error(errs.map((e) => e.message).join("; "));
+            return data?.jobCreate?.job;
+        }
+
+        window.startExtra = function (key, type) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._jobber || !u._jobber.match) return;
+            u._extraDraft = { type };
+            render();
+        };
+
+        window.cancelExtra = function (key) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u) return;
+            u._extraDraft = null;
+            render();
+        };
+
+        function readDateInput(id) {
+            const el = document.getElementById(id);
+            return el ? el.value : "";
+        }
+
+        async function runCreateAndRecord(u, jobs) {
+            u._extraDraft.submitting = true;
+            render();
+            u._extraJobs = u._extraJobs || [];
+            for (const j of jobs) {
+                try {
+                    const created = await createJobberJob({ propertyId: u._jobber.match.propertyId, title: j.title, startAt: j.startAt });
+                    u._extraJobs.push({ status: "ok", title: j.title, id: created?.id, jobNumber: created?.jobNumber });
+                } catch (e) {
+                    u._extraJobs.push({ status: "err", title: j.title, error: e?.message || String(e) });
+                }
+            }
+            u._extraDraft = null;
+            render();
+        }
+
+        window.submitExtraPH = function (key) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraDraft || u._extraDraft.submitting) return;
+            const onDate = readDateInput(`ph-on-${key}`);
+            const offDate = readDateInput(`ph-off-${key}`);
+            if (!onDate || !offDate) { showToast("Pick both dates"); return; }
+            runCreateAndRecord(u, [
+                { title: "PH ON", startAt: onDate },
+                { title: "PH OFF", startAt: offDate },
+            ]);
+        };
+
+        window.submitExtraBBQ = function (key) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraDraft || u._extraDraft.submitting) return;
+            const date = readDateInput(`bbq-${key}`);
+            if (!date) { showToast("Pick a date"); return; }
+            runCreateAndRecord(u, [
+                { title: "BBQ Clean", startAt: date },
+            ]);
+        };
 
         async function copyText(text) {
             try {
