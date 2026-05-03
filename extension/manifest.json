@@ -5,8 +5,8 @@
   "version": "0.1.0",
   "description": "Bridge for MasterBot site to query Jobber on the user's behalf using their existing browser session.",
   "icons": {
-    "48": "../img/MasterLogo.jpg",
-    "128": "../img/MasterLogo.jpg"
+    "48": "MasterLogo.jpg",
+    "128": "MasterLogo.jpg"
   },
   "background": {
     "service_worker": "background.js"
