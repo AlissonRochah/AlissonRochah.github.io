@@ -37,11 +37,30 @@
         const db = getFirestore(app);
 
         const DEFAULT_PROXY_URL = "https://alisson-rochah-github-io.vercel.app";
+        const CACHE_KEY = "masterbotUnitsCache";
+        const CACHE_TTL_MS = 5 * 60 * 1000;
         let proxyUrl = localStorage.getItem("masterbotProxyUrl") || DEFAULT_PROXY_URL;
         let currentUser = null;
         let allUnits = [];
         let filteredUnits = [];
         let expandedKey = null;
+
+        function readCache() {
+            try {
+                const raw = localStorage.getItem(CACHE_KEY);
+                if (!raw) return null;
+                const obj = JSON.parse(raw);
+                if (!obj || !obj.ts || !Array.isArray(obj.units)) return null;
+                if (Date.now() - obj.ts > CACHE_TTL_MS) return null;
+                return obj;
+            } catch (_) { return null; }
+        }
+
+        function writeCache() {
+            try {
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), units: allUnits }));
+            } catch (_) { /* quota or serialization errors — ignore */ }
+        }
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) {
@@ -62,8 +81,22 @@
             await loadUnits();
         });
 
-        async function loadUnits() {
+        async function loadUnits(forceFresh) {
             const status = document.getElementById("status");
+
+            if (!forceFresh) {
+                const cached = readCache();
+                if (cached) {
+                    allUnits = cached.units;
+                    filteredUnits = allUnits;
+                    document.getElementById("count").innerText = `${allUnits.length} units`;
+                    status.innerText = "";
+                    status.className = "units-status";
+                    render();
+                    return;
+                }
+            }
+
             status.innerText = "Loading units…";
             status.className = "units-status loading";
 
@@ -88,6 +121,7 @@
                 const data = await res.json();
                 allUnits = Array.isArray(data.units) ? data.units : [];
                 filteredUnits = allUnits;
+                writeCache();
                 document.getElementById("count").innerText = `${allUnits.length} units`;
                 status.innerText = "";
                 status.className = "units-status";
@@ -144,6 +178,7 @@
                 if (res.ok) {
                     const data = await res.json();
                     u._fullAddress = data.address || u.address;
+                    writeCache();
                     if (expandedKey === u.key) render();
                 }
             } catch (_) { /* fall back to bulk address */ }
@@ -223,7 +258,7 @@
             signOut(auth).then(() => { window.location.href = "index.html"; });
         };
         window.applyFilter = applyFilter;
-        window.refreshUnits = loadUnits;
+        window.refreshUnits = () => loadUnits(true);
 
         document.addEventListener("keydown", function (e) {
             const active = document.activeElement;
