@@ -314,11 +314,12 @@
                         }));
                     if (candidates.length === 1) {
                         const c = candidates[0];
-                        const label = c.street || (c.client && c.client.name) || c.id;
+                        const label = c.street || c.propertyName || (c.client && c.client.name) || c.id;
                         const map = readJobberMapping();
                         map[u.key] = {
                             propertyId: c.id,
                             clientId: c.client && c.client.id || "",
+                            propertyName: c.propertyName || "",
                             label,
                             ts: Date.now(),
                         };
@@ -556,15 +557,41 @@
             }
         }`;
 
-        async function createJobberJob({ propertyId, title, startAt }) {
+        function detectAreaSuffix(propertyName) {
+            const m = String(propertyName || "").match(/\b([WE])\d+\b/i);
+            if (!m) return null;
+            return m[1].toUpperCase() === "W" ? "West" : "East";
+        }
+
+        function fmtMonthDay(iso) {
+            if (!iso) return "";
+            const parts = iso.split("-");
+            if (parts.length !== 3) return iso;
+            return `${Number(parts[1])}/${Number(parts[2])}`;
+        }
+
+        async function createJobberJob({ propertyId, title, startAt, assigneeName }) {
+            const yourName = (localStorage.getItem("yourName") || "").trim();
+            const customFields = yourName ? [{
+                valueDropdown: yourName,
+                customFieldConfigurationId: "MzY0NTQ2",
+            }] : [];
+            const who = (assigneeName || title || "").trim();
+            const noteMessage = `${fmtMonthDay(startAt)} | ${who}`.trim();
+            const notes = noteMessage ? [{
+                attachments: [],
+                linkedTo: { invoices: true },
+                message: noteMessage,
+            }] : [];
+
             const input = {
-                customFields: [],
+                customFields,
                 instructions: "",
                 invoicing: { invoicingSchedule: "NEVER", invoicingType: "FIXED_PRICE" },
                 jobFormIds: [],
                 jobType: "ONE_OFF",
                 lineItems: [],
-                notes: [],
+                notes,
                 progressInvoicingSchedule: null,
                 propertyId,
                 salespersonId: null,
@@ -604,7 +631,12 @@
             u._extraJobs = u._extraJobs || [];
             for (const j of jobs) {
                 try {
-                    const created = await createJobberJob({ propertyId: u._jobber.match.propertyId, title: j.title, startAt: j.startAt });
+                    const created = await createJobberJob({
+                        propertyId: u._jobber.match.propertyId,
+                        title: j.title,
+                        startAt: j.startAt,
+                        assigneeName: j.assigneeName,
+                    });
                     u._extraJobs.push({ status: "ok", title: j.title, id: created?.id, jobNumber: created?.jobNumber });
                 } catch (e) {
                     u._extraJobs.push({ status: "err", title: j.title, error: e?.message || String(e) });
@@ -621,8 +653,8 @@
             const offDate = readDateInput(`ph-off-${key}`);
             if (!onDate || !offDate) { showToast("Pick both dates"); return; }
             runCreateAndRecord(u, [
-                { title: "PH ON", startAt: onDate },
-                { title: "PH OFF", startAt: offDate },
+                { title: "PH ON", startAt: onDate, assigneeName: "PH ON" },
+                { title: "PH OFF", startAt: offDate, assigneeName: "PH OFF" },
             ]);
         };
 
@@ -631,8 +663,10 @@
             if (!u || !u._extraDraft || u._extraDraft.submitting) return;
             const date = readDateInput(`bbq-${key}`);
             if (!date) { showToast("Pick a date"); return; }
+            const area = detectAreaSuffix(u._jobber && u._jobber.match && u._jobber.match.propertyName);
+            const assigneeName = area ? `BBQ ${area}` : "BBQ";
             runCreateAndRecord(u, [
-                { title: "BBQ Clean", startAt: date },
+                { title: "BBQ Clean", startAt: date, assigneeName },
             ]);
         };
 
