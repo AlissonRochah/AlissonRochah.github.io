@@ -45,9 +45,6 @@
         let allUnits = [];
         let filteredUnits = [];
         let expandedKey = null;
-        let pendingOpen = false;
-        let closingKey = null;
-        const ANIM_MS = 240;
 
         function readCache() {
             try {
@@ -221,35 +218,13 @@
         }
 
         function toggleExpand(key) {
-            if (closingKey) return;
-            const tbodyEl = document.getElementById("units-tbody");
-            if (expandedKey === key) {
-                closingKey = key;
-                const inner = tbodyEl && tbodyEl.querySelector(`tr.unit-row[data-key="${cssEscape(key)}"] + tr.unit-row-details .unit-row-details-inner`);
-                if (inner) inner.classList.remove("open");
-                setTimeout(() => {
-                    expandedKey = null;
-                    closingKey = null;
-                    render();
-                }, ANIM_MS);
-                return;
-            }
-            expandedKey = key;
-            pendingOpen = true;
+            expandedKey = (expandedKey === key) ? null : key;
             render();
-            requestAnimationFrame(() => {
-                const tb = document.getElementById("units-tbody");
-                const inner = tb && tb.querySelector(".unit-row-details-inner");
-                if (inner) inner.classList.add("open");
-                pendingOpen = false;
-            });
-            const u = filteredUnits.find((x) => x.key === key);
-            if (u && !isAddressFull(u.address)) fetchFullAddress(u);
-            if (u) fetchStays(u);
-        }
-
-        function cssEscape(s) {
-            return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+            if (expandedKey) {
+                const u = filteredUnits.find((x) => x.key === key);
+                if (u && !isAddressFull(u.address)) fetchFullAddress(u);
+                if (u) fetchStays(u);
+            }
         }
 
         function detailsHtml(u) {
@@ -371,7 +346,7 @@
                         <td><span class="status-pill status-${escapeHtml(u.status)}">${escapeHtml(u.status)}</span></td>
                         <td class="col-mapro"><a href="${maproUrl}" target="_blank" rel="noopener" class="btn-mapro" title="Open in MAPRO">MAPRO ↗</a></td>
                     </tr>
-                    ${expanded ? `<tr class="unit-row-details"><td colspan="5"><div class="unit-row-details-inner${pendingOpen ? "" : " open"}"><div class="unit-details-content">${detailsHtml(u)}</div></div></td></tr>` : ""}
+                    ${expanded ? `<tr class="unit-row-details"><td colspan="5">${detailsHtml(u)}</td></tr>` : ""}
                 `;
             }).join("");
 
