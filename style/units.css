@@ -468,6 +468,40 @@
     display: flex;
     gap: 6px;
 }
+.extras-area-picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.extras-area-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.btn-area {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+}
+.btn-area:hover { border-color: var(--accent); }
+.btn-area-active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+.extras-area-auto {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+.extras-warn {
+    flex-basis: 100%;
+    font-size: 12px;
+    color: #ff9b3d;
+}
 .extras-candidates {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

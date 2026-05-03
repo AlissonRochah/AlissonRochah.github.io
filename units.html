@@ -546,10 +546,22 @@
                     </div>
                 </div>`;
             } else if (draft.type === "BBQ") {
+                const detected = detectAreaSuffix(u, j.match);
+                const chosen = draft.area || detected;
+                const areaWarn = !chosen ? `<div class="extras-warn">⚠ Couldn't detect West/East — pick one</div>` : "";
+                const areaPicker = `<div class="extras-area-picker">
+                    <span class="extras-area-label">Area:</span>
+                    <button type="button" class="btn-area ${chosen === "West" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','West')">West</button>
+                    <button type="button" class="btn-area ${chosen === "East" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','East')">East</button>
+                    ${detected && !draft.area ? `<span class="extras-area-auto">auto-detected</span>` : ""}
+                </div>`;
+                const canSubmit = !!chosen && !draft.submitting;
                 formHtml = `<div class="extras-form">
                     <label>BBQ date <input type="date" id="bbq-${escapeHtml(u.key)}" value="${escapeHtml(draft.date || todayIso())}"></label>
+                    ${areaPicker}
+                    ${areaWarn}
                     <div class="extras-form-actions">
-                        <button class="btn-extra btn-extra-primary" type="button" ${draft.submitting ? "disabled" : ""} onclick="submitExtraBBQ('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create"}</button>
+                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraBBQ('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : `Create${chosen ? ` (BBQ ${chosen})` : ""}`}</button>
                         <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
                     </div>
                 </div>`;
@@ -583,8 +595,17 @@
             catch (_) { return ""; }
         }
 
-        function detectAreaSuffix(match) {
-            const sources = [match && match.clientName, match && match.propertyName, match && match.label];
+        function detectAreaSuffix(u, match) {
+            const sources = [
+                match && match.clientName,
+                match && match.propertyName,
+                match && match.label,
+                u && u.code,
+                u && u.title,
+                u && (u._fullAddress || u.address),
+                u && u.resort,
+                u && u.homeowner,
+            ];
             for (const s of sources) {
                 const m = String(s || "").match(/\b([WE])\d+\b/);
                 if (m) return m[1].toUpperCase() === "W" ? "West" : "East";
@@ -688,14 +709,22 @@
             ]);
         };
 
+        window.setExtraArea = function (key, area) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraDraft) return;
+            u._extraDraft.area = area;
+            render();
+        };
+
         window.submitExtraBBQ = function (key) {
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._extraDraft || u._extraDraft.submitting) return;
             const date = readDateInput(`bbq-${key}`);
             if (!date) { showToast("Pick a date"); return; }
-            const area = detectAreaSuffix(u._jobber && u._jobber.match);
-            const assigneeName = area ? `BBQ ${area}` : "BBQ";
-            const teamId = area ? JOBBER_BBQ_TEAM_IDS[area] : null;
+            const area = u._extraDraft.area || detectAreaSuffix(u, u._jobber && u._jobber.match);
+            if (!area) { showToast("Pick West or East"); return; }
+            const assigneeName = `BBQ ${area}`;
+            const teamId = JOBBER_BBQ_TEAM_IDS[area];
             const assignedTo = teamId ? [teamId] : [];
             runCreateAndRecord(u, [
                 { title: "BBQ Clean", startAt: date, assigneeName, assignedTo },
