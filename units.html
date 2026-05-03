@@ -610,17 +610,16 @@
                 formHtml = `<div class="extras-actions">
                     <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','PH')">+ PH on/off</button>
                     <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','BBQ')">+ BBQ clean</button>
-                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','DELIVER')">+ Deliver extras</button>
-                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','PICKUP')">+ Pickup extras</button>
+                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','EXTRAS')">+ Deliver / Pickup extras</button>
                 </div>`;
-            } else if (draft.type === "DELIVER" || draft.type === "PICKUP") {
-                const action = draft.type === "DELIVER" ? "Deliver" : "Pickup";
+            } else if (draft.type === "EXTRAS") {
                 const info = detectAreaInfo(u, j.match);
                 const detectedArea = info && info.area;
                 const detectedNumber = info && info.number;
                 const chosenArea = draft.area || detectedArea;
                 const chosenNumber = draft.areaNumber != null ? draft.areaNumber : detectedNumber;
-                const date = draft.date || todayIso();
+                const deliverDate = draft.deliverDate || todayIso();
+                const pickupDate = draft.pickupDate || todayIso();
                 const items = DEFAULT_EXTRA_ITEMS.map((it) => ({
                     ...it,
                     count: (draft.items && Number(draft.items[it.key])) || 0,
@@ -628,9 +627,10 @@
                 const customItems = draft.customItems || [];
                 const totalCount = items.reduce((a, b) => a + b.count, 0)
                     + customItems.reduce((a, c) => a + (Number(c.count) || 0), 0);
-                const title = buildExtrasTitle(action, items, customItems);
-                const assignees = chosenArea ? computeDeliverPickupAssignees(chosenArea, chosenNumber, date) : [];
-                const assigneeLabels = labelsFromTeamIds(assignees);
+                const deliverTitle = buildExtrasTitle("Deliver", items, customItems);
+                const pickupTitle = buildExtrasTitle("Pickup", items, customItems);
+                const deliverAssignees = chosenArea ? computeDeliverPickupAssignees(chosenArea, chosenNumber, deliverDate) : [];
+                const pickupAssignees = chosenArea ? computeDeliverPickupAssignees(chosenArea, chosenNumber, pickupDate) : [];
                 const areaWarn = !chosenArea ? `<div class="extras-warn">⚠ Couldn't detect West/East — pick one</div>` : "";
                 const areaPicker = `<div class="extras-area-picker">
                     <span class="extras-area-label">Area:</span>
@@ -652,13 +652,14 @@
                         <button type="button" class="btn-link" onclick="removeExtraCustomItem('${escapeHtml(u.key)}', ${idx})">remove</button>
                     </div>
                 `).join("");
-                const previewHtml = chosenArea ? `<div class="extras-preview">
-                    <div><span class="created-meta-label">Title →</span> ${escapeHtml(title)}</div>
-                    <div><span class="created-meta-label">Assigned →</span> ${escapeHtml(assigneeLabels.join(" + ") || "(no team)")}</div>
+                const previewHtml = chosenArea && totalCount > 0 ? `<div class="extras-preview">
+                    <div><span class="created-meta-label">Deliver →</span> ${escapeHtml(deliverTitle)} · ${escapeHtml(labelsFromTeamIds(deliverAssignees).join(" + ") || "(no team)")}</div>
+                    <div><span class="created-meta-label">Pickup →</span> ${escapeHtml(pickupTitle)} · ${escapeHtml(labelsFromTeamIds(pickupAssignees).join(" + ") || "(no team)")}</div>
                 </div>` : "";
                 const canSubmit = !!chosenArea && totalCount > 0 && !draft.submitting;
                 formHtml = `<div class="extras-form">
-                    <label>${action} date <input type="date" id="ext-date-${escapeHtml(u.key)}" value="${escapeHtml(date)}" oninput="setExtraDate('${escapeHtml(u.key)}','date', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
+                    <label>Deliver date <input type="date" id="ext-deliver-${escapeHtml(u.key)}" value="${escapeHtml(deliverDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','deliverDate', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
+                    <label>Pickup date <input type="date" id="ext-pickup-${escapeHtml(u.key)}" value="${escapeHtml(pickupDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','pickupDate', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
                     ${areaPicker}
                     ${areaWarn}
                     <div class="extras-items">
@@ -668,7 +669,7 @@
                     </div>
                     ${previewHtml}
                     <div class="extras-form-actions">
-                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraDeliverPickup('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create"}</button>
+                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraDeliverPickup('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create both"}</button>
                         <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
                     </div>
                 </div>`;
@@ -1236,8 +1237,8 @@
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._extraDraft || u._extraDraft.submitting) return;
             const draft = u._extraDraft;
-            const action = draft.type === "DELIVER" ? "Deliver" : "Pickup";
-            const date = draft.date || todayIso();
+            const deliverDate = draft.deliverDate || todayIso();
+            const pickupDate = draft.pickupDate || todayIso();
             const info = detectAreaInfo(u, u._jobber && u._jobber.match);
             const area = draft.area || (info && info.area);
             const areaNumber = draft.areaNumber != null ? draft.areaNumber : (info && info.number);
@@ -1249,11 +1250,15 @@
             const customItems = (draft.customItems || []).filter((c) => (c.label || "").trim() && Number(c.count) > 0);
             const total = items.reduce((a, b) => a + b.count, 0) + customItems.reduce((a, c) => a + Number(c.count), 0);
             if (total <= 0) { showToast("Pick at least 1 item"); return; }
-            const title = buildExtrasTitle(action, items, customItems);
-            const assignees = computeDeliverPickupAssignees(area, areaNumber, date);
-            const assigneeName = labelsFromTeamIds(assignees).join(" + ") || `${area} ${areaNumber || ""}`.trim();
+            const deliverTitle = buildExtrasTitle("Deliver", items, customItems);
+            const pickupTitle = buildExtrasTitle("Pickup", items, customItems);
+            const deliverAssignees = computeDeliverPickupAssignees(area, areaNumber, deliverDate);
+            const pickupAssignees = computeDeliverPickupAssignees(area, areaNumber, pickupDate);
+            const deliverLabel = labelsFromTeamIds(deliverAssignees).join(" + ") || `${area} ${areaNumber || ""}`.trim();
+            const pickupLabel = labelsFromTeamIds(pickupAssignees).join(" + ") || `${area} ${areaNumber || ""}`.trim();
             runCreateAndRecord(u, [
-                { title, startAt: date, assigneeName, assignedTo: assignees },
+                { title: deliverTitle, startAt: deliverDate, assigneeName: deliverLabel, assignedTo: deliverAssignees },
+                { title: pickupTitle, startAt: pickupDate, assigneeName: pickupLabel, assignedTo: pickupAssignees },
             ]);
         };
 
