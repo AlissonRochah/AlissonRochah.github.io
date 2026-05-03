@@ -267,6 +267,7 @@
 }
 .stay-pill-red { background: rgba(239, 68, 68, 0.14); color: #ef4444; }
 .stay-pill-green { background: rgba(16, 185, 129, 0.14); color: #10b981; }
+.stay-pill-vrbo { background: rgba(36, 90, 188, 0.18); color: #245abc; }
 
 .stay-conf {
     font-family: ui-monospace, monospace;
@@ -302,6 +303,23 @@
 .btn-airbnb:hover {
     background: rgba(255, 56, 92, 0.18);
     border-color: #ff385c;
+}
+
+.btn-vrbo {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(36, 90, 188, 0.12);
+    color: #245abc;
+    border: 1px solid rgba(36, 90, 188, 0.35);
+    text-decoration: none;
+    white-space: nowrap;
+}
+.btn-vrbo:hover {
+    background: rgba(36, 90, 188, 0.20);
+    border-color: #245abc;
 }
 
 .unit-details {

@@ -148,8 +148,12 @@ export async function getUnitAddress(id) {
 }
 
 function parseChannel(title) {
-    const m = (title || "").match(/\(([^)]+)\)/);
-    return m ? m[1].trim() : "";
+    const t = String(title || "");
+    const inParens = t.match(/\(([^)]+)\)/);
+    if (inParens) return inParens[1].trim();
+    const parts = t.split(/\s+-\s+/);
+    if (parts.length >= 3) return parts.slice(1, -1).join(" - ").trim();
+    return "";
 }
 
 function inputValueByName(html, name) {
