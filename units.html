@@ -654,8 +654,8 @@
                 const canSubmit = !!chosenArea && !draft.submitting && !draft.loadingExisting;
                 const createLabel = draft.submitting ? "Creating…" : (conflicts.length ? "Create anyway" : "Create");
                 formHtml = `<div class="extras-form">
-                    <label>PH ON date <input type="date" id="ph-on-${escapeHtml(u.key)}" value="${escapeHtml(onDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','onDate', this.value)"></label>
-                    <label>PH OFF date <input type="date" id="ph-off-${escapeHtml(u.key)}" value="${escapeHtml(offDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','offDate', this.value)"></label>
+                    <label>PH ON date <input type="date" id="ph-on-${escapeHtml(u.key)}" value="${escapeHtml(onDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','onDate', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
+                    <label>PH OFF date <input type="date" id="ph-off-${escapeHtml(u.key)}" value="${escapeHtml(offDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','offDate', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
                     ${areaPicker}
                     ${areaWarn}
                     ${conflictsHtml}
@@ -677,7 +677,7 @@
                 </div>`;
                 const canSubmit = !!chosen && !draft.submitting;
                 formHtml = `<div class="extras-form">
-                    <label>BBQ date <input type="date" id="bbq-${escapeHtml(u.key)}" value="${escapeHtml(draft.date || todayIso())}"></label>
+                    <label>BBQ date <input type="date" id="bbq-${escapeHtml(u.key)}" value="${escapeHtml(draft.date || todayIso())}" onclick="try{this.showPicker()}catch(_){}"></label>
                     ${areaPicker}
                     ${areaWarn}
                     <div class="extras-form-actions">

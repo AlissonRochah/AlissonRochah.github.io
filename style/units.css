@@ -457,12 +457,42 @@
     color: var(--text-muted);
 }
 .extras-form input[type="date"] {
-    padding: 6px 10px;
-    border-radius: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
     border: 1px solid var(--border);
     background: var(--bg-elevated);
     color: var(--text-primary);
     font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    min-width: 150px;
+    color-scheme: dark;
+}
+.extras-form input[type="date"]:hover {
+    border-color: var(--accent);
+    background: var(--bg-elevated);
+}
+.extras-form input[type="date"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+.extras-form input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.7;
+    filter: invert(1) sepia(0) saturate(0) hue-rotate(0deg) brightness(2);
+    transition: opacity 120ms ease;
+    margin-left: 6px;
+}
+.extras-form input[type="date"]:hover::-webkit-calendar-picker-indicator {
+    opacity: 1;
+}
+.extras-form input[type="date"]::-webkit-datetime-edit {
+    color: var(--text-primary);
+}
+.extras-form input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    color: var(--text-primary);
 }
 .extras-form-actions {
     display: flex;
