@@ -302,12 +302,16 @@
                         .catch((e) => ({ _error: e.message || String(e) }));
                 }
                 const tried = [];
+                const codeFull = (u.code || "").trim();
+                const codePrefix = (codeFull.match(/^\S+/) || [""])[0];
                 const attempts = [];
                 if (street) attempts.push(street);
                 if (streetNumber && streetNumber !== street) attempts.push(streetNumber);
-                if (u.code) attempts.push(u.code);
+                if (codePrefix) attempts.push(codePrefix);
+                if (codeFull && codeFull !== codePrefix) attempts.push(codeFull);
                 let data, propertyNodes = [];
                 for (const term of attempts) {
+                    if (tried.includes(term)) continue;
                     data = await runSearch(term);
                     tried.push(term);
                     if (data && data._error) break;
