@@ -636,7 +636,7 @@
                     ${areaPicker}
                     ${areaWarn}
                     <div class="extras-form-actions">
-                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraBBQ('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : `Create${chosen ? ` (BBQ ${chosen})` : ""}`}</button>
+                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraBBQ('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : `Create${chosen ? ` (BBQ/PW-${chosen})` : ""}`}</button>
                         <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
                     </div>
                 </div>`;
@@ -844,7 +844,7 @@
             if (!date) { showToast("Pick a date"); return; }
             const area = u._extraDraft.area || detectAreaSuffix(u, u._jobber && u._jobber.match);
             if (!area) { showToast("Pick West or East"); return; }
-            const assigneeName = `BBQ ${area}`;
+            const assigneeName = `BBQ/PW-${area}`;
             const teamId = JOBBER_BBQ_TEAM_IDS[area];
             const assignedTo = teamId ? [teamId] : [];
             runCreateAndRecord(u, [
