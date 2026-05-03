@@ -222,9 +222,10 @@
 
         function toggleExpand(key) {
             if (closingKey) return;
+            const tbodyEl = document.getElementById("units-tbody");
             if (expandedKey === key) {
                 closingKey = key;
-                const inner = tbody.querySelector(`tr.unit-row[data-key="${cssEscape(key)}"] + tr.unit-row-details .unit-row-details-inner`);
+                const inner = tbodyEl && tbodyEl.querySelector(`tr.unit-row[data-key="${cssEscape(key)}"] + tr.unit-row-details .unit-row-details-inner`);
                 if (inner) inner.classList.remove("open");
                 setTimeout(() => {
                     expandedKey = null;
@@ -237,7 +238,8 @@
             pendingOpen = true;
             render();
             requestAnimationFrame(() => {
-                const inner = tbody.querySelector(".unit-row-details-inner");
+                const tb = document.getElementById("units-tbody");
+                const inner = tb && tb.querySelector(".unit-row-details-inner");
                 if (inner) inner.classList.add("open");
                 pendingOpen = false;
             });
