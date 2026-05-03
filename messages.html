@@ -46,10 +46,47 @@
         let suggestedTemplateIds = [];
         let EXTENSION_ID = localStorage.getItem("masterbotExtensionId") || "";
 
+        const TPL_CACHE_KEY = "masterbotTemplatesCache";
+        const TPL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+        function readTplCache() {
+            try {
+                const raw = localStorage.getItem(TPL_CACHE_KEY);
+                if (!raw) return null;
+                const obj = JSON.parse(raw);
+                if (!obj || !obj.ts || !Array.isArray(obj.templates)) return null;
+                if (Date.now() - obj.ts > TPL_CACHE_TTL_MS) return null;
+                return obj;
+            } catch (_) { return null; }
+        }
+
+        function writeTplCache() {
+            try {
+                localStorage.setItem(TPL_CACHE_KEY, JSON.stringify({
+                    ts: Date.now(),
+                    userId: currentUserId,
+                    templates: allTemplates,
+                    favorites,
+                }));
+            } catch (_) { /* ignore quota */ }
+        }
+
+        const tplInitialCache = readTplCache();
+        if (tplInitialCache) {
+            allTemplates = tplInitialCache.templates;
+            favorites = tplInitialCache.favorites || [];
+            renderCheckboxes();
+        }
+
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUserId = user.uid;
                 document.getElementById("user-email").innerText = user.email;
+                if (tplInitialCache && tplInitialCache.userId === user.uid) {
+                    loadCategories(user.uid);
+                    loadSignature(user.uid);
+                    return;
+                }
                 await loadCategories(user.uid);
                 await loadTemplates(user.uid);
                 await loadSignature(user.uid);
@@ -152,6 +189,7 @@
                 });
 
                 allTemplates.sort((a, b) => a.order - b.order);
+                writeTplCache();
                 renderCheckboxes();
             } catch (e) {
                 console.error("Error loading templates:", e, e.code, e.message);
@@ -229,6 +267,7 @@
                 favorites.push(templateId);
             }
             renderCheckboxes();
+            writeTplCache();
             try {
                 const settingsRef = doc(db, "settings", currentUserId);
                 const snap = await getDoc(settingsRef);
