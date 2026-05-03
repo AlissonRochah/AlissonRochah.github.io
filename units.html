@@ -696,7 +696,59 @@
         }
 
         let _jobberMember = null;
+        let _memberOptions = null;
         const JOBBER_MEMBER_CACHE_KEY = "masterbotJobberMember";
+        const JOBBER_MEMBER_VERSION_KEY = "masterbotJobberMemberV";
+        const JOBBER_MEMBER_VERSION = "v2";
+        if (localStorage.getItem(JOBBER_MEMBER_VERSION_KEY) !== JOBBER_MEMBER_VERSION) {
+            localStorage.removeItem(JOBBER_MEMBER_CACHE_KEY);
+            localStorage.setItem(JOBBER_MEMBER_VERSION_KEY, JOBBER_MEMBER_VERSION);
+        }
+
+        async function fetchMemberOptions(propertyId, clientId) {
+            if (_memberOptions) return _memberOptions;
+            try {
+                const data = await jobberQuery(
+                    "JobDefaultCustomFieldValues",
+                    `query JobDefaultCustomFieldValues($clientId: EncodedId, $propertyId: EncodedId) {
+                        jobDefaultCustomFieldValues(clientId: $clientId, propertyId: $propertyId) {
+                            nodes {
+                                __typename
+                                ... on CustomFieldDropdown {
+                                    label
+                                    dropdownOptions
+                                    customFieldConfiguration { id __typename }
+                                }
+                            }
+                        }
+                    }`,
+                    { clientId: clientId || null, propertyId: propertyId || null }
+                );
+                const nodes = (data && data.jobDefaultCustomFieldValues && data.jobDefaultCustomFieldValues.nodes) || [];
+                const member = nodes.find((n) => n && n.__typename === "CustomFieldDropdown" && n.label === "Member");
+                _memberOptions = (member && member.dropdownOptions) || [];
+            } catch (_) {
+                _memberOptions = [];
+            }
+            return _memberOptions;
+        }
+
+        function matchMemberOption(candidate, options) {
+            if (!candidate || !Array.isArray(options) || !options.length) return null;
+            const norm = (s) => String(s || "").trim().toLowerCase();
+            const c = norm(candidate);
+            if (!c) return null;
+            const exact = options.find((o) => norm(o) === c);
+            if (exact) return exact;
+            const startsWith = options.find((o) => norm(o).startsWith(c) || c.startsWith(norm(o)));
+            if (startsWith) return startsWith;
+            const tokens = c.split(/\s+/).filter(Boolean);
+            const containsAll = options.find((o) => {
+                const on = norm(o);
+                return tokens.every((t) => on.includes(t));
+            });
+            return containsAll || null;
+        }
 
         async function fetchJobberMember() {
             if (_jobberMember) return _jobberMember;
@@ -707,27 +759,47 @@
             }
             const probes = [
                 { op: "JobberCurrentUser", body: `query JobberCurrentUser { currentUser { id name } }`, path: "currentUser" },
+                { op: "JobberCurrentUserFL", body: `query JobberCurrentUserFL { currentUser { id firstName lastName } }`, path: "currentUser" },
                 { op: "JobberViewer", body: `query JobberViewer { viewer { id name } }`, path: "viewer" },
+                { op: "JobberViewerFL", body: `query JobberViewerFL { viewer { id firstName lastName } }`, path: "viewer" },
                 { op: "JobberAccountUser", body: `query JobberAccountUser { account { user { id name } } }`, path: "account.user" },
+                { op: "JobberAccountUserFL", body: `query JobberAccountUserFL { account { user { id firstName lastName } } }`, path: "account.user" },
+                { op: "JobberAccountCurrentUser", body: `query JobberAccountCurrentUser { account { currentUser { id name } } }`, path: "account.currentUser" },
+                { op: "JobberAccountCurrentUserFL", body: `query JobberAccountCurrentUserFL { account { currentUser { id firstName lastName } } }`, path: "account.currentUser" },
                 { op: "JobberMe", body: `query JobberMe { me { id name } }`, path: "me" },
+                { op: "JobberMeFL", body: `query JobberMeFL { me { id firstName lastName } }`, path: "me" },
+                { op: "JobberAuthAccountUser", body: `query JobberAuthAccountUser { authenticatedAccountUser { id name } }`, path: "authenticatedAccountUser" },
+                { op: "JobberAuthAccountUserFL", body: `query JobberAuthAccountUserFL { authenticatedAccountUser { id firstName lastName } }`, path: "authenticatedAccountUser" },
             ];
             for (const p of probes) {
                 try {
                     const data = await jobberQuery(p.op, p.body, {});
                     const user = p.path.split(".").reduce((acc, k) => acc && acc[k], data);
-                    if (user && user.name) {
-                        _jobberMember = user.name;
-                        localStorage.setItem(JOBBER_MEMBER_CACHE_KEY, user.name);
-                        return user.name;
+                    if (!user) continue;
+                    const name = user.name || [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+                    if (name) {
+                        _jobberMember = name;
+                        localStorage.setItem(JOBBER_MEMBER_CACHE_KEY, name);
+                        return name;
                     }
                 } catch (_) {}
             }
             return null;
         }
 
-        async function createJobberJob({ propertyId, title, startAt, assigneeName, assignedTo }) {
+        async function createJobberJob({ propertyId, title, startAt, assigneeName, assignedTo, clientId }) {
             const memberFromJobber = await fetchJobberMember();
-            const memberName = memberFromJobber || (localStorage.getItem("yourName") || "").trim();
+            const yourName = (localStorage.getItem("yourName") || "").trim();
+            const options = await fetchMemberOptions(propertyId, clientId);
+            const candidates = [memberFromJobber, yourName].filter(Boolean);
+            let memberName = "";
+            for (const c of candidates) {
+                const match = matchMemberOption(c, options);
+                if (match) { memberName = match; break; }
+            }
+            if (!memberName && candidates.length && (!options || !options.length)) {
+                memberName = candidates[0];
+            }
             const customFields = memberName ? [{
                 valueDropdown: memberName,
                 customFieldConfigurationId: "MzY0NTQ2",
@@ -785,12 +857,22 @@
             u._extraDraft.submitting = true;
             render();
             u._extraJobs = u._extraJobs || [];
+            const propertyId = u._jobber.match.propertyId;
+            const clientId = u._jobber.match.clientId;
             const memberFromJobber = await fetchJobberMember();
-            const member = memberFromJobber || (localStorage.getItem("yourName") || "").trim();
+            const yourName = (localStorage.getItem("yourName") || "").trim();
+            const options = await fetchMemberOptions(propertyId, clientId);
+            let resolvedMember = "";
+            for (const c of [memberFromJobber, yourName].filter(Boolean)) {
+                const m = matchMemberOption(c, options);
+                if (m) { resolvedMember = m; break; }
+            }
+            if (!resolvedMember) resolvedMember = memberFromJobber || yourName || "";
             for (const j of jobs) {
                 try {
                     const created = await createJobberJob({
-                        propertyId: u._jobber.match.propertyId,
+                        propertyId,
+                        clientId,
                         title: j.title,
                         startAt: j.startAt,
                         assigneeName: j.assigneeName,
@@ -802,7 +884,7 @@
                         id: created?.id,
                         jobNumber: created?.jobNumber,
                         assigneeName: j.assigneeName || "",
-                        member,
+                        member: resolvedMember,
                     });
                 } catch (e) {
                     u._extraJobs.push({
@@ -810,7 +892,7 @@
                         title: j.title,
                         error: e?.message || String(e),
                         assigneeName: j.assigneeName || "",
-                        member,
+                        member: resolvedMember,
                     });
                 }
             }
