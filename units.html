@@ -346,7 +346,7 @@
                         <td><span class="status-pill status-${escapeHtml(u.status)}">${escapeHtml(u.status)}</span></td>
                         <td class="col-mapro"><a href="${maproUrl}" target="_blank" rel="noopener" class="btn-mapro" title="Open in MAPRO">MAPRO ↗</a></td>
                     </tr>
-                    ${expanded ? `<tr class="unit-row-details"><td colspan="5">${detailsHtml(u)}</td></tr>` : ""}
+                    ${expanded ? `<tr class="unit-row-details"><td colspan="5"><div class="unit-row-details-inner">${detailsHtml(u)}</div></td></tr>` : ""}
                 `;
             }).join("");
 
