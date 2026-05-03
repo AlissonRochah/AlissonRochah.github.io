@@ -268,7 +268,10 @@
                 </div>`;
             }
             const dates = `${fmtDate(r.ci)} - ${fmtDate(r.co)}`;
-            const channel = r.channel ? `<span class="stay-pill">${escapeHtml(r.channel)}</span>` : "";
+            const channelClass = /red\s*airbnb/i.test(r.channel) ? "stay-pill stay-pill-red"
+                : /green\s*airbnb/i.test(r.channel) ? "stay-pill stay-pill-green"
+                : "stay-pill";
+            const channel = r.channel ? `<span class="${channelClass}">${escapeHtml(r.channel)}</span>` : "";
             const conf = r.confirmation ? `<span class="copyable stay-conf" data-copy="${escapeHtml(r.confirmation)}">${escapeHtml(r.confirmation)}</span>` : "";
             const door = r.doorCode ? `<span class="copyable stay-door" data-copy="${escapeHtml(r.doorCode)}">Door ${escapeHtml(r.doorCode)}</span>` : "";
             const link = r.link ? `<a class="btn-mapro" href="https://app.mapro.us${escapeHtml(r.link)}" target="_blank" rel="noopener">MAPRO ↗</a>` : "";
