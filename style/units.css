@@ -225,6 +225,8 @@
 }
 .stay-now .stay-label { color: #10b981; }
 .stay-now .stay-label::before { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18); }
+.stay-next .stay-label { color: #f59e0b; }
+.stay-next .stay-label::before { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
 .stay-prev .stay-label { color: var(--text-secondary); }
 .stay-prev .stay-label::before { background: var(--text-muted); }
 

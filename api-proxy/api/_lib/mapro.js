@@ -189,7 +189,7 @@ export async function getUnitStays(key) {
     const path = `/calendar/reservation?start=${start}&properties=${encodeURIComponent(key)}&single_property=1`;
     const text = await maproFetchHtml(path);
     let data;
-    try { data = JSON.parse(text); } catch (_) { return { active: null, previous: null }; }
+    try { data = JSON.parse(text); } catch (_) { return { active: null, previous: null, next: null }; }
     const list = Array.isArray(data?.[key]) ? data[key] : [];
     const guests = list.filter((r) => r.rt === "g");
     const now = Date.now();
@@ -198,6 +198,9 @@ export async function getUnitStays(key) {
     const previous = guests
         .filter((r) => ts(r.co) < now)
         .sort((a, b) => ts(b.co) - ts(a.co))[0] || null;
-    const [a, p] = await Promise.all([shapeStay(active), shapeStay(previous)]);
-    return { active: a, previous: p };
+    const next = active ? null : (guests
+        .filter((r) => ts(r.ci) > now)
+        .sort((a, b) => ts(a.ci) - ts(b.ci))[0] || null);
+    const [a, p, n] = await Promise.all([shapeStay(active), shapeStay(previous), shapeStay(next)]);
+    return { active: a, previous: p, next: n };
 }

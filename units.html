@@ -291,9 +291,12 @@
             if (!u._stays) {
                 return `<div class="unit-stays-loading">Loading stays…</div>`;
             }
+            const right = u._stays.active
+                ? stayCard("Current guest", u._stays.active, "now")
+                : stayCard("Next guest", u._stays.next, "next");
             return `<div class="unit-stays">
                 ${stayCard("Previous guest", u._stays.previous, "prev")}
-                ${stayCard("Current guest", u._stays.active, "now")}
+                ${right}
             </div>`;
         }
 
