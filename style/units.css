@@ -304,6 +304,24 @@
     background: rgba(255, 56, 92, 0.18);
     border-color: #ff385c;
 }
+.btn-airbnb-red {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.35);
+}
+.btn-airbnb-red:hover {
+    background: rgba(239, 68, 68, 0.20);
+    border-color: #ef4444;
+}
+.btn-airbnb-green {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.35);
+}
+.btn-airbnb-green:hover {
+    background: rgba(16, 185, 129, 0.20);
+    border-color: #10b981;
+}
 
 .btn-vrbo {
     display: inline-block;

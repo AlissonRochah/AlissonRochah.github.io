@@ -279,8 +279,11 @@
             const conf = r.confirmation ? `<span class="copyable stay-conf" data-copy="${escapeHtml(r.confirmation)}">${escapeHtml(r.confirmation)}</span>` : "";
             const door = r.doorCode ? `<span class="copyable stay-door" data-copy="${escapeHtml(r.doorCode)}">Door ${escapeHtml(r.doorCode)}</span>` : "";
             const maproLink = r.link ? `<a class="btn-mapro" href="https://app.mapro.us${escapeHtml(r.link)}" target="_blank" rel="noopener">MAPRO ↗</a>` : "";
+            const airbnbVariant = /red\s*airbnb/i.test(ch) ? " btn-airbnb-red"
+                : /green\s*airbnb/i.test(ch) ? " btn-airbnb-green"
+                : "";
             const platformLink = isAirbnb && r.confirmation
-                ? `<a class="btn-airbnb" href="https://www.airbnb.com/hosting/reservations/details/${encodeURIComponent(r.confirmation)}" target="_blank" rel="noopener">Airbnb ↗</a>`
+                ? `<a class="btn-airbnb${airbnbVariant}" href="https://www.airbnb.com/hosting/reservations/details/${encodeURIComponent(r.confirmation)}" target="_blank" rel="noopener">Airbnb ↗</a>`
                 : isVrbo && r.guest
                 ? `<a class="btn-vrbo" href="https://www.vrbo.com/supply/inbox?search=${encodeURIComponent(r.guest)}" target="_blank" rel="noopener">VRBO ↗</a>`
                 : "";
