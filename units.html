@@ -274,13 +274,15 @@
             const channel = r.channel ? `<span class="${channelClass}">${escapeHtml(r.channel)}</span>` : "";
             const conf = r.confirmation ? `<span class="copyable stay-conf" data-copy="${escapeHtml(r.confirmation)}">${escapeHtml(r.confirmation)}</span>` : "";
             const door = r.doorCode ? `<span class="copyable stay-door" data-copy="${escapeHtml(r.doorCode)}">Door ${escapeHtml(r.doorCode)}</span>` : "";
-            const link = r.link ? `<a class="btn-mapro" href="https://app.mapro.us${escapeHtml(r.link)}" target="_blank" rel="noopener">MAPRO ↗</a>` : "";
+            const maproLink = r.link ? `<a class="btn-mapro" href="https://app.mapro.us${escapeHtml(r.link)}" target="_blank" rel="noopener">MAPRO ↗</a>` : "";
+            const airbnbLink = r.confirmation ? `<a class="btn-airbnb" href="https://www.airbnb.com/hosting/reservations/details/${encodeURIComponent(r.confirmation)}" target="_blank" rel="noopener">Airbnb ↗</a>` : "";
+            const actions = [airbnbLink, maproLink].filter(Boolean).join("");
             return `<div class="stay-card stay-${kind}">
                 <div class="stay-label">${label}</div>
                 <div class="stay-guest">${escapeHtml(r.guest || "Unknown")}</div>
                 <div class="stay-dates">${dates}</div>
                 <div class="stay-meta">${channel}${conf}${door}</div>
-                ${link ? `<div class="stay-actions">${link}</div>` : ""}
+                ${actions ? `<div class="stay-actions">${actions}</div>` : ""}
             </div>`;
         }
 
