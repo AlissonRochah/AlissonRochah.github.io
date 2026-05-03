@@ -38,6 +38,7 @@
 
         const DEFAULT_PROXY_URL = "https://alisson-rochah-github-io.vercel.app";
         const CACHE_KEY = "masterbotUnitsCache";
+        const CACHE_SCHEMA = 2;
         const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
         let proxyUrl = localStorage.getItem("masterbotProxyUrl") || DEFAULT_PROXY_URL;
         let currentUser = null;
@@ -51,6 +52,7 @@
                 if (!raw) return null;
                 const obj = JSON.parse(raw);
                 if (!obj || !obj.ts || !Array.isArray(obj.units)) return null;
+                if (obj.schema !== CACHE_SCHEMA) return null;
                 if (Date.now() - obj.ts > CACHE_TTL_MS) return null;
                 return obj;
             } catch (_) { return null; }
@@ -62,7 +64,7 @@
                     const { _stays, _staysFetching, ...rest } = u;
                     return rest;
                 });
-                localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), units: stripped }));
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ schema: CACHE_SCHEMA, ts: Date.now(), units: stripped }));
             } catch (_) { /* quota or serialization errors — ignore */ }
         }
 
