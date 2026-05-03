@@ -284,16 +284,16 @@
                 }
                 const data = await jobberQuery(
                     "GlobalSearch",
-                    `query GlobalSearch($searchTerm: String!, $first: Int) {
-                        globalSearch(searchTerm: $searchTerm, first: $first) {
-                            edges {
-                                node {
+                    `query GlobalSearch($searchTerm: String!, $before: String, $after: String, $first: Int, $last: Int) {
+                        search(searchTerm: $searchTerm, first: $first, last: $last, before: $before, after: $after) {
+                            nodes {
+                                __typename
+                                ... on Property {
+                                    id
+                                    propertyName: name
+                                    street
+                                    propertySc: client { id name __typename }
                                     __typename
-                                    ... on Property {
-                                        id
-                                        address { street street1 street2 city province postalCode }
-                                        client { id name }
-                                    }
                                 }
                             }
                         }
@@ -303,10 +303,15 @@
                 if (data && data._error) {
                     u._jobber = { error: data._error };
                 } else {
-                    const edges = (data && data.globalSearch && data.globalSearch.edges) || [];
-                    const candidates = edges
-                        .map((e) => e.node)
-                        .filter((n) => n && n.__typename === "Property");
+                    const nodes = (data && data.search && data.search.nodes) || [];
+                    const candidates = nodes
+                        .filter((n) => n && n.__typename === "Property")
+                        .map((n) => ({
+                            id: n.id,
+                            propertyName: n.propertyName,
+                            street: n.street,
+                            client: n.propertySc || null,
+                        }));
                     u._jobber = { candidates };
                 }
                 if (expandedKey === u.key) render();
@@ -465,16 +470,13 @@
                     </div>`;
                 }
                 const items = candidates.map((c) => {
-                    const a = c.address || {};
-                    const street = a.street || a.street1 || "";
-                    const cityLine = [a.city, a.province, a.postalCode].filter(Boolean).join(" ");
-                    const label = [street, cityLine].filter(Boolean).join(", ");
+                    const street = c.street || c.propertyName || "";
                     const clientName = c.client && c.client.name || "";
                     const propId = JSON.stringify(c.id);
                     const cliId = JSON.stringify(c.client && c.client.id || "");
-                    const labelArg = JSON.stringify(label || clientName || c.id);
+                    const labelArg = JSON.stringify(street || clientName || c.id);
                     return `<button class="extras-candidate" type="button" onclick="confirmJobberMatch('${escapeHtml(u.key)}', ${propId}, ${cliId}, ${labelArg})">
-                        <div class="cand-addr">${escapeHtml(label)}</div>
+                        <div class="cand-addr">${escapeHtml(street)}</div>
                         ${clientName ? `<div class="cand-client">${escapeHtml(clientName)}</div>` : ""}
                     </button>`;
                 }).join("");
