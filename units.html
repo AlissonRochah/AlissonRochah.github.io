@@ -671,6 +671,11 @@
         }
 
         function detectAreaSuffix(u, match) {
+            const info = detectAreaInfo(u, match);
+            return info && info.area;
+        }
+
+        function detectAreaInfo(u, match) {
             const sources = [
                 match && match.clientName,
                 match && match.propertyName,
@@ -682,10 +687,25 @@
                 u && u.homeowner,
             ];
             for (const s of sources) {
-                const m = String(s || "").match(/\b([WE])\d+\b/);
-                if (m) return m[1].toUpperCase() === "W" ? "West" : "East";
+                const m = String(s || "").match(/\b([WE])(\d+)\b/);
+                if (m) {
+                    return {
+                        area: m[1].toUpperCase() === "W" ? "West" : "East",
+                        number: m[2],
+                    };
+                }
             }
             return null;
+        }
+
+        function isSameDayIso(iso) {
+            return iso === todayIso();
+        }
+
+        function isBefore330LocalTime() {
+            const now = new Date();
+            const minutes = now.getHours() * 60 + now.getMinutes();
+            return minutes < (15 * 60 + 30);
         }
 
         function fmtMonthDay(iso) {
