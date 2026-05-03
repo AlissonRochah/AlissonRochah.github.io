@@ -103,6 +103,19 @@ export async function listExtras() {
     return { bbq, ph35, ph75 };
 }
 
+export async function listResorts() {
+    const html = await maproFetchHtml("/manage/houses/resort/list");
+    const all = extractLocalDataArray(html);
+    const map = new Map();
+    for (const r of all) {
+        const title = (r.title || "").trim();
+        const address = (r.address || "").trim();
+        if (!title || !address || address === ".") continue;
+        map.set(title, address);
+    }
+    return map;
+}
+
 function inputValue(html, name) {
     const re = new RegExp(`<input[^>]*name="${name}"[^>]*value="([^"]*)"`, "i");
     const m = html.match(re);

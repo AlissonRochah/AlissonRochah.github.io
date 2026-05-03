@@ -1,5 +1,5 @@
 import { requireFirebaseUser } from "../_lib/auth.js";
-import { listUnits, listExtras, MaproNotLoggedIn } from "../_lib/mapro.js";
+import { listUnits, listExtras, listResorts, MaproNotLoggedIn } from "../_lib/mapro.js";
 
 export default async function handler(req, res) {
     if (req.method === "OPTIONS") {
@@ -19,13 +19,15 @@ export default async function handler(req, res) {
     }
 
     try {
-        const [units, extras] = await Promise.all([listUnits(), listExtras()]);
+        const [units, extras, resorts] = await Promise.all([listUnits(), listExtras(), listResorts()]);
         const enriched = units.map((u) => {
             const id = String(u.idMAPRO ?? u.key ?? "");
+            const resortName = (u.resort || "").trim();
             return {
                 ...u,
                 bbq: extras.bbq.has(id),
                 poolHeater: extras.ph75.has(id) ? 75 : extras.ph35.has(id) ? 35 : null,
+                resortAddress: resorts.get(resortName) || "",
             };
         });
         res.setHeader("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");
