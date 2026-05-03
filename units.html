@@ -585,13 +585,20 @@
                     const numericId = decodeJobberId(cj.id);
                     const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
                     const display = cj.jobNumber || numericId;
+                    const meta = [];
+                    if (cj.assigneeName) meta.push(`<span class="created-meta"><span class="created-meta-label">Assigned:</span> ${escapeHtml(cj.assigneeName)}</span>`);
+                    if (cj.member) meta.push(`<span class="created-meta"><span class="created-meta-label">Member:</span> ${escapeHtml(cj.member)}</span>`);
+                    const numberHtml = display
+                        ? `<span class="created-number copyable" onclick="copyText('${escapeHtml(String(display))}')" title="Click to copy">#${escapeHtml(String(display))}</span>`
+                        : "";
+                    const openBtn = url
+                        ? `<a class="created-open" href="${url}" target="_blank" rel="noopener" title="Open in Jobber">↗</a>`
+                        : "";
                     return `<div class="extras-created-row">
                         <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
                         <span class="created-title">${escapeHtml(cj.title)}</span>
                         ${cj.status === "ok"
-                            ? (url
-                                ? `<a class="created-link" href="${url}" target="_blank" rel="noopener">#${escapeHtml(String(display))} ↗</a>`
-                                : `<span class="created-link">#${escapeHtml(String(display))}</span>`)
+                            ? `${numberHtml}${openBtn}${meta.length ? `<span class="created-meta-group">${meta.join("")}</span>` : ""}`
                             : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`
                         }
                     </div>`;
@@ -747,6 +754,7 @@
             u._extraDraft.submitting = true;
             render();
             u._extraJobs = u._extraJobs || [];
+            const member = (localStorage.getItem("yourName") || "").trim();
             for (const j of jobs) {
                 try {
                     const created = await createJobberJob({
@@ -756,9 +764,22 @@
                         assigneeName: j.assigneeName,
                         assignedTo: j.assignedTo,
                     });
-                    u._extraJobs.push({ status: "ok", title: j.title, id: created?.id, jobNumber: created?.jobNumber });
+                    u._extraJobs.push({
+                        status: "ok",
+                        title: j.title,
+                        id: created?.id,
+                        jobNumber: created?.jobNumber,
+                        assigneeName: j.assigneeName || "",
+                        member,
+                    });
                 } catch (e) {
-                    u._extraJobs.push({ status: "err", title: j.title, error: e?.message || String(e) });
+                    u._extraJobs.push({
+                        status: "err",
+                        title: j.title,
+                        error: e?.message || String(e),
+                        assigneeName: j.assigneeName || "",
+                        member,
+                    });
                 }
             }
             u._extraDraft = null;

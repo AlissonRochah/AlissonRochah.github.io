@@ -562,6 +562,39 @@
 .created-tag-ok { background: rgba(16, 185, 129, 0.18); color: #10b981; }
 .created-tag-err { background: rgba(239, 68, 68, 0.18); color: #ef4444; }
 .created-title { font-weight: 500; }
-.created-link { color: var(--accent); text-decoration: none; }
-.created-link:hover { text-decoration: underline; }
+.created-number {
+    color: var(--text-primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.created-open {
+    text-decoration: none;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    line-height: 1;
+}
+.created-open:hover { color: var(--accent); border-color: var(--accent); }
+.created-meta-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: 4px;
+}
+.created-meta {
+    font-size: 11px;
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.created-meta-label {
+    color: var(--text-muted);
+    margin-right: 4px;
+}
 .created-error { font-size: 12px; color: #ef4444; }
