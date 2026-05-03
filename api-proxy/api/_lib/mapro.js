@@ -75,6 +75,10 @@ function pickFields(item) {
     for (const k of UNIT_FIELDS) {
         if (k in item) out[k] = item[k];
     }
+    if (Array.isArray(item.menu) && item.menu[0]?.url) {
+        const m = item.menu[0].url.match(/#([0-9A-Z]{26})/);
+        if (m) out.ulid = m[1];
+    }
     return out;
 }
 
@@ -141,4 +145,54 @@ export async function getUnitAddress(id) {
     const zip = inputValue(html, "cep");
     const tail = [state, zip].filter(Boolean).join(" ");
     return [street, city, tail].filter(Boolean).join(", ");
+}
+
+function parseChannel(title) {
+    const m = (title || "").match(/\(([^)]+)\)/);
+    return m ? m[1].trim() : "";
+}
+
+async function fetchReservationExtras(linkPath) {
+    try {
+        const html = await maproFetchHtml(linkPath);
+        const door = (html.match(/listagem-door-code[^>]*>\s*([^<]+?)\s*</) ||
+                      html.match(/<input[^>]*name="codigo_guest"[^>]*value="([^"]+)"/) || [])[1] || "";
+        const confirmation = (html.match(/<input[^>]*name="cod_refente_integrador"[^>]*value="([^"]+)"/) || [])[1] || "";
+        return { doorCode: door.trim(), confirmation: confirmation.trim() };
+    } catch (_) {
+        return { doorCode: "", confirmation: "" };
+    }
+}
+
+async function shapeStay(r) {
+    if (!r) return null;
+    const extras = r.l ? await fetchReservationExtras(r.l) : { doorCode: "", confirmation: "" };
+    return {
+        id: r.ri,
+        guest: r.g,
+        channel: parseChannel(r.t),
+        ci: r.ci,
+        co: r.co,
+        link: r.l,
+        doorCode: extras.doorCode,
+        confirmation: extras.confirmation,
+    };
+}
+
+export async function getUnitStays(key) {
+    const start = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const path = `/calendar/reservation?start=${start}&properties=${encodeURIComponent(key)}&single_property=1`;
+    const text = await maproFetchHtml(path);
+    let data;
+    try { data = JSON.parse(text); } catch (_) { return { active: null, previous: null }; }
+    const list = Array.isArray(data?.[key]) ? data[key] : [];
+    const guests = list.filter((r) => r.rt === "g");
+    const now = Date.now();
+    const ts = (s) => new Date(String(s).replace(" ", "T")).getTime();
+    const active = guests.find((r) => ts(r.ci) <= now && now < ts(r.co)) || null;
+    const previous = guests
+        .filter((r) => ts(r.co) < now)
+        .sort((a, b) => ts(b.co) - ts(a.co))[0] || null;
+    const [a, p] = await Promise.all([shapeStay(active), shapeStay(previous)]);
+    return { active: a, previous: p };
 }

@@ -58,7 +58,11 @@
 
         function writeCache() {
             try {
-                localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), units: allUnits }));
+                const stripped = allUnits.map((u) => {
+                    const { _stays, _staysFetching, ...rest } = u;
+                    return rest;
+                });
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), units: stripped }));
             } catch (_) { /* quota or serialization errors — ignore */ }
         }
 
@@ -195,12 +199,29 @@
             finally { u._addressFetching = false; }
         }
 
+        async function fetchStays(u) {
+            if (u._stays || u._staysFetching || !u.ulid) return;
+            u._staysFetching = true;
+            try {
+                const idToken = await currentUser.getIdToken();
+                const res = await fetch(proxyUrl + "/api/mapro/unit-stays?key=" + encodeURIComponent(u.ulid), {
+                    headers: { "Authorization": "Bearer " + idToken },
+                });
+                if (res.ok) {
+                    u._stays = await res.json();
+                    if (expandedKey === u.key) render();
+                }
+            } catch (_) { /* ignore */ }
+            finally { u._staysFetching = false; }
+        }
+
         function toggleExpand(key) {
             expandedKey = (expandedKey === key) ? null : key;
             render();
             if (expandedKey) {
                 const u = filteredUnits.find((x) => x.key === key);
                 if (u && !isAddressFull(u.address)) fetchFullAddress(u);
+                if (u) fetchStays(u);
             }
         }
 
@@ -227,7 +248,46 @@
                 </div>
             `).join("");
 
-            return `<div class="unit-details">${detailsRows}</div>`;
+            return `<div class="unit-details">${detailsRows}</div>${staysHtml(u)}`;
+        }
+
+        function fmtDate(s) {
+            if (!s) return "";
+            const d = new Date(String(s).replace(" ", "T"));
+            if (isNaN(d)) return s;
+            return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        }
+
+        function stayCard(label, r) {
+            if (!r) {
+                return `<div class="stay-card stay-empty">
+                    <div class="stay-label">${label}</div>
+                    <div class="stay-empty-text">No guest</div>
+                </div>`;
+            }
+            const dates = `${fmtDate(r.ci)} - ${fmtDate(r.co)}`;
+            const channel = r.channel ? `<span class="stay-pill">${escapeHtml(r.channel)}</span>` : "";
+            const conf = r.confirmation ? `<span class="copyable stay-conf" data-copy="${escapeHtml(r.confirmation)}">${escapeHtml(r.confirmation)}</span>` : "";
+            const door = r.doorCode ? `<span class="copyable stay-door" data-copy="${escapeHtml(r.doorCode)}">Door ${escapeHtml(r.doorCode)}</span>` : "";
+            const link = r.link ? `<a class="btn-mapro" href="https://app.mapro.us${escapeHtml(r.link)}" target="_blank" rel="noopener">MAPRO ↗</a>` : "";
+            return `<div class="stay-card">
+                <div class="stay-label">${label}</div>
+                <div class="stay-guest">${escapeHtml(r.guest || "Unknown")}</div>
+                <div class="stay-dates">${dates}</div>
+                <div class="stay-meta">${channel}${conf}${door}</div>
+                ${link ? `<div class="stay-actions">${link}</div>` : ""}
+            </div>`;
+        }
+
+        function staysHtml(u) {
+            if (!u.ulid) return "";
+            if (!u._stays) {
+                return `<div class="unit-stays-loading">Loading stays…</div>`;
+            }
+            return `<div class="unit-stays">
+                ${stayCard("NOW", u._stays.active)}
+                ${stayCard("PREV", u._stays.previous)}
+            </div>`;
         }
 
         async function copyText(text) {
