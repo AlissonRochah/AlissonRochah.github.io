@@ -612,6 +612,35 @@
     border-color: #ff9b3d;
 }
 .btn-extra-warn:hover { opacity: 0.9; color: #1c1c1c; }
+.extras-items {
+    flex-basis: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--bg-elevated);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+.extras-item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+.extras-item-label {
+    flex: 1;
+    color: var(--text-primary);
+}
+.extras-item-name {
+    flex: 1;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-size: 13px;
+}
 .extras-candidates {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
