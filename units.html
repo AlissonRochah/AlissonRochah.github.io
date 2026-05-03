@@ -612,11 +612,38 @@
                     <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','BBQ')">+ BBQ clean</button>
                 </div>`;
             } else if (draft.type === "PH") {
+                const info = detectAreaInfo(u, j.match);
+                const detectedArea = info && info.area;
+                const detectedNumber = info && info.number;
+                const chosenArea = draft.area || detectedArea;
+                const chosenNumber = draft.areaNumber != null ? draft.areaNumber : detectedNumber;
+                const areaWarn = !chosenArea ? `<div class="extras-warn">⚠ Couldn't detect West/East — pick one</div>` : "";
+                const areaPicker = `<div class="extras-area-picker">
+                    <span class="extras-area-label">Area:</span>
+                    <button type="button" class="btn-area ${chosenArea === "West" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','West')">West</button>
+                    <button type="button" class="btn-area ${chosenArea === "East" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','East')">East</button>
+                    ${chosenArea ? `<span class="extras-area-num">#<input type="number" min="1" max="20" id="ph-num-${escapeHtml(u.key)}" value="${escapeHtml(String(chosenNumber || ""))}" oninput="setExtraAreaNumber('${escapeHtml(u.key)}', this.value)" class="area-num-input"></span>` : ""}
+                    ${detectedArea && !draft.area ? `<span class="extras-area-auto">auto-detected</span>` : ""}
+                </div>`;
+                const onDate = draft.onDate || todayIso();
+                const offDate = draft.offDate || todayIso();
+                const onAssignees = chosenArea ? computePHOnAssignees(chosenArea, chosenNumber, onDate) : [];
+                const offAssignees = chosenArea ? computePHOffAssignees(chosenArea) : [];
+                const onLabels = labelsFromTeamIds(onAssignees);
+                const offLabels = labelsFromTeamIds(offAssignees);
+                const previewHtml = chosenArea ? `<div class="extras-preview">
+                    <div><span class="created-meta-label">PH ON →</span> ${escapeHtml(onLabels.join(" + ") || "(no team)")}</div>
+                    <div><span class="created-meta-label">PH OFF →</span> ${escapeHtml(offLabels.join(" + ") || "(no team)")}</div>
+                </div>` : "";
+                const canSubmit = !!chosenArea && !draft.submitting;
                 formHtml = `<div class="extras-form">
-                    <label>PH ON date <input type="date" id="ph-on-${escapeHtml(u.key)}" value="${escapeHtml(draft.onDate || todayIso())}"></label>
-                    <label>PH OFF date <input type="date" id="ph-off-${escapeHtml(u.key)}" value="${escapeHtml(draft.offDate || todayIso())}"></label>
+                    <label>PH ON date <input type="date" id="ph-on-${escapeHtml(u.key)}" value="${escapeHtml(onDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','onDate', this.value)"></label>
+                    <label>PH OFF date <input type="date" id="ph-off-${escapeHtml(u.key)}" value="${escapeHtml(offDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','offDate', this.value)"></label>
+                    ${areaPicker}
+                    ${areaWarn}
+                    ${previewHtml}
                     <div class="extras-form-actions">
-                        <button class="btn-extra btn-extra-primary" type="button" ${draft.submitting ? "disabled" : ""} onclick="submitExtraPH('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create"}</button>
+                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraPH('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create"}</button>
                         <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
                     </div>
                 </div>`;
@@ -664,6 +691,50 @@
         }`;
 
         const JOBBER_BBQ_TEAM_IDS = { West: "MTcyMjQwMg==", East: "NjUwNTcz" };
+        const JOBBER_TEAM_IDS = {
+            "PH WEST": "MTI2MzkxNQ==",
+            "PH EAST": "OTIxNzQ2",
+            "AFTER GUEST REPORT - WEST": "MTcxMDM0NA==",
+            "AFTER GUEST REPORT - EAST": "NjUwNTc0",
+            "WEST 1": "NjUwNTY2",
+            "WEST 2": "NjUwNTY3",
+            "WEST 3": "NjUwNTY4",
+            "WEST 4": "MTc3NzcwMA==",
+            "WEST 5": "MTg3ODY0MA==",
+            "WEST 6": "MTg5NjM3OA==",
+            "WEST 7": "MTk4OTY1OA==",
+            "WEST 8": "MjExNDc0Mg==",
+            "EAST 1": "NjUwNTY0",
+            "EAST 2": "NjUwNTY1",
+            "EAST 3": "MTg3ODc5Nw==",
+            "EAST 4": "MjEwNDU1NA==",
+            "EAST 5": "MjcxNjkzNA==",
+        };
+        const JOBBER_TEAM_NAMES = Object.fromEntries(Object.entries(JOBBER_TEAM_IDS).map(([name, id]) => [id, name]));
+
+        function computePHOnAssignees(area, areaNumber, dateIso) {
+            const upper = area.toUpperCase();
+            const phId = JOBBER_TEAM_IDS[`PH ${upper}`];
+            const sameDay = isSameDayIso(dateIso);
+            if (!sameDay) {
+                return phId ? [phId] : [];
+            }
+            if (isBefore330LocalTime()) {
+                const areaId = areaNumber ? JOBBER_TEAM_IDS[`${upper} ${areaNumber}`] : null;
+                return [phId, areaId].filter(Boolean);
+            }
+            const afterId = JOBBER_TEAM_IDS[`AFTER GUEST REPORT - ${upper}`];
+            return afterId ? [afterId] : [];
+        }
+
+        function computePHOffAssignees(area) {
+            const phId = JOBBER_TEAM_IDS[`PH ${area.toUpperCase()}`];
+            return phId ? [phId] : [];
+        }
+
+        function labelsFromTeamIds(ids) {
+            return (ids || []).map((id) => JOBBER_TEAM_NAMES[id] || id);
+        }
 
         function decodeJobberId(encoded) {
             try { return atob(String(encoded || "")).replace(/^\D+/, ""); }
@@ -918,12 +989,20 @@
         window.submitExtraPH = function (key) {
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._extraDraft || u._extraDraft.submitting) return;
-            const onDate = readDateInput(`ph-on-${key}`);
-            const offDate = readDateInput(`ph-off-${key}`);
+            const onDate = readDateInput(`ph-on-${key}`) || u._extraDraft.onDate;
+            const offDate = readDateInput(`ph-off-${key}`) || u._extraDraft.offDate;
             if (!onDate || !offDate) { showToast("Pick both dates"); return; }
+            const info = detectAreaInfo(u, u._jobber && u._jobber.match);
+            const area = u._extraDraft.area || (info && info.area);
+            const areaNumber = u._extraDraft.areaNumber != null ? u._extraDraft.areaNumber : (info && info.number);
+            if (!area) { showToast("Pick West or East"); return; }
+            const onAssignees = computePHOnAssignees(area, areaNumber, onDate);
+            const offAssignees = computePHOffAssignees(area);
+            const onLabel = labelsFromTeamIds(onAssignees).join(" + ") || `PH ${area}`;
+            const offLabel = labelsFromTeamIds(offAssignees).join(" + ") || `PH ${area}`;
             runCreateAndRecord(u, [
-                { title: "PH ON", startAt: onDate, assigneeName: "PH ON" },
-                { title: "PH OFF", startAt: offDate, assigneeName: "PH OFF" },
+                { title: "PH ON", startAt: onDate, assigneeName: onLabel, assignedTo: onAssignees },
+                { title: "PH OFF", startAt: offDate, assigneeName: offLabel, assignedTo: offAssignees },
             ]);
         };
 
@@ -931,6 +1010,20 @@
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._extraDraft) return;
             u._extraDraft.area = area;
+            render();
+        };
+
+        window.setExtraAreaNumber = function (key, value) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraDraft) return;
+            u._extraDraft.areaNumber = String(value || "").trim() || null;
+            render();
+        };
+
+        window.setExtraDate = function (key, field, value) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraDraft) return;
+            u._extraDraft[field] = value;
             render();
         };
 
