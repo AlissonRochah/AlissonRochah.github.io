@@ -123,6 +123,60 @@
 .extra-bbq { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
 .extra-ph { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
 
+.copyable {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 4px;
+    margin: -2px -4px;
+    transition: background-color 120ms;
+}
+.copyable:hover { background: rgba(59, 130, 246, 0.10); }
+.copyable:active { background: rgba(59, 130, 246, 0.20); }
+
+.col-mapro { width: 1%; white-space: nowrap; text-align: right; }
+.btn-mapro {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    white-space: nowrap;
+}
+.btn-mapro:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.units-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms, transform 180ms;
+    z-index: 1000;
+    max-width: 80vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.units-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
 .unit-details {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

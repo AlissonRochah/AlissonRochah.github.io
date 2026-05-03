@@ -223,11 +223,33 @@
             const detailsRows = rows.map(([k, v]) => `
                 <div class="unit-detail-row">
                     <span class="unit-detail-key">${escapeHtml(k)}</span>
-                    <span class="unit-detail-val">${escapeHtml(v)}</span>
+                    <span class="unit-detail-val copyable" data-copy="${escapeHtml(v)}">${escapeHtml(v)}</span>
                 </div>
             `).join("");
 
             return `<div class="unit-details">${detailsRows}</div>`;
+        }
+
+        async function copyText(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast(text);
+            } catch (_) {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand("copy"); showToast(text); } catch (__) {}
+                document.body.removeChild(ta);
+            }
+        }
+
+        function showToast(text) {
+            const t = document.getElementById("toast");
+            t.textContent = "Copied: " + text;
+            t.classList.add("show");
+            clearTimeout(t._tid);
+            t._tid = setTimeout(() => t.classList.remove("show"), 1500);
         }
 
         function extrasHtml(u) {
@@ -240,24 +262,35 @@
         function render() {
             const tbody = document.getElementById("units-tbody");
             if (filteredUnits.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="empty">No units match your search.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="empty">No units match your search.</td></tr>`;
                 return;
             }
             tbody.innerHTML = filteredUnits.map((u) => {
                 const expanded = expandedKey === u.key;
+                const maproUrl = `https://app.mapro.us/manage/houses/register/${encodeURIComponent(u.idMAPRO || u.key)}`;
                 return `
                     <tr class="unit-row ${expanded ? "expanded" : ""}" data-key="${escapeHtml(u.key)}">
                         <td class="col-thumb">${imageThumb(u.image)}</td>
                         <td class="col-code">${escapeHtml(u.code)}</td>
                         <td class="col-extras">${extrasHtml(u)}</td>
                         <td><span class="status-pill status-${escapeHtml(u.status)}">${escapeHtml(u.status)}</span></td>
+                        <td class="col-mapro"><a href="${maproUrl}" target="_blank" rel="noopener" class="btn-mapro" title="Open in MAPRO">MAPRO ↗</a></td>
                     </tr>
-                    ${expanded ? `<tr class="unit-row-details"><td colspan="4">${detailsHtml(u)}</td></tr>` : ""}
+                    ${expanded ? `<tr class="unit-row-details"><td colspan="5">${detailsHtml(u)}</td></tr>` : ""}
                 `;
             }).join("");
 
             tbody.querySelectorAll(".unit-row").forEach((tr) => {
-                tr.addEventListener("click", () => toggleExpand(tr.dataset.key));
+                tr.addEventListener("click", (e) => {
+                    if (e.target.closest("a, .copyable")) return;
+                    toggleExpand(tr.dataset.key);
+                });
+            });
+            tbody.querySelectorAll(".copyable").forEach((el) => {
+                el.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    copyText(el.dataset.copy);
+                });
             });
         }
 
@@ -299,6 +332,8 @@
         </div>
     </header>
 
+    <div id="toast" class="units-toast"></div>
+
     <main class="units-main">
         <div class="units-toolbar">
             <input type="text" id="search" placeholder="Search by code, title, address, resort, owner…" oninput="window.applyFilter()" class="units-search">
@@ -316,6 +351,7 @@
                         <th>Code</th>
                         <th>Extras</th>
                         <th>Status</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody id="units-tbody"></tbody>
