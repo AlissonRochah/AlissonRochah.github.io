@@ -17,6 +17,8 @@ async function jobberFetch({ operationName, query, variables }) {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "X-Requested-With": "XMLHttpRequest",
+            "apollographql-client-name": "Jobber Online",
+            "apollographql-client-version": "WEB",
         },
         body: JSON.stringify({ operationName, query, variables: variables || {} }),
     });
