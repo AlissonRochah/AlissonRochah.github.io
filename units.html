@@ -219,6 +219,31 @@
             finally { u._staysFetching = false; }
         }
 
+        async function fetchLinkStays(u, date) {
+            if (!u.ulid) return;
+            if (u._linkStaysFetching) return;
+            if (u._linkStays && u._linkStaysDate === date) return;
+            u._linkStaysFetching = true;
+            u._linkStays = null;
+            u._linkStaysDate = date;
+            render();
+            try {
+                const idToken = await currentUser.getIdToken();
+                const url = proxyUrl + "/api/mapro/unit-stays?key=" + encodeURIComponent(u.ulid)
+                    + (date ? "&date=" + encodeURIComponent(date) : "");
+                const res = await fetch(url, {
+                    headers: { "Authorization": "Bearer " + idToken },
+                });
+                if (res.ok) {
+                    u._linkStays = await res.json();
+                }
+            } catch (_) { /* ignore */ }
+            finally {
+                u._linkStaysFetching = false;
+                render();
+            }
+        }
+
         function jobberMessage(action, payload) {
             return new Promise((resolve) => {
                 if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) {
@@ -568,15 +593,15 @@
                 </div>`;
             }
             if (u._maproPanelOpen) {
-                if (!u._stays) {
+                if (u._linkStaysFetching || !u._linkStays) {
                     return `<div class="extras-link-row">Loading stays…
                         <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}')">×</button>
                     </div>`;
                 }
                 const stays = [
-                    { label: "Previous", stay: u._stays.previous },
-                    { label: "Current", stay: u._stays.active },
-                    { label: "Next", stay: u._stays.next },
+                    { label: "Previous", stay: u._linkStays.previous },
+                    { label: "Current", stay: u._linkStays.active },
+                    { label: "Next", stay: u._linkStays.next },
                 ].filter((s) => s.stay && s.stay.id);
                 if (stays.length === 0) {
                     return `<div class="extras-link-row">No stays available
@@ -1378,7 +1403,8 @@
                 if (cj._link === "error") { cj._link = null; cj._linkError = null; }
             }
             u._maproPanelOpen = true;
-            if (!u._stays && !u._staysFetching) fetchStays(u).then(render);
+            const ref = (u._extraJobs.find((cj) => cj.status === "ok" && cj._link !== "linked") || {}).startAt || null;
+            fetchLinkStays(u, ref);
             render();
         };
 
@@ -1402,7 +1428,7 @@
             const paymentLink = inputEl ? inputEl.value.trim() : "";
             const targets = u._extraJobs.filter((cj) => cj.status === "ok" && cj._link !== "linked");
             if (targets.length === 0) { showToast("Nothing to link"); return; }
-            const stays = u._stays || {};
+            const stays = u._linkStays || {};
             const stay = [stays.previous, stays.active, stays.next].find((s) => s && Number(s.id) === Number(reservaId));
             for (const cj of targets) cj._link = "linking";
             u._maproPanelOpen = false;

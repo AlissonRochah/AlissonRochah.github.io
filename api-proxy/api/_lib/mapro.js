@@ -188,22 +188,23 @@ async function shapeStay(r) {
     };
 }
 
-export async function getUnitStays(key) {
-    const start = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+export async function getUnitStays(key, referenceDate) {
+    const ref = referenceDate ? new Date(referenceDate + "T12:00:00").getTime() : Date.now();
+    const lookbackFrom = Math.min(Date.now(), ref);
+    const start = new Date(lookbackFrom - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const path = `/calendar/reservation?start=${start}&properties=${encodeURIComponent(key)}&single_property=1`;
     const text = await maproFetchHtml(path);
     let data;
     try { data = JSON.parse(text); } catch (_) { return { active: null, previous: null, next: null }; }
     const list = Array.isArray(data?.[key]) ? data[key] : [];
     const guests = list.filter((r) => r.rt === "g");
-    const now = Date.now();
     const ts = (s) => new Date(String(s).replace(" ", "T")).getTime();
-    const active = guests.find((r) => ts(r.ci) <= now && now < ts(r.co)) || null;
+    const active = guests.find((r) => ts(r.ci) <= ref && ref < ts(r.co)) || null;
     const previous = guests
-        .filter((r) => ts(r.co) < now)
+        .filter((r) => ts(r.co) < ref)
         .sort((a, b) => ts(b.co) - ts(a.co))[0] || null;
     const next = active ? null : (guests
-        .filter((r) => ts(r.ci) > now)
+        .filter((r) => ts(r.ci) > ref)
         .sort((a, b) => ts(a.ci) - ts(b.ci))[0] || null);
     const [a, p, n] = await Promise.all([shapeStay(active), shapeStay(previous), shapeStay(next)]);
     return { active: a, previous: p, next: n };

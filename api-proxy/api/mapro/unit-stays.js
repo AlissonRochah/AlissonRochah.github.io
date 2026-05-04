@@ -19,13 +19,18 @@ export default async function handler(req, res) {
     }
 
     const key = req.query.key;
+    const date = req.query.date;
     if (!key || !/^[0-9A-Z]{26}$/.test(String(key))) {
         res.status(400).json({ error: "missing or invalid key" });
         return;
     }
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+        res.status(400).json({ error: "invalid date" });
+        return;
+    }
 
     try {
-        const stays = await getUnitStays(key);
+        const stays = await getUnitStays(key, date || undefined);
         res.setHeader("Cache-Control", "public, s-maxage=300, stale-while-revalidate=600");
         res.status(200).json(stays);
     } catch (err) {
