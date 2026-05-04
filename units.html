@@ -589,7 +589,7 @@
                     if (cj.assigneeName) meta.push(`<span class="created-meta"><span class="created-meta-label">Assigned:</span> ${escapeHtml(cj.assigneeName)}</span>`);
                     if (cj.member) meta.push(`<span class="created-meta"><span class="created-meta-label">Member:</span> ${escapeHtml(cj.member)}</span>`);
                     const numberHtml = display
-                        ? `<span class="created-number copyable" onclick="copyText('${escapeHtml(String(display))}')" title="Click to copy">#${escapeHtml(String(display))}</span>`
+                        ? `<span class="created-number copyable" data-copy="${escapeHtml(String(display))}" title="Click to copy">#${escapeHtml(String(display))}</span>`
                         : "";
                     const openBtn = url
                         ? `<a class="created-open" href="${url}" target="_blank" rel="noopener" title="Open in Jobber">↗</a>`
