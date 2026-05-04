@@ -249,6 +249,25 @@
             return res.data;
         }
 
+        async function maproAddComment(reservaId, casaId, comment) {
+            const res = await jobberMessage("mapro-add-comment", { reservaId, casaId, comment });
+            if (!res || !res.ok) {
+                const err = new Error(res && res.error || "mapro_unknown_error");
+                err.code = res && res.error;
+                throw err;
+            }
+            return res.data;
+        }
+
+        function stayCoversDate(stay, dateStr) {
+            if (!stay || !dateStr) return false;
+            const d = new Date(dateStr + "T00:00:00").getTime();
+            const ci = new Date(String(stay.ci || "").replace(" ", "T")).getTime();
+            const co = new Date(String(stay.co || "").replace(" ", "T")).getTime();
+            if (Number.isNaN(d) || Number.isNaN(ci) || Number.isNaN(co)) return false;
+            return ci <= d && d <= co;
+        }
+
         function readJobberMapping() {
             try { return JSON.parse(localStorage.getItem(JOBBER_MAPPING_KEY) || "{}"); }
             catch (_) { return {}; }
@@ -533,6 +552,58 @@
             return d.toISOString().slice(0, 10);
         }
 
+        function linkSectionHtml(u, cj, idx) {
+            const keyAttr = escapeHtml(u.key);
+            if (cj._link === "linked") {
+                const guestLabel = escapeHtml(cj._linkedGuest || "guest");
+                const conf = cj._linkedConf ? ` <span class="link-conf">${escapeHtml(cj._linkedConf)}</span>` : "";
+                return `<div class="extras-link-row link-success">✓ Linked to ${guestLabel}${conf}</div>`;
+            }
+            if (cj._link === "linking") {
+                return `<div class="extras-link-row link-pending">Linking…</div>`;
+            }
+            if (cj._link === "error") {
+                return `<div class="extras-link-row link-error">
+                    <span>✗ ${escapeHtml(cj._linkError || "Failed")}</span>
+                    <button class="btn-link-retry" type="button" onclick="startLinkMapro('${keyAttr}', ${idx})">Retry</button>
+                </div>`;
+            }
+            if (cj._link === "picking") {
+                if (!u._stays) return `<div class="extras-link-row">Loading stays…
+                    <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}', ${idx})">×</button>
+                </div>`;
+                const stays = [
+                    { label: "Previous", stay: u._stays.previous },
+                    { label: "Current", stay: u._stays.active },
+                    { label: "Next", stay: u._stays.next },
+                ].filter((s) => s.stay && s.stay.id);
+                if (stays.length === 0) {
+                    return `<div class="extras-link-row">No stays available
+                        <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}', ${idx})">×</button>
+                    </div>`;
+                }
+                const buttons = stays.map((s) => {
+                    const match = stayCoversDate(s.stay, cj.startAt);
+                    const matchTag = match ? ` <span class="stay-match-tag">match</span>` : "";
+                    const dates = `${String(s.stay.ci || "").slice(0, 10)} → ${String(s.stay.co || "").slice(0, 10)}`;
+                    return `<button class="btn-stay-pick${match ? " btn-stay-pick-match" : ""}" type="button" onclick="confirmLinkMapro('${keyAttr}', ${idx}, ${Number(s.stay.id)})">
+                        <span class="stay-pick-label">${escapeHtml(s.label)}</span>
+                        <span class="stay-pick-guest">${escapeHtml(s.stay.guest || "Unknown")}</span>
+                        <span class="stay-pick-dates">${escapeHtml(dates)}</span>
+                        ${matchTag}
+                    </button>`;
+                }).join("");
+                return `<div class="extras-link-row link-picking">
+                    <span class="link-label">Pick guest:</span>
+                    <div class="stay-pick-list">${buttons}</div>
+                    <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}', ${idx})">×</button>
+                </div>`;
+            }
+            return `<div class="extras-link-row">
+                <button class="btn-link-mapro" type="button" onclick="startLinkMapro('${keyAttr}', ${idx})">+ Link MAPRO booking</button>
+            </div>`;
+        }
+
         function jobberExtrasHtml(u) {
             const j = u._jobber;
             if (!j) {
@@ -581,7 +652,7 @@
             const created = u._extraJobs || [];
 
             const createdHtml = created.length === 0 ? "" : `<div class="extras-created">${
-                created.map((cj) => {
+                created.map((cj, idx) => {
                     const numericId = decodeJobberId(cj.id);
                     const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
                     const display = cj.jobNumber || numericId;
@@ -594,13 +665,17 @@
                     const openBtn = url
                         ? `<a class="created-open" href="${url}" target="_blank" rel="noopener" title="Open in Jobber">↗</a>`
                         : "";
-                    return `<div class="extras-created-row">
-                        <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
-                        <span class="created-title">${escapeHtml(cj.title)}</span>
-                        ${cj.status === "ok"
-                            ? `${numberHtml}${openBtn}${meta.length ? `<span class="created-meta-group">${meta.join("")}</span>` : ""}`
-                            : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`
-                        }
+                    const linkHtml = cj.status === "ok" ? linkSectionHtml(u, cj, idx) : "";
+                    return `<div class="extras-created-entry">
+                        <div class="extras-created-row">
+                            <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
+                            <span class="created-title">${escapeHtml(cj.title)}</span>
+                            ${cj.status === "ok"
+                                ? `${numberHtml}${openBtn}${meta.length ? `<span class="created-meta-group">${meta.join("")}</span>` : ""}`
+                                : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`
+                            }
+                        </div>
+                        ${linkHtml}
                     </div>`;
                 }).join("")
             }</div>`;
@@ -1144,6 +1219,7 @@
                         title: j.title,
                         id: created?.id,
                         jobNumber: created?.jobNumber,
+                        startAt: j.startAt,
                         assigneeName: j.assigneeName || "",
                         member: resolvedMember,
                     });
@@ -1152,6 +1228,7 @@
                         status: "err",
                         title: j.title,
                         error: e?.message || String(e),
+                        startAt: j.startAt,
                         assigneeName: j.assigneeName || "",
                         member: resolvedMember,
                     });
@@ -1276,6 +1353,48 @@
             runCreateAndRecord(u, [
                 { title: "BBQ Clean", startAt: date, assigneeName, assignedTo },
             ]);
+        };
+
+        window.startLinkMapro = function (key, idx) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraJobs || !u._extraJobs[idx]) return;
+            u._extraJobs[idx]._link = "picking";
+            u._extraJobs[idx]._linkError = null;
+            if (!u._stays && !u._staysFetching) fetchStays(u).then(render);
+            render();
+        };
+
+        window.cancelLinkMapro = function (key, idx) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraJobs || !u._extraJobs[idx]) return;
+            u._extraJobs[idx]._link = null;
+            u._extraJobs[idx]._linkError = null;
+            render();
+        };
+
+        window.confirmLinkMapro = async function (key, idx, reservaId) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraJobs || !u._extraJobs[idx]) return;
+            if (!u.idMAPRO) { showToast("Unit has no MAPRO id"); return; }
+            const cj = u._extraJobs[idx];
+            const stays = u._stays || {};
+            const stay = [stays.previous, stays.active, stays.next].find((s) => s && Number(s.id) === Number(reservaId));
+            cj._link = "linking";
+            render();
+            try {
+                const numericId = decodeJobberId(cj.id);
+                const url = numericId ? `https://secure.getjobber.com/jobs/${numericId}` : "";
+                const comment = url ? `${url} | ${cj.title}` : cj.title;
+                await maproAddComment(reservaId, u.idMAPRO, comment);
+                cj._link = "linked";
+                cj._linkedGuest = (stay && stay.guest) || "";
+                cj._linkedConf = (stay && stay.confirmation) || "";
+                cj._linkedReservaId = reservaId;
+            } catch (e) {
+                cj._link = "error";
+                cj._linkError = (e && e.message) || String(e);
+            }
+            render();
         };
 
         async function copyText(text) {

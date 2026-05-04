@@ -718,3 +718,80 @@
     margin-right: 4px;
 }
 .created-error { font-size: 12px; color: #ef4444; }
+.extras-created-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px dashed var(--border);
+}
+.extras-created-entry:last-child { border-bottom: none; }
+.extras-link-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: 26px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.btn-link-mapro {
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px dashed var(--border);
+    font-size: 11px;
+    cursor: pointer;
+}
+.btn-link-mapro:hover { color: var(--accent); border-color: var(--accent); }
+.link-label { font-size: 11px; color: var(--text-muted); }
+.stay-pick-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn-stay-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-size: 11px;
+    cursor: pointer;
+}
+.btn-stay-pick:hover { border-color: var(--accent); color: var(--accent); }
+.btn-stay-pick-match { border-color: #10b981; }
+.stay-pick-label { color: var(--text-muted); font-size: 10px; text-transform: uppercase; }
+.stay-pick-guest { font-weight: 600; }
+.stay-pick-dates { color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.stay-match-tag {
+    background: rgba(16, 185, 129, 0.18);
+    color: #10b981;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+.btn-link-cancel, .btn-link-retry {
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 11px;
+}
+.btn-link-cancel:hover, .btn-link-retry:hover { color: var(--accent); border-color: var(--accent); }
+.link-success { color: #10b981; }
+.link-pending { color: var(--text-muted); font-style: italic; }
+.link-error { color: #ef4444; }
+.link-conf {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    color: var(--text-primary);
+}

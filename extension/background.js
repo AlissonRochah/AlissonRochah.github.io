@@ -1,10 +1,11 @@
 // MasterBot Bridge — background service worker.
 // Acts as a generic transport for the MasterBot site to call Jobber's
-// internal GraphQL API using the user's existing Brave/Chrome session
-// cookies. No data is stored anywhere; the extension only relays
-// requests and returns responses to the calling page.
+// and MAPRO's internal APIs using the user's existing Brave/Chrome
+// session cookies. No data is stored anywhere; the extension only
+// relays requests and returns responses to the calling page.
 
 const JOBBER_GRAPHQL = "https://secure.getjobber.com/api/graphql?location=j";
+const MAPRO_BASE = "https://app.mapro.us";
 
 async function jobberFetch({ operationName, query, variables }) {
     if (typeof query !== "string" || !query.trim()) {
@@ -37,6 +38,33 @@ async function jobberFetch({ operationName, query, variables }) {
     return json.data;
 }
 
+async function maproAddComment({ reservaId, casaId, comment }) {
+    if (!reservaId || !casaId) throw new Error("reservaId and casaId are required");
+    if (typeof comment !== "string" || !comment.trim()) throw new Error("comment is required");
+    const fd = new FormData();
+    fd.append("tx-comentario", comment);
+    fd.append("reserva_id", String(reservaId));
+    fd.append("casa_id", String(casaId));
+    fd.append("comentario", comment);
+    const res = await fetch(MAPRO_BASE + "/ajax?manage-booking-details-commented", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        body: fd,
+    });
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (_) { throw new Error(`Non-JSON response (HTTP ${res.status}): ${text.slice(0, 200)}`); }
+    if (!res.ok || json?.status !== true) {
+        throw new Error(json?.msg || `HTTP ${res.status}`);
+    }
+    return json;
+}
+
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
     (async () => {
         try {
@@ -50,6 +78,11 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
             }
             if (msg.action === "jobber-query") {
                 const data = await jobberFetch(msg.payload || {});
+                sendResponse({ ok: true, data });
+                return;
+            }
+            if (msg.action === "mapro-add-comment") {
+                const data = await maproAddComment(msg.payload || {});
                 sendResponse({ ok: true, data });
                 return;
             }
