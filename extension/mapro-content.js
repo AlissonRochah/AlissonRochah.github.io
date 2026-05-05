@@ -51,7 +51,7 @@
     }
 
     function addServiceInPage(args) {
-        const { kind, price, date } = args;
+        const { kind } = args;
         const PATTERNS = {
             bbq:  /\bbbq\b/i,
             ph35: /(pool\s*heat.*35|ph\s*35)/i,
@@ -61,7 +61,6 @@
         const pattern = PATTERNS[kind];
         if (!pattern) throw new Error("Unknown service kind: " + kind);
 
-        // Find an existing service select (dropdown options are the same per page)
         const sampleSelect = document.querySelector('form[data-ajax="booking-reservar"] select[name="id"]');
         if (!sampleSelect) throw new Error("Booking form not loaded yet");
         const opt = Array.from(sampleSelect.options).find((o) => o.value && pattern.test(o.textContent));
@@ -76,11 +75,10 @@
         if (typeof window.uuid === "undefined" || !window.uuid.v4) throw new Error("MAPRO uuid is not defined");
 
         const before = document.querySelectorAll('form[data-ajax="booking-reservar"] .reservation-service-container').length;
-        const priceStr = Number(price).toFixed(2);
         window.add_service({
             onlyActive: 1,
             servico_padrao: 0,
-            valor: priceStr,
+            valor: "0.00",
             valor_desconto: "0.00",
             valor_sale: "0.00",
             valor_tourist: "0.00",
@@ -102,51 +100,26 @@
                         sel.value = serviceId;
                         sel.dispatchEvent(new Event("change", { bubbles: true }));
                     }
-
+                    // MAPRO populates everything else (price, dates, excludeTaxes) on its own
+                    // when the option is chosen — let the change handler run, then save.
                     setTimeout(() => {
-                        const setVal = (selector, value) => {
-                            const el = newContainer.querySelector(selector);
-                            if (el) {
-                                if ($) $(el).val(value).trigger("change");
-                                else { el.value = value; el.dispatchEvent(new Event("change", { bubbles: true })); }
-                                return true;
-                            }
-                            return false;
+                        const saveLink = Array.from(document.querySelectorAll('a.bt2[data-submit]'))
+                            .find((a) => (a.textContent || "").trim() === "Save");
+                        if (!saveLink) return reject(new Error("Save button not found"));
+                        saveLink.click();
+                        const waitStart = Date.now();
+                        const watch = () => {
+                            const errVisible = Array.from(document.querySelectorAll(".f-erro.reserva-erro"))
+                                .some((el) => el.offsetParent !== null);
+                            const okVisible = Array.from(document.querySelectorAll(".f-sucesso.reserva-sucesso"))
+                                .some((el) => el.offsetParent !== null);
+                            if (okVisible) return resolve({ serviceId, serviceLabel, status: "saved" });
+                            if (errVisible) return reject(new Error("MAPRO returned validation error"));
+                            if (Date.now() - waitStart > 15000) return reject(new Error("Save timed out"));
+                            setTimeout(watch, 250);
                         };
-                        setVal('input[name="start_date"]', date);
-                        setVal('input[name="end_date"]', date);
-                        setVal('input[name="value"]', priceStr);
-                        setVal('input[name="total_value"]', priceStr);
-                        setVal('input[name="valor_custo"]', "0.00");
-
-                        const exclude = newContainer.querySelector('input[name="excludeTaxes"]');
-                        if (exclude && exclude.type === "checkbox" && !exclude.checked) {
-                            exclude.checked = true;
-                            exclude.dispatchEvent(new Event("change", { bubbles: true }));
-                        }
-
-                        // Click Save (the booking-reservar form's submit link)
-                        setTimeout(() => {
-                            const saveLink = Array.from(document.querySelectorAll('a.bt2[data-submit]'))
-                                .find((a) => (a.textContent || "").trim() === "Save");
-                            if (!saveLink) return reject(new Error("Save button not found"));
-                            saveLink.click();
-
-                            // Wait for either error or success indicator
-                            const waitStart = Date.now();
-                            const watch = () => {
-                                const errVisible = Array.from(document.querySelectorAll(".f-erro.reserva-erro"))
-                                    .some((el) => el.offsetParent !== null);
-                                const okVisible = Array.from(document.querySelectorAll(".f-sucesso.reserva-sucesso"))
-                                    .some((el) => el.offsetParent !== null);
-                                if (okVisible) return resolve({ serviceId, serviceLabel, status: "saved" });
-                                if (errVisible) return reject(new Error("MAPRO returned validation error"));
-                                if (Date.now() - waitStart > 15000) return reject(new Error("Save timed out"));
-                                setTimeout(watch, 250);
-                            };
-                            watch();
-                        }, 400);
-                    }, 400);
+                        watch();
+                    }, 600);
                 } else if (Date.now() - tStart > 5000) {
                     reject(new Error("Service block did not appear after add_service()"));
                 } else {
