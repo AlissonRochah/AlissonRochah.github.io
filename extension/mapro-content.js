@@ -101,14 +101,22 @@
                         sel.dispatchEvent(new Event("change", { bubbles: true }));
                     }
                     // MAPRO populates everything else (price, dates, excludeTaxes) on its own
-                    // when the option is chosen — let the change handler run, then save.
-                    // The change handler kicks off calcula_valores etc. which can take 1-2s;
-                    // clicking Save before it settles triggers "fill in all fields".
+                    // when the option is chosen. Pequeno respiro pro change handler propagar.
                     setTimeout(() => {
+                        // Pode existir Save em modais escondidos — pega só o visível.
                         const saveLink = Array.from(document.querySelectorAll('a.bt2[data-submit]'))
-                            .find((a) => (a.textContent || "").trim() === "Save");
+                            .filter((a) => (a.textContent || "").trim() === "Save")
+                            .find((a) => a.offsetParent !== null);
                         if (!saveLink) return reject(new Error("Save button not found"));
-                        saveLink.click();
+                        // .click()/jQuery.trigger não dispara listeners nativos do data-ajax;
+                        // precisa do MouseEvent completo (ver tools/test-mapro-bbq.js).
+                        if (document.activeElement && document.activeElement.blur) {
+                            document.activeElement.blur();
+                        }
+                        const init = { bubbles: true, cancelable: true, view: window, button: 0 };
+                        saveLink.dispatchEvent(new MouseEvent("mousedown", { ...init, buttons: 1 }));
+                        saveLink.dispatchEvent(new MouseEvent("mouseup", { ...init, buttons: 0 }));
+                        saveLink.dispatchEvent(new MouseEvent("click", { ...init, buttons: 0 }));
                         const waitStart = Date.now();
                         const watch = () => {
                             const errVisible = Array.from(document.querySelectorAll(".f-erro.reserva-erro"))
@@ -121,7 +129,7 @@
                             setTimeout(watch, 250);
                         };
                         watch();
-                    }, 3000);
+                    }, 200);
                 } else if (Date.now() - tStart > 5000) {
                     reject(new Error("Service block did not appear after add_service()"));
                 } else {
