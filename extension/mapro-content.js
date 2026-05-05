@@ -102,6 +102,8 @@
                     }
                     // MAPRO populates everything else (price, dates, excludeTaxes) on its own
                     // when the option is chosen — let the change handler run, then save.
+                    // The change handler kicks off calcula_valores etc. which can take 1-2s;
+                    // clicking Save before it settles triggers "fill in all fields".
                     setTimeout(() => {
                         const saveLink = Array.from(document.querySelectorAll('a.bt2[data-submit]'))
                             .find((a) => (a.textContent || "").trim() === "Save");
@@ -119,7 +121,7 @@
                             setTimeout(watch, 250);
                         };
                         watch();
-                    }, 600);
+                    }, 3000);
                 } else if (Date.now() - tStart > 5000) {
                     reject(new Error("Service block did not appear after add_service()"));
                 } else {
