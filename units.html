@@ -284,6 +284,22 @@
             return res.data;
         }
 
+        async function maproAddService(reservaId, kind, price, date) {
+            const res = await jobberMessage("mapro-add-service", { reservaId, kind, price, date });
+            if (!res || !res.ok) {
+                const err = new Error(res && res.error || "mapro_service_unknown_error");
+                err.code = res && res.error;
+                throw err;
+            }
+            return res.data;
+        }
+
+        function maproServiceForJob(cj) {
+            const title = String(cj.title || "");
+            if (/\bbbq\b/i.test(title)) return { kind: "bbq", price: 75 };
+            return null;
+        }
+
         function stayCoversDate(stay, dateStr) {
             if (!stay || !dateStr) return false;
             const d = new Date(dateStr + "T00:00:00").getTime();
@@ -577,6 +593,20 @@
             return d.toISOString().slice(0, 10);
         }
 
+        function renderSvcAction(u, cj, idx) {
+            const keyAttr = escapeHtml(u.key);
+            if (cj._svc === "busy") return `<span class="svc-tag svc-busy">adding service…</span>`;
+            if (cj._svc === "done") {
+                const lbl = cj._svcLabel ? ` <span class="svc-label">${escapeHtml(cj._svcLabel)}</span>` : "";
+                return `<span class="svc-tag svc-done">✓ service added${lbl}</span>`;
+            }
+            if (cj._svc === "error") {
+                return `<span class="svc-tag svc-error" title="${escapeHtml(cj._svcError || "")}">✗ service failed</span>
+                    <button class="btn-link-retry" type="button" onclick="addMaproService('${keyAttr}', ${idx})">Retry</button>`;
+            }
+            return `<button class="btn-link-mapro" type="button" onclick="addMaproService('${keyAttr}', ${idx})">+ Add to MAPRO</button>`;
+        }
+
         function linkSectionHtml(u) {
             if (!u._extraJobs || u._extraJobs.length === 0) return "";
             const ok = u._extraJobs.filter((cj) => cj.status === "ok");
@@ -710,11 +740,15 @@
                     const linkedTag = cj._link === "linked"
                         ? `<span class="row-linked-tag" title="Linked to ${escapeHtml(cj._linkedGuest || "guest")}">linked</span>`
                         : "";
+                    const idxAttr = created.indexOf(cj);
+                    const svcHtml = (cj._link === "linked" && maproServiceForJob(cj))
+                        ? renderSvcAction(u, cj, idxAttr)
+                        : "";
                     return `<div class="extras-created-row">
                         <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
                         <span class="created-title">${escapeHtml(cj.title)}</span>
                         ${cj.status === "ok"
-                            ? `${numberHtml}${openBtn}${linkedTag}${meta.length ? `<span class="created-meta-group">${meta.join("")}</span>` : ""}`
+                            ? `${numberHtml}${openBtn}${linkedTag}${svcHtml}${meta.length ? `<span class="created-meta-group">${meta.join("")}</span>` : ""}`
                             : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`
                         }
                     </div>`;
@@ -1394,6 +1428,27 @@
             runCreateAndRecord(u, [
                 { title: "BBQ Clean", startAt: date, assigneeName, assignedTo },
             ]);
+        };
+
+        window.addMaproService = async function (key, idx) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraJobs || !u._extraJobs[idx]) return;
+            const cj = u._extraJobs[idx];
+            if (!cj._linkedReservaId) { showToast("Link MAPRO booking first"); return; }
+            const action = maproServiceForJob(cj);
+            if (!action) { showToast("No service mapping for this job"); return; }
+            cj._svc = "busy";
+            cj._svcError = null;
+            render();
+            try {
+                const data = await maproAddService(cj._linkedReservaId, action.kind, action.price, cj.startAt);
+                cj._svc = "done";
+                cj._svcLabel = data && data.serviceLabel;
+            } catch (e) {
+                cj._svc = "error";
+                cj._svcError = (e && e.message) || String(e);
+            }
+            render();
         };
 
         window.startLinkMapro = function (key) {

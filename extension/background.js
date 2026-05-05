@@ -38,6 +38,48 @@ async function jobberFetch({ operationName, query, variables }) {
     return json.data;
 }
 
+async function findOrOpenBookingTab(reservaId) {
+    const url = `https://app.mapro.us/booking/reservation/${encodeURIComponent(reservaId)}`;
+    const matchPattern = `https://app.mapro.us/booking/reservation/${reservaId}*`;
+    const tabs = await chrome.tabs.query({ url: matchPattern });
+    if (tabs.length) return { tab: tabs[0], opened: false };
+    const tab = await chrome.tabs.create({ url, active: false });
+    await new Promise((resolve) => {
+        const onUpdated = (tabId, changeInfo) => {
+            if (tabId === tab.id && changeInfo.status === "complete") {
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+                resolve();
+            }
+        };
+        chrome.tabs.onUpdated.addListener(onUpdated);
+    });
+    // give MAPRO's JS a moment to initialise (add_service is registered late)
+    await new Promise((r) => setTimeout(r, 1500));
+    return { tab, opened: true };
+}
+
+async function maproAddService({ reservaId, kind, price, date }) {
+    if (!reservaId) throw new Error("reservaId required");
+    if (!kind) throw new Error("kind required (bbq|ph35|ph75|ph)");
+    if (price == null || isNaN(Number(price))) throw new Error("price required (number)");
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) throw new Error("date required (YYYY-MM-DD)");
+
+    const { tab, opened } = await findOrOpenBookingTab(reservaId);
+    try {
+        const result = await chrome.tabs.sendMessage(tab.id, {
+            action: "mapro-add-service",
+            payload: { kind, price: Number(price), date },
+        });
+        if (!result || !result.ok) throw new Error((result && result.error) || "content script no response");
+        return result.data;
+    } finally {
+        if (opened) {
+            // Close the tab we opened, give the user a chance to see the success
+            setTimeout(() => chrome.tabs.remove(tab.id).catch(() => {}), 1500);
+        }
+    }
+}
+
 async function maproAddComment({ reservaId, casaId, comment }) {
     if (!reservaId) throw new Error("reservaId missing (got " + JSON.stringify(reservaId) + ")");
     if (!casaId) throw new Error("casaId missing (got " + JSON.stringify(casaId) + ")");
@@ -84,6 +126,11 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
             }
             if (msg.action === "mapro-add-comment") {
                 const data = await maproAddComment(msg.payload || {});
+                sendResponse({ ok: true, data });
+                return;
+            }
+            if (msg.action === "mapro-add-service") {
+                const data = await maproAddService(msg.payload || {});
                 sendResponse({ ok: true, data });
                 return;
             }
