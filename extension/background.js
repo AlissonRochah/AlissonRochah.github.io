@@ -38,12 +38,18 @@ async function jobberFetch({ operationName, query, variables }) {
     return json.data;
 }
 
-async function findOrOpenBookingTab(reservaId) {
+async function openBookingWindow(reservaId) {
+    // Always open in a NEW minimized window so the user's main window is
+    // untouched (and we don't fight with an already-open booking tab).
     const url = `https://app.mapro.us/booking/reservation/${encodeURIComponent(reservaId)}`;
-    const matchPattern = `https://app.mapro.us/booking/reservation/${reservaId}*`;
-    const tabs = await chrome.tabs.query({ url: matchPattern });
-    if (tabs.length) return { tab: tabs[0], opened: false };
-    const tab = await chrome.tabs.create({ url, active: false });
+    const win = await chrome.windows.create({
+        url,
+        focused: false,
+        state: "minimized",
+        type: "normal",
+    });
+    const tab = win.tabs && win.tabs[0];
+    if (!tab) throw new Error("could not open booking window");
     await new Promise((resolve) => {
         const onUpdated = (tabId, changeInfo) => {
             if (tabId === tab.id && changeInfo.status === "complete") {
@@ -53,9 +59,9 @@ async function findOrOpenBookingTab(reservaId) {
         };
         chrome.tabs.onUpdated.addListener(onUpdated);
     });
-    // give MAPRO's JS a moment to initialise (add_service is registered late)
-    await new Promise((r) => setTimeout(r, 1500));
-    return { tab, opened: true };
+    // Pequeno respiro pra MAPRO inicializar (add_service / jQuery registram late).
+    await new Promise((r) => setTimeout(r, 800));
+    return { winId: win.id, tabId: tab.id };
 }
 
 async function maproAddService({ reservaId, kind, price, date }) {
@@ -64,19 +70,29 @@ async function maproAddService({ reservaId, kind, price, date }) {
     if (price == null || isNaN(Number(price))) throw new Error("price required (number)");
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) throw new Error("date required (YYYY-MM-DD)");
 
-    const { tab, opened } = await findOrOpenBookingTab(reservaId);
+    const { winId, tabId } = await openBookingWindow(reservaId);
     try {
-        const result = await chrome.tabs.sendMessage(tab.id, {
-            action: "mapro-add-service",
-            payload: { kind, price: Number(price), date },
-        });
-        if (!result || !result.ok) throw new Error((result && result.error) || "content script no response");
+        // Content script may take a few hundred ms to register at document_idle.
+        // Retry sendMessage until it succeeds or we give up.
+        let result, lastErr;
+        for (let attempt = 0; attempt < 8; attempt++) {
+            try {
+                result = await chrome.tabs.sendMessage(tabId, {
+                    action: "mapro-add-service",
+                    payload: { kind, price: Number(price), date },
+                });
+                break;
+            } catch (e) {
+                lastErr = e;
+                await new Promise((r) => setTimeout(r, 400));
+            }
+        }
+        if (!result) throw new Error("content script not reachable: " + (lastErr?.message || "unknown"));
+        if (!result.ok) throw new Error(result.error || "content script returned error");
         return result.data;
     } finally {
-        if (opened) {
-            // Close the tab we opened, give the user a chance to see the success
-            setTimeout(() => chrome.tabs.remove(tab.id).catch(() => {}), 1500);
-        }
+        // Fecha a janela inteira (a aba é a única dela).
+        chrome.windows.remove(winId).catch(() => {});
     }
 }
 
