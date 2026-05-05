@@ -173,11 +173,22 @@ async function fetchReservationExtras(linkPath) {
     }
 }
 
+function reservaIdFromLink(link) {
+    if (!link) return null;
+    const s = String(link);
+    const m1 = s.match(/\/booking\/reservation\/(\d+)/);
+    if (m1) return m1[1];
+    const m2 = s.match(/\/(\d+)(?:[/?#].*)?$/);
+    if (m2) return m2[1];
+    return null;
+}
+
 async function shapeStay(r) {
     if (!r) return null;
     const extras = r.l ? await fetchReservationExtras(r.l) : { doorCode: "", confirmation: "" };
+    const idFromLink = reservaIdFromLink(r.l);
     return {
-        id: r.ri,
+        id: idFromLink || r.ri,
         guest: r.g,
         channel: parseChannel(r.t),
         ci: r.ci,

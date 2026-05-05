@@ -602,7 +602,7 @@
                     { label: "Previous", stay: u._linkStays.previous },
                     { label: "Current", stay: u._linkStays.active },
                     { label: "Next", stay: u._linkStays.next },
-                ].filter((s) => s.stay && s.stay.id);
+                ].filter((s) => s.stay && Number(s.stay.id) > 0);
                 if (stays.length === 0) {
                     return `<div class="extras-link-row">No stays available
                         <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}')">×</button>

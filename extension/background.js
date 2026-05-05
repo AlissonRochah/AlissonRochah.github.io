@@ -39,7 +39,8 @@ async function jobberFetch({ operationName, query, variables }) {
 }
 
 async function maproAddComment({ reservaId, casaId, comment }) {
-    if (!reservaId || !casaId) throw new Error("reservaId and casaId are required");
+    if (!reservaId) throw new Error("reservaId missing (got " + JSON.stringify(reservaId) + ")");
+    if (!casaId) throw new Error("casaId missing (got " + JSON.stringify(casaId) + ")");
     if (typeof comment !== "string" || !comment.trim()) throw new Error("comment is required");
     const fd = new FormData();
     fd.append("tx-comentario", comment);
