@@ -1483,6 +1483,7 @@
             const paymentLink = inputEl ? inputEl.value.trim() : "";
             const targets = u._extraJobs.filter((cj) => cj.status === "ok" && cj._link !== "linked");
             if (targets.length === 0) { showToast("Nothing to link"); return; }
+            if (!paymentLink && !confirm("Add note without payment link?")) return;
             const stays = u._linkStays || {};
             const stay = [stays.previous, stays.active, stays.next].find((s) => s && Number(s.id) === Number(reservaId));
             for (const cj of targets) cj._link = "linking";
