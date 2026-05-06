@@ -71,8 +71,8 @@ async function openBookingTab(reservaId) {
     return { tabId: tab.id };
 }
 
-async function maproAddService({ reservaId, kind, price, startDate, endDate, dryRun, force }) {
-    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, startDate, endDate, dryRun: !!dryRun, force: !!force });
+async function maproAddService({ reservaId, kind, price, startDate, endDate, dryRun, force, checkOnly }) {
+    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, startDate, endDate, dryRun: !!dryRun, force: !!force, checkOnly: !!checkOnly });
     if (!reservaId) throw new Error("reservaId required");
     if (!kind) throw new Error("kind required (bbq|ph)");
     if (price == null || isNaN(Number(price))) throw new Error("price required (number)");
@@ -309,6 +309,52 @@ async function pageRunner(cfg) {
     }
 }
 
+async function maproListServices({ reservaId }) {
+    if (!reservaId) throw new Error("reservaId required");
+    console.log("[MB-bg] mapro-list-services for reserva", reservaId);
+    const { tabId } = await openBookingTab(reservaId);
+    try {
+        const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: "MAIN",
+            func: async () => {
+                try {
+                    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+                    const tForm = Date.now();
+                    while (Date.now() - tForm < 8000) {
+                        if (document.querySelector('form[data-ajax="booking-reservar"] .reservation-service-container')) break;
+                        await sleep(150);
+                    }
+                    const containers = document.querySelectorAll('form[data-ajax="booking-reservar"] .reservation-service-container');
+                    const services = [];
+                    for (const c of containers) {
+                        const sel = c.querySelector('select[name="id"]');
+                        const startInp = c.querySelector('input[name="start_date"]');
+                        const endInp = c.querySelector('input[name="end_date"]');
+                        if (!sel) continue;
+                        const opt = sel.options[sel.selectedIndex];
+                        services.push({
+                            label: opt ? (opt.textContent || "").trim() : "",
+                            value: sel.value,
+                            start_date: startInp ? startInp.value : "",
+                            end_date: endInp ? endInp.value : "",
+                        });
+                    }
+                    return { ok: true, data: { services } };
+                } catch (e) {
+                    return { ok: false, error: String(e?.message || e) };
+                }
+            },
+        });
+        const wrapped = results && results[0] && results[0].result;
+        if (!wrapped) throw new Error("listServices: no result");
+        if (!wrapped.ok) throw new Error(wrapped.error || "listServices failed");
+        return wrapped.data;
+    } finally {
+        chrome.tabs.remove(tabId).catch(() => {});
+    }
+}
+
 async function maproAddComment({ reservaId, casaId, comment }) {
     if (!reservaId) throw new Error("reservaId missing (got " + JSON.stringify(reservaId) + ")");
     if (!casaId) throw new Error("casaId missing (got " + JSON.stringify(casaId) + ")");
@@ -360,6 +406,11 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
             }
             if (msg.action === "mapro-add-service") {
                 const data = await maproAddService(msg.payload || {});
+                sendResponse({ ok: true, data });
+                return;
+            }
+            if (msg.action === "mapro-list-services") {
+                const data = await maproListServices(msg.payload || {});
                 sendResponse({ ok: true, data });
                 return;
             }

@@ -284,6 +284,66 @@
             return res.data;
         }
 
+        async function maproListServices(reservaId) {
+            const res = await jobberMessage("mapro-list-services", { reservaId });
+            if (!res || !res.ok) {
+                const err = new Error(res && res.error || "list_services_failed");
+                err.code = res && res.error;
+                throw err;
+            }
+            return res.data;
+        }
+
+        // Pre-fetch e cache dos services MAPRO de cada stay (active/next/previous)
+        // pra o aviso de BBQ duplicado funcionar ao vivo enquanto user seleciona data.
+        async function ensureMaproServicesForStays(u) {
+            const stays = [u._stays?.previous, u._stays?.active, u._stays?.next].filter((s) => s && s.id);
+            if (stays.length === 0) return;
+            u._maproServicesCache = u._maproServicesCache || {};
+            u._maproServicesFetching = u._maproServicesFetching || {};
+            for (const stay of stays) {
+                if (u._maproServicesCache[stay.id]) continue;
+                if (u._maproServicesFetching[stay.id]) continue;
+                u._maproServicesFetching[stay.id] = true;
+                render();
+                maproListServices(stay.id).then((data) => {
+                    u._maproServicesCache[stay.id] = data.services || [];
+                }).catch((e) => {
+                    console.warn("[MB] failed list services for stay", stay.id, e);
+                    u._maproServicesCache[stay.id] = []; // marca como buscado pra não repetir
+                }).finally(() => {
+                    delete u._maproServicesFetching[stay.id];
+                    render();
+                });
+            }
+        }
+
+        function findBBQDuplicateForDate(u, date) {
+            if (!date) return null;
+            const stays = [u._stays?.previous, u._stays?.active, u._stays?.next].filter(Boolean);
+            const stay = stays.find((s) => s && s.id && stayCoversDate(s, date));
+            if (!stay) return null;
+            const cached = u._maproServicesCache && u._maproServicesCache[stay.id];
+            if (!cached) return null;
+            const dup = cached.find((svc) => /\bbbq\b/i.test(svc.label || "") && svc.start_date === date);
+            return dup ? { stay, service: dup } : null;
+        }
+
+        function bbqDateWarning(u, date) {
+            if (!date) return "";
+            const stays = [u._stays?.previous, u._stays?.active, u._stays?.next].filter(Boolean);
+            const stay = stays.find((s) => s && s.id && stayCoversDate(s, date));
+            if (!stay) return "";
+            if (u._maproServicesFetching && u._maproServicesFetching[stay.id]) {
+                return `<div class="extras-info">Checking MAPRO…</div>`;
+            }
+            const dup = findBBQDuplicateForDate(u, date);
+            if (dup) {
+                return `<div class="extras-warn">⚠ Já tem ${escapeHtml(dup.service.label)} no MAPRO pra ${escapeHtml(date)}</div>`;
+            }
+            return "";
+        }
+
         async function maproAddService(reservaId, kind, price, startDate, endDate, opts) {
             const payload = { reservaId, kind, price, startDate, endDate };
             if (opts && opts.force) payload.force = true;
@@ -988,8 +1048,13 @@
                     ${detected && !draft.area ? `<span class="extras-area-auto">auto-detected</span>` : ""}
                 </div>`;
                 const canSubmit = !!chosen && !draft.submitting;
+                const bbqDate = draft.date || todayIso();
+                const bbqWarnHtml = bbqDateWarning(u, bbqDate);
                 formHtml = `<div class="extras-form">
-                    <label>BBQ date <input type="date" id="bbq-${escapeHtml(u.key)}" value="${escapeHtml(draft.date || todayIso())}" onclick="try{this.showPicker()}catch(_){}"></label>
+                    <label>BBQ date <input type="date" id="bbq-${escapeHtml(u.key)}" value="${escapeHtml(bbqDate)}"
+                        onchange="bbqDateChanged('${escapeHtml(u.key)}')"
+                        onclick="try{this.showPicker()}catch(_){}"></label>
+                    ${bbqWarnHtml}
                     ${areaPicker}
                     ${areaWarn}
                     <div class="extras-form-actions">
@@ -1337,7 +1402,10 @@
         window.startExtra = function (key, type) {
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._jobber || !u._jobber.match) return;
-            u._extraDraft = { type };
+            u._extraDraft = { type, date: todayIso() };
+            if (type === "BBQ") {
+                ensureMaproServicesForStays(u);
+            }
             if (type === "PH") {
                 u._extraDraft.existingPHJobs = null;
                 u._extraDraft.loadingExisting = true;
@@ -1515,11 +1583,22 @@
             ]);
         };
 
+        window.bbqDateChanged = function (key) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u || !u._extraDraft || u._extraDraft.type !== "BBQ") return;
+            const inp = document.getElementById(`bbq-${key}`);
+            u._extraDraft.date = inp ? inp.value : "";
+            render();
+        };
+
         window.submitExtraBBQ = function (key) {
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._extraDraft || u._extraDraft.submitting) return;
             const date = readDateInput(`bbq-${key}`);
             if (!date) { showToast("Pick a date"); return; }
+            // Última checagem antes de criar — caso a UI não tenha re-renderizado
+            const dup = findBBQDuplicateForDate(u, date);
+            if (dup && !confirm(`Já existe ${dup.service.label} no MAPRO pra ${date}. Criar BBQ no Jobber mesmo assim?`)) return;
             const area = u._extraDraft.area || detectAreaSuffix(u, u._jobber && u._jobber.match);
             if (!area) { showToast("Pick West or East"); return; }
             const assigneeName = `BBQ/PW-${area}`;
