@@ -174,6 +174,22 @@ async function pageRunner(cfg) {
             .find((a) => a.offsetParent !== null);
         if (!saveLink) throw new Error("Save button not found");
 
+        // Hook XHR before clicking Save to capture the booking-reservar response
+        // (more reliable than guessing what success/error DOM looks like).
+        let bookingResp = null;
+        let bookingErr = null;
+        const origOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function (m, u) {
+            if (u && /booking-reservar/.test(u)) {
+                this.addEventListener("load", () => {
+                    try { bookingResp = JSON.parse(this.responseText); }
+                    catch (_) { bookingResp = { raw: (this.responseText || "").slice(0, 400) }; }
+                });
+                this.addEventListener("error", () => { bookingErr = "XHR network error"; });
+            }
+            return origOpen.apply(this, arguments);
+        };
+
         if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
         const init = { bubbles: true, cancelable: true, view: window, button: 0 };
         saveLink.dispatchEvent(new MouseEvent("mousedown", { ...init, buttons: 1 }));
@@ -181,7 +197,16 @@ async function pageRunner(cfg) {
         saveLink.dispatchEvent(new MouseEvent("click", { ...init, buttons: 0 }));
 
         const tWatch = Date.now();
-        while (Date.now() - tWatch < 15000) {
+        while (Date.now() - tWatch < 10000) {
+            if (bookingResp) {
+                // MAPRO usually returns {status: true} on success
+                if (bookingResp.status === true || bookingResp.success === true) {
+                    return { ok: true, data: { serviceId, serviceLabel, status: "saved" } };
+                }
+                throw new Error("MAPRO save failed: " + (bookingResp.msg || JSON.stringify(bookingResp).slice(0, 300)));
+            }
+            if (bookingErr) throw new Error(bookingErr);
+            // Fallback DOM signals (in case XHR hook is racy):
             const errEls = Array.from(document.querySelectorAll(".f-erro.reserva-erro")).filter((el) => el.offsetParent !== null);
             const okEls = Array.from(document.querySelectorAll(".f-sucesso.reserva-sucesso")).filter((el) => el.offsetParent !== null);
             if (okEls.length) return { ok: true, data: { serviceId, serviceLabel, status: "saved" } };
@@ -189,9 +214,9 @@ async function pageRunner(cfg) {
                 const msg = errEls.map((el) => el.textContent.trim()).join(" | ");
                 throw new Error("MAPRO error: " + msg);
             }
-            await sleep(250);
+            await sleep(150);
         }
-        throw new Error("Save timed out (15s)");
+        throw new Error("Save: no XHR response within 10s");
     } catch (e) {
         return { ok: false, error: String(e?.message || e) };
     }
