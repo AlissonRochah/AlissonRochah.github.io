@@ -220,7 +220,7 @@ async function pageRunner(cfg) {
             const fields = Array.from(newContainer.querySelectorAll("input,select,textarea"))
                 .filter((i) => i.name)
                 .map((i) => ({ name: i.name, value: i.value }));
-            return { ok: true, data: { serviceId, serviceLabel, status: "dry-run", fields } };
+            return { ok: true, data: { serviceId, serviceLabel, status: "dry-run", fields, dateDebug } };
         }
 
         const saveLink = Array.from(document.querySelectorAll('a.bt2[data-submit]'))
@@ -255,7 +255,7 @@ async function pageRunner(cfg) {
             if (bookingResp) {
                 // MAPRO usually returns {status: true} on success
                 if (bookingResp.status === true || bookingResp.success === true) {
-                    return { ok: true, data: { serviceId, serviceLabel, status: "saved" } };
+                    return { ok: true, data: { serviceId, serviceLabel, status: "saved", dateDebug } };
                 }
                 throw new Error("MAPRO save failed: " + (bookingResp.msg || JSON.stringify(bookingResp).slice(0, 300)));
             }
