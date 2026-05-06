@@ -690,7 +690,17 @@
                         <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}')">×</button>
                     </div>`;
                 }
-                const referenceDate = ok.find((cj) => cj._link !== "linked")?.startAt || ok[0].startAt;
+                // PH ON é criado pro dia ANTES do check-in (gap entre guests), então
+                // usá-lo como referência faz o "Current" guest ficar vazio e o "Next"
+                // virar o guest real. Preferimos qualquer outro job (BBQ, PH OFF, etc.)
+                // que cai durante a estadia.
+                const isPhOnJob = (cj) => {
+                    const t = String(cj.title || "");
+                    return isPoolHeatJob(t) && isOnJob(t);
+                };
+                const unlinked = ok.filter((cj) => cj._link !== "linked");
+                const refCj = unlinked.find((cj) => !isPhOnJob(cj)) || unlinked[0] || ok[0];
+                const referenceDate = refCj.startAt;
                 const buttons = stays.map((s) => {
                     const present = s.stay && Number(s.stay.id) > 0;
                     if (!present) {
@@ -1526,7 +1536,15 @@
                 if (cj._link === "error") { cj._link = null; cj._linkError = null; }
             }
             u._maproPanelOpen = true;
-            const ref = (u._extraJobs.find((cj) => cj.status === "ok" && cj._link !== "linked") || {}).startAt || null;
+            // Referência pra busca de stays: prefere qualquer job que NÃO seja PH ON
+            // (PH ON cai no gap entre guests, joga o lookup pra estadia errada).
+            const isPhOnJob = (cj) => {
+                const t = String(cj.title || "");
+                return isPoolHeatJob(t) && isOnJob(t);
+            };
+            const okUnlinked = u._extraJobs.filter((cj) => cj.status === "ok" && cj._link !== "linked");
+            const refCj = okUnlinked.find((cj) => !isPhOnJob(cj)) || okUnlinked[0] || null;
+            const ref = refCj?.startAt || null;
             fetchLinkStays(u, ref);
             render();
         };
