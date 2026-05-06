@@ -80,30 +80,120 @@ async function maproAddService({ reservaId, kind, price, date, dryRun }) {
 
     const { tabId } = await openBookingTab(reservaId);
     try {
-        // Content script may take a few hundred ms to register at document_idle.
-        // Retry sendMessage until it succeeds or we give up.
-        let result, lastErr;
-        for (let attempt = 0; attempt < 8; attempt++) {
-            try {
-                console.log(`[MB-bg] sendMessage attempt ${attempt + 1}/8`);
-                result = await chrome.tabs.sendMessage(tabId, {
-                    action: "mapro-add-service",
-                    payload: { kind, price: Number(price), date, dryRun: !!dryRun },
-                });
-                console.log("[MB-bg] sendMessage result:", result);
-                break;
-            } catch (e) {
-                lastErr = e;
-                console.warn("[MB-bg] sendMessage failed, retrying:", e?.message || e);
-                await new Promise((r) => setTimeout(r, 400));
-            }
-        }
-        if (!result) throw new Error("content script not reachable: " + (lastErr?.message || "unknown"));
-        if (!result.ok) throw new Error(result.error || "content script returned error");
-        return result.data;
+        console.log("[MB-bg] running pageRunner via chrome.scripting in MAIN world");
+        const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            world: "MAIN",
+            func: pageRunner,
+            args: [{ kind, dryRun: !!dryRun }],
+        });
+        const wrapped = results && results[0] && results[0].result;
+        console.log("[MB-bg] pageRunner returned:", wrapped);
+        if (!wrapped) throw new Error("pageRunner returned no result");
+        if (!wrapped.ok) throw new Error(wrapped.error || "pageRunner returned error");
+        return wrapped.data;
     } finally {
-        // Fecha a aba só se foi criada por nós.
         chrome.tabs.remove(tabId).catch((e) => console.warn("[MB-bg] failed to close tab:", e));
+    }
+}
+
+// Runs in the booking page's MAIN world (has access to add_service, jQuery, uuid).
+// Must be self-contained — no closures over outer variables.
+async function pageRunner(cfg) {
+    try {
+        const { kind, dryRun } = cfg;
+        const PATTERNS = {
+            bbq:  /\bbbq\b/i,
+            ph35: /(pool\s*heat.*35|ph\s*35)/i,
+            ph75: /(pool\s*heat.*75|ph\s*75)/i,
+            ph:   /pool\s*heat/i,
+        };
+        const pattern = PATTERNS[kind];
+        if (!pattern) throw new Error("Unknown service kind: " + kind);
+
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+        // Wait for booking form to load
+        const tForm = Date.now();
+        while (Date.now() - tForm < 15000) {
+            if (document.querySelector('form[data-ajax="booking-reservar"] select[name="id"]')) break;
+            await sleep(150);
+        }
+        const sampleSelect = document.querySelector('form[data-ajax="booking-reservar"] select[name="id"]');
+        if (!sampleSelect) throw new Error("Booking form did not load (15s)");
+
+        const opt = Array.from(sampleSelect.options).find((o) => o.value && pattern.test(o.textContent));
+        if (!opt) {
+            const available = Array.from(sampleSelect.options).filter((o) => o.value).map((o) => o.textContent.trim());
+            throw new Error(`No "${kind}" service. Available: ${available.join(" | ")}`);
+        }
+        const serviceId = opt.value;
+        const serviceLabel = opt.textContent.trim();
+
+        if (typeof window.add_service !== "function") throw new Error("MAPRO add_service is not defined");
+        if (typeof window.uuid === "undefined" || !window.uuid.v4) throw new Error("MAPRO uuid is not defined");
+
+        const before = document.querySelectorAll('form[data-ajax="booking-reservar"] .reservation-service-container').length;
+        window.add_service({
+            onlyActive: 1, servico_padrao: 0,
+            valor: "0.00", valor_desconto: "0.00",
+            valor_sale: "0.00", valor_tourist: "0.00",
+            display: "none",
+        }, window.uuid.v4());
+
+        // Wait for new service container
+        const tBlock = Date.now();
+        while (Date.now() - tBlock < 5000) {
+            if (document.querySelectorAll('form[data-ajax="booking-reservar"] .reservation-service-container').length > before) break;
+            await sleep(100);
+        }
+        const containers = document.querySelectorAll('form[data-ajax="booking-reservar"] .reservation-service-container');
+        if (containers.length <= before) throw new Error("Service block did not appear after add_service()");
+        const newContainer = containers[containers.length - 1];
+        const innerSel = newContainer.querySelector('select[name="id"]');
+        if (!innerSel) throw new Error("New service has no select");
+
+        const $ = window.jQuery || window.$;
+        if ($) {
+            $(innerSel).val(serviceId).trigger("change");
+        } else {
+            innerSel.value = serviceId;
+            innerSel.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        await sleep(200);
+
+        if (dryRun) {
+            const fields = Array.from(newContainer.querySelectorAll("input,select,textarea"))
+                .filter((i) => i.name)
+                .map((i) => ({ name: i.name, value: i.value }));
+            return { ok: true, data: { serviceId, serviceLabel, status: "dry-run", fields } };
+        }
+
+        const saveLink = Array.from(document.querySelectorAll('a.bt2[data-submit]'))
+            .filter((a) => (a.textContent || "").trim() === "Save")
+            .find((a) => a.offsetParent !== null);
+        if (!saveLink) throw new Error("Save button not found");
+
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        const init = { bubbles: true, cancelable: true, view: window, button: 0 };
+        saveLink.dispatchEvent(new MouseEvent("mousedown", { ...init, buttons: 1 }));
+        saveLink.dispatchEvent(new MouseEvent("mouseup", { ...init, buttons: 0 }));
+        saveLink.dispatchEvent(new MouseEvent("click", { ...init, buttons: 0 }));
+
+        const tWatch = Date.now();
+        while (Date.now() - tWatch < 15000) {
+            const errEls = Array.from(document.querySelectorAll(".f-erro.reserva-erro")).filter((el) => el.offsetParent !== null);
+            const okEls = Array.from(document.querySelectorAll(".f-sucesso.reserva-sucesso")).filter((el) => el.offsetParent !== null);
+            if (okEls.length) return { ok: true, data: { serviceId, serviceLabel, status: "saved" } };
+            if (errEls.length) {
+                const msg = errEls.map((el) => el.textContent.trim()).join(" | ");
+                throw new Error("MAPRO error: " + msg);
+            }
+            await sleep(250);
+        }
+        throw new Error("Save timed out (15s)");
+    } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
     }
 }
 
