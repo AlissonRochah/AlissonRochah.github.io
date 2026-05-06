@@ -71,8 +71,8 @@ async function openBookingTab(reservaId) {
     return { tabId: tab.id };
 }
 
-async function maproAddService({ reservaId, kind, price, startDate, endDate, dryRun }) {
-    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, startDate, endDate, dryRun: !!dryRun });
+async function maproAddService({ reservaId, kind, price, startDate, endDate, dryRun, force }) {
+    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, startDate, endDate, dryRun: !!dryRun, force: !!force });
     if (!reservaId) throw new Error("reservaId required");
     if (!kind) throw new Error("kind required (bbq|ph)");
     if (price == null || isNaN(Number(price))) throw new Error("price required (number)");
@@ -86,7 +86,7 @@ async function maproAddService({ reservaId, kind, price, startDate, endDate, dry
             target: { tabId },
             world: "MAIN",
             func: pageRunner,
-            args: [{ kind, startDate, endDate, dryRun: !!dryRun }],
+            args: [{ kind, startDate, endDate, dryRun: !!dryRun, force: !!force }],
         });
         const wrapped = results && results[0] && results[0].result;
         console.log("[MB-bg] pageRunner returned:", wrapped);
@@ -102,7 +102,7 @@ async function maproAddService({ reservaId, kind, price, startDate, endDate, dry
 // Must be self-contained — no closures over outer variables.
 async function pageRunner(cfg) {
     try {
-        const { kind, startDate, endDate, dryRun } = cfg;
+        const { kind, startDate, endDate, dryRun, force } = cfg;
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
         // Wait for booking form to load
@@ -113,6 +113,22 @@ async function pageRunner(cfg) {
         }
         const sampleSelect = document.querySelector('form[data-ajax="booking-reservar"] select[name="id"]');
         if (!sampleSelect) throw new Error("Booking form did not load (15s)");
+
+        // Para BBQ: checa se já existe BBQ no mesmo dia ANTES de adicionar.
+        // Se existe e não é force, retorna status:duplicate pra UI confirmar.
+        if (kind === "bbq" && !force) {
+            const existing = Array.from(document.querySelectorAll('form[data-ajax="booking-reservar"] .reservation-service-container'));
+            for (const c of existing) {
+                const sel = c.querySelector('select[name="id"]');
+                const startInp = c.querySelector('input[name="start_date"]');
+                if (!sel || !startInp) continue;
+                const optEl = sel.options[sel.selectedIndex];
+                const label = optEl ? (optEl.textContent || "").trim() : "";
+                if (/\bbbq\b/i.test(label) && startInp.value === startDate) {
+                    return { ok: true, data: { status: "duplicate", existingLabel: label, existingDate: startInp.value } };
+                }
+            }
+        }
 
         // Service matching strategy varies per kind:
         //   bbq → first option containing "bbq"

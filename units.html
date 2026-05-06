@@ -284,8 +284,11 @@
             return res.data;
         }
 
-        async function maproAddService(reservaId, kind, price, startDate, endDate) {
-            const res = await jobberMessage("mapro-add-service", { reservaId, kind, price, startDate, endDate });
+        async function maproAddService(reservaId, kind, price, startDate, endDate, opts) {
+            const payload = { reservaId, kind, price, startDate, endDate };
+            if (opts && opts.force) payload.force = true;
+            if (opts && opts.dryRun) payload.dryRun = true;
+            const res = await jobberMessage("mapro-add-service", payload);
             if (!res || !res.ok) {
                 const err = new Error(res && res.error || "mapro_service_unknown_error");
                 err.code = res && res.error;
@@ -822,9 +825,28 @@
                     const svcHtml = (cj._link === "linked" && (maproServiceForJob(cj, u._extraJobs) || cj._svc))
                         ? renderSvcAction(u, cj, idxAttr)
                         : "";
+                    // PH ON: mostra "(N nights)" se acharmos o partner PH OFF (mesmo
+                    // antes de linkar — usa a regra: nights = OFF_date - ON_date - 1)
+                    let phNightsTag = "";
+                    if (isPoolHeatJob(cj.title || "") && isOnJob(cj.title || "") && cj.startAt) {
+                        const offPartner = (u._extraJobs || []).find((j) =>
+                            j !== cj &&
+                            j.status === "ok" &&
+                            isPoolHeatJob(j.title || "") &&
+                            isOffJob(j.title || "") &&
+                            j.startAt
+                        );
+                        if (offPartner) {
+                            const ms = new Date(offPartner.startAt + "T00:00:00") - new Date(cj.startAt + "T00:00:00");
+                            const nights = Math.round(ms / 86400000) - 1;
+                            if (nights > 0) {
+                                phNightsTag = ` <span class="ph-nights-tag" title="${escapeHtml(cj.startAt)} → ${escapeHtml(offPartner.startAt)} (turn-on/off days don't count)">${nights} night${nights === 1 ? "" : "s"}</span>`;
+                            }
+                        }
+                    }
                     return `<div class="extras-created-row">
                         <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
-                        <span class="created-title">${escapeHtml(cj.title)}</span>
+                        <span class="created-title">${escapeHtml(cj.title)}${phNightsTag}</span>
                         ${cj.status === "ok"
                             ? `${numberHtml}${openBtn}${linkedTag}${svcHtml}${meta.length ? `<span class="created-meta-group">${meta.join("")}</span>` : ""}`
                             : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`
@@ -1521,9 +1543,24 @@
             if (partner) { partner._svc = "busy"; partner._svcError = null; }
             render();
             try {
-                const data = await maproAddService(cj._linkedReservaId, action.kind, action.price, action.startDate, action.endDate);
+                let data = await maproAddService(cj._linkedReservaId, action.kind, action.price, action.startDate, action.endDate);
                 console.log("[MB] mapro-add-service result:", data);
                 if (data && data.dateDebug) console.log("[MB] dateDebug:", JSON.stringify(data.dateDebug, null, 2));
+                if (data && data.status === "duplicate") {
+                    const msg = `Já tem "${data.existingLabel}" no dia ${data.existingDate} nessa reserva. Adicionar outro mesmo assim?`;
+                    if (!confirm(msg)) {
+                        cj._svc = null;
+                        cj._svcError = null;
+                        if (partner) { partner._svc = null; partner._svcError = null; }
+                        render();
+                        return;
+                    }
+                    cj._svc = "busy";
+                    if (partner) partner._svc = "busy";
+                    render();
+                    data = await maproAddService(cj._linkedReservaId, action.kind, action.price, action.startDate, action.endDate, { force: true });
+                    console.log("[MB] mapro-add-service (force) result:", data);
+                }
                 cj._svc = "done";
                 cj._svcLabel = data && data.serviceLabel;
                 if (partner) {
