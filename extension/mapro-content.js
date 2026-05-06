@@ -51,7 +51,7 @@
     }
 
     function addServiceInPage(args) {
-        const { kind } = args;
+        const { kind, dryRun } = args;
         const PATTERNS = {
             bbq:  /\bbbq\b/i,
             ph35: /(pool\s*heat.*35|ph\s*35)/i,
@@ -103,6 +103,12 @@
                     // MAPRO populates everything else (price, dates, excludeTaxes) on its own
                     // when the option is chosen. Pequeno respiro pro change handler propagar.
                     setTimeout(() => {
+                        if (dryRun) {
+                            const fields = Array.from(newContainer.querySelectorAll("input,select,textarea"))
+                                .filter((i) => i.name)
+                                .map((i) => ({ name: i.name, value: i.value }));
+                            return resolve({ serviceId, serviceLabel, status: "dry-run", fields });
+                        }
                         // Pode existir Save em modais escondidos — pega só o visível.
                         const saveLink = Array.from(document.querySelectorAll('a.bt2[data-submit]'))
                             .filter((a) => (a.textContent || "").trim() === "Save")

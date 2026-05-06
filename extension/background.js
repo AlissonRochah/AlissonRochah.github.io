@@ -72,8 +72,8 @@ async function openBookingWindow(reservaId) {
     return { winId: win.id, tabId: tab.id };
 }
 
-async function maproAddService({ reservaId, kind, price, date }) {
-    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, date });
+async function maproAddService({ reservaId, kind, price, date, dryRun }) {
+    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, date, dryRun: !!dryRun });
     if (!reservaId) throw new Error("reservaId required");
     if (!kind) throw new Error("kind required (bbq|ph35|ph75|ph)");
     if (price == null || isNaN(Number(price))) throw new Error("price required (number)");
@@ -88,7 +88,7 @@ async function maproAddService({ reservaId, kind, price, date }) {
             try {
                 result = await chrome.tabs.sendMessage(tabId, {
                     action: "mapro-add-service",
-                    payload: { kind, price: Number(price), date },
+                    payload: { kind, price: Number(price), date, dryRun: !!dryRun },
                 });
                 break;
             } catch (e) {
