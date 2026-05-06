@@ -38,38 +38,37 @@ async function jobberFetch({ operationName, query, variables }) {
     return json.data;
 }
 
-async function openBookingWindow(reservaId) {
-    // Always open in a NEW minimized window so the user's main window is
-    // untouched (and we don't fight with an already-open booking tab).
+async function openBookingTab(reservaId) {
+    // Open as a non-focused background tab in the current window. Visible in
+    // the tab strip briefly but reliable across browsers (Brave was silently
+    // failing on chrome.windows.create({state:"minimized"})).
     const url = `https://app.mapro.us/booking/reservation/${encodeURIComponent(reservaId)}`;
-    console.log("[MB-bg] opening booking window:", url);
-    let win;
+    console.log("[MB-bg] opening booking tab:", url);
+    let tab;
     try {
-        win = await chrome.windows.create({
-            url,
-            focused: false,
-            state: "minimized",
-            type: "normal",
-        });
+        tab = await chrome.tabs.create({ url, active: false });
     } catch (e) {
-        console.error("[MB-bg] chrome.windows.create failed:", e);
-        throw new Error("windows.create failed: " + (e?.message || e));
+        console.error("[MB-bg] chrome.tabs.create failed:", e);
+        throw new Error("tabs.create failed: " + (e?.message || e));
     }
-    console.log("[MB-bg] window created id=" + win.id + " tabs=" + (win.tabs && win.tabs.length));
-    const tab = win.tabs && win.tabs[0];
-    if (!tab) throw new Error("could not open booking window (no tab in window)");
-    await new Promise((resolve) => {
+    console.log("[MB-bg] tab created id=" + tab.id);
+    await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            reject(new Error("tab load timed out after 20s"));
+        }, 20000);
         const onUpdated = (tabId, changeInfo) => {
             if (tabId === tab.id && changeInfo.status === "complete") {
+                clearTimeout(timeout);
                 chrome.tabs.onUpdated.removeListener(onUpdated);
                 resolve();
             }
         };
         chrome.tabs.onUpdated.addListener(onUpdated);
     });
-    // Pequeno respiro pra MAPRO inicializar (add_service / jQuery registram late).
+    console.log("[MB-bg] tab loaded, waiting for MAPRO JS init...");
     await new Promise((r) => setTimeout(r, 800));
-    return { winId: win.id, tabId: tab.id };
+    return { tabId: tab.id };
 }
 
 async function maproAddService({ reservaId, kind, price, date, dryRun }) {
@@ -79,20 +78,23 @@ async function maproAddService({ reservaId, kind, price, date, dryRun }) {
     if (price == null || isNaN(Number(price))) throw new Error("price required (number)");
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) throw new Error("date required (YYYY-MM-DD)");
 
-    const { winId, tabId } = await openBookingWindow(reservaId);
+    const { tabId } = await openBookingTab(reservaId);
     try {
         // Content script may take a few hundred ms to register at document_idle.
         // Retry sendMessage until it succeeds or we give up.
         let result, lastErr;
         for (let attempt = 0; attempt < 8; attempt++) {
             try {
+                console.log(`[MB-bg] sendMessage attempt ${attempt + 1}/8`);
                 result = await chrome.tabs.sendMessage(tabId, {
                     action: "mapro-add-service",
                     payload: { kind, price: Number(price), date, dryRun: !!dryRun },
                 });
+                console.log("[MB-bg] sendMessage result:", result);
                 break;
             } catch (e) {
                 lastErr = e;
+                console.warn("[MB-bg] sendMessage failed, retrying:", e?.message || e);
                 await new Promise((r) => setTimeout(r, 400));
             }
         }
@@ -100,8 +102,8 @@ async function maproAddService({ reservaId, kind, price, date, dryRun }) {
         if (!result.ok) throw new Error(result.error || "content script returned error");
         return result.data;
     } finally {
-        // Fecha a janela inteira (a aba é a única dela).
-        chrome.windows.remove(winId).catch(() => {});
+        // Fecha a aba só se foi criada por nós.
+        chrome.tabs.remove(tabId).catch((e) => console.warn("[MB-bg] failed to close tab:", e));
     }
 }
 
