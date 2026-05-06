@@ -42,14 +42,22 @@ async function openBookingWindow(reservaId) {
     // Always open in a NEW minimized window so the user's main window is
     // untouched (and we don't fight with an already-open booking tab).
     const url = `https://app.mapro.us/booking/reservation/${encodeURIComponent(reservaId)}`;
-    const win = await chrome.windows.create({
-        url,
-        focused: false,
-        state: "minimized",
-        type: "normal",
-    });
+    console.log("[MB-bg] opening booking window:", url);
+    let win;
+    try {
+        win = await chrome.windows.create({
+            url,
+            focused: false,
+            state: "minimized",
+            type: "normal",
+        });
+    } catch (e) {
+        console.error("[MB-bg] chrome.windows.create failed:", e);
+        throw new Error("windows.create failed: " + (e?.message || e));
+    }
+    console.log("[MB-bg] window created id=" + win.id + " tabs=" + (win.tabs && win.tabs.length));
     const tab = win.tabs && win.tabs[0];
-    if (!tab) throw new Error("could not open booking window");
+    if (!tab) throw new Error("could not open booking window (no tab in window)");
     await new Promise((resolve) => {
         const onUpdated = (tabId, changeInfo) => {
             if (tabId === tab.id && changeInfo.status === "complete") {
@@ -65,6 +73,7 @@ async function openBookingWindow(reservaId) {
 }
 
 async function maproAddService({ reservaId, kind, price, date }) {
+    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, date });
     if (!reservaId) throw new Error("reservaId required");
     if (!kind) throw new Error("kind required (bbq|ph35|ph75|ph)");
     if (price == null || isNaN(Number(price))) throw new Error("price required (number)");
