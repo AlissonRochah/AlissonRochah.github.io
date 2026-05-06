@@ -1514,6 +1514,8 @@
             render();
             try {
                 const data = await maproAddService(cj._linkedReservaId, action.kind, action.price, action.startDate, action.endDate);
+                console.log("[MB] mapro-add-service result:", data);
+                if (data && data.dateDebug) console.log("[MB] dateDebug:", JSON.stringify(data.dateDebug, null, 2));
                 cj._svc = "done";
                 cj._svcLabel = data && data.serviceLabel;
                 if (partner) {
