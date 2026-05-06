@@ -683,14 +683,23 @@
                     { label: "Previous", stay: u._linkStays.previous },
                     { label: "Current", stay: u._linkStays.active },
                     { label: "Next", stay: u._linkStays.next },
-                ].filter((s) => s.stay && Number(s.stay.id) > 0);
-                if (stays.length === 0) {
+                ];
+                const hasAny = stays.some((s) => s.stay && Number(s.stay.id) > 0);
+                if (!hasAny) {
                     return `<div class="extras-link-row">No stays available
                         <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}')">×</button>
                     </div>`;
                 }
                 const referenceDate = ok.find((cj) => cj._link !== "linked")?.startAt || ok[0].startAt;
                 const buttons = stays.map((s) => {
+                    const present = s.stay && Number(s.stay.id) > 0;
+                    if (!present) {
+                        return `<button class="btn-stay-pick btn-stay-pick-empty" type="button" disabled>
+                            <span class="stay-pick-label">${escapeHtml(s.label)}</span>
+                            <span class="stay-pick-guest">—</span>
+                            <span class="stay-pick-dates">no guest</span>
+                        </button>`;
+                    }
                     const match = stayCoversDate(s.stay, referenceDate);
                     const matchTag = match ? ` <span class="stay-match-tag">match</span>` : "";
                     const dates = `${String(s.stay.ci || "").slice(0, 10)} → ${String(s.stay.co || "").slice(0, 10)}`;

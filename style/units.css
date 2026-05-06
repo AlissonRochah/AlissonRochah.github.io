@@ -800,6 +800,8 @@
 }
 .btn-stay-pick:hover { border-color: var(--accent); color: var(--accent); }
 .btn-stay-pick-match { border-color: #10b981; }
+.btn-stay-pick-empty { opacity: 0.4; cursor: not-allowed; }
+.btn-stay-pick-empty:hover { border-color: var(--border); color: var(--text-primary); }
 .stay-pick-label { color: var(--text-muted); font-size: 10px; text-transform: uppercase; }
 .stay-pick-guest { font-weight: 600; }
 .stay-pick-dates { color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
