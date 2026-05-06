@@ -294,6 +294,13 @@
             return res.data;
         }
 
+        function isPoolHeatJob(title) {
+            // Aceita: "Pool Heat", "Pool Heater", "Pool Heating", "PH" (com word boundary)
+            return /pool\s*heat/i.test(title) || /\bph\b/i.test(title);
+        }
+        function isOnJob(title) { return /\bon\b/i.test(title); }
+        function isOffJob(title) { return /\boff\b/i.test(title); }
+
         function maproServiceForJob(cj, allJobs) {
             const title = String(cj.title || "");
             if (/\bbbq\b/i.test(title)) {
@@ -302,19 +309,17 @@
             }
             // Pool Heat: pareia PH On com PH Off da mesma reserva no mesmo batch.
             // Botão aparece só no PH On; PH Off só recebe o status quando o On é processado.
-            if (/pool\s*heat/i.test(title)) {
-                const isOn = /\bon\b/i.test(title);
-                const isOff = /\boff\b/i.test(title);
-                if (isOff) return null;
-                if (!isOn) return null;
+            if (isPoolHeatJob(title)) {
+                if (isOffJob(title)) return null;
+                if (!isOnJob(title)) return null;
                 const list = allJobs || [];
                 const partner = list.find((j) =>
                     j !== cj &&
                     j.status === "ok" &&
                     j._link === "linked" &&
                     j._linkedReservaId === cj._linkedReservaId &&
-                    /pool\s*heat/i.test(String(j.title || "")) &&
-                    /\boff\b/i.test(String(j.title || ""))
+                    isPoolHeatJob(String(j.title || "")) &&
+                    isOffJob(String(j.title || ""))
                 );
                 if (!partner) return null;
                 const onDate = cj.startAt;
@@ -327,6 +332,20 @@
             }
             return null;
         }
+
+        // Debug: na primeira vez que jobs forem renderizados, loga título dos jobs
+        // que parecem ser PH mas não casaram com a regra de pareamento.
+        window.debugMaproPH = function () {
+            for (const u of (filteredUnits || [])) {
+                if (!u._extraJobs) continue;
+                for (const cj of u._extraJobs) {
+                    const t = String(cj.title || "");
+                    if (isPoolHeatJob(t) || /heat/i.test(t)) {
+                        console.log(`[MB] PH-ish job in ${u.name || u.key}: title=${JSON.stringify(t)} link=${cj._link} reservaId=${cj._linkedReservaId} isOn=${isOnJob(t)} isOff=${isOffJob(t)}`);
+                    }
+                }
+            }
+        };
 
         function stayCoversDate(stay, dateStr) {
             if (!stay || !dateStr) return false;
