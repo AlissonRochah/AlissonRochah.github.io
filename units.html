@@ -1019,10 +1019,24 @@
                                 }).join("")}
                             </div>`
                         : "");
+                // Quantas nights de pool heat? (ON+1 até OFF-0 = OFF - ON - 1)
+                let phNightsHtml = "";
+                if (onDate && offDate) {
+                    const ms = new Date(offDate + "T00:00:00") - new Date(onDate + "T00:00:00");
+                    const nights = Math.round(ms / 86400000) - 1;
+                    if (nights > 0) {
+                        phNightsHtml = `<div class="ph-nights-preview"><span class="ph-nights-tag">${nights} night${nights === 1 ? "" : "s"}</span> heated (${escapeHtml(onDate)} → ${escapeHtml(offDate)}, turn-on/off days don't count)</div>`;
+                    } else if (nights === 0) {
+                        phNightsHtml = `<div class="extras-warn">⚠ ON and OFF are consecutive — 0 nights heated</div>`;
+                    } else {
+                        phNightsHtml = `<div class="extras-warn">⚠ OFF date must be after ON date</div>`;
+                    }
+                }
                 const previewHtml = chosenArea ? `<div class="extras-preview">
+                    ${phNightsHtml}
                     <div><span class="created-meta-label">PH ON →</span> ${escapeHtml(onLabels.join(" + ") || "(no team)")}</div>
                     <div><span class="created-meta-label">PH OFF →</span> ${escapeHtml(offLabels.join(" + ") || "(no team)")}</div>
-                </div>` : "";
+                </div>` : phNightsHtml;
                 const canSubmit = !!chosenArea && !draft.submitting && !draft.loadingExisting;
                 const createLabel = draft.submitting ? "Creating…" : (conflicts.length ? "Create anyway" : "Create");
                 formHtml = `<div class="extras-form">
