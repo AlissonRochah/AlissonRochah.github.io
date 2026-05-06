@@ -181,6 +181,11 @@ async function pageRunner(cfg) {
         // MAPRO provavelmente usa flatpickr/datepicker — tentamos múltiplas abordagens.
         const dateDebug = {};
         if (kind === "ph" && startDate && endDate) {
+            // Snapshot de todos os inputs do bloco (debug pra entender quais existem)
+            dateDebug.allInputs = Array.from(newContainer.querySelectorAll("input,select,textarea"))
+                .filter((i) => i.name)
+                .map((i) => ({ name: i.name, type: i.type, value: i.value }));
+
             const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
             const setDate = (inp, iso, label) => {
                 if (!inp) {
@@ -188,29 +193,41 @@ async function pageRunner(cfg) {
                     return;
                 }
                 const before = inp.value;
-                // 1) flatpickr (most likely): use its API so the visible + hidden inputs sync
                 if (inp._flatpickr) {
                     try { inp._flatpickr.setDate(iso, true); }
                     catch (e) { dateDebug[label + "_fp_err"] = String(e?.message || e); }
                 }
-                // 2) Native React-style setter so frameworks see the change
                 try { nativeInputSetter.call(inp, iso); } catch (_) { inp.value = iso; }
-                // 3) Fire all common events
                 inp.dispatchEvent(new Event("input", { bubbles: true }));
                 inp.dispatchEvent(new Event("change", { bubbles: true }));
                 inp.dispatchEvent(new Event("blur", { bubbles: true }));
-                // 4) jQuery for handlers attached via $.on
                 if ($) {
                     try { $(inp).val(iso).trigger("change").trigger("blur"); } catch (_) {}
                 }
+                dateDebug[label + "_name"] = inp.name;
                 dateDebug[label] = { before, requested: iso, after: inp.value };
             };
-            const startInput = newContainer.querySelector('input[name$="[start_date]"]');
-            const endInput = newContainer.querySelector('input[name$="[end_date]"]');
+
+            // Tenta múltiplos seletores até achar o input certo:
+            //  1. name$="[start_date]" (services[N][start_date])
+            //  2. name="start_date"
+            //  3. name contém "start" + "date"
+            //  4. type=date e o primeiro do bloco
+            const findInput = (kw) => {
+                let inp = newContainer.querySelector(`input[name$="[${kw}]"]`);
+                if (inp) return inp;
+                inp = newContainer.querySelector(`input[name="${kw}"]`);
+                if (inp) return inp;
+                const re = new RegExp("\\b" + kw.replace("_", "[_\\s-]?") + "\\b", "i");
+                inp = Array.from(newContainer.querySelectorAll("input"))
+                    .find((i) => i.name && re.test(i.name));
+                return inp || null;
+            };
+            const startInput = findInput("start_date");
+            const endInput = findInput("end_date");
             setDate(startInput, startDate, "start");
             setDate(endInput, endDate, "end");
             await sleep(400);
-            // Re-read post-settle
             if (startInput) dateDebug.start_final = startInput.value;
             if (endInput) dateDebug.end_final = endInput.value;
             console.log("[MB-page] PH date set:", JSON.stringify(dateDebug));
