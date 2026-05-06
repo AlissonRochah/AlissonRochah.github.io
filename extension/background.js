@@ -178,21 +178,42 @@ async function pageRunner(cfg) {
         await sleep(200);
 
         // PH precisa de range (start/end). Sobreescreve as datas que MAPRO autopreencheu.
+        // MAPRO provavelmente usa flatpickr/datepicker — tentamos múltiplas abordagens.
+        const dateDebug = {};
         if (kind === "ph" && startDate && endDate) {
-            const setDate = (inp, iso) => {
-                if (!inp) return;
-                if ($) {
-                    $(inp).val(iso).trigger("change");
-                } else {
-                    inp.value = iso;
-                    inp.dispatchEvent(new Event("change", { bubbles: true }));
+            const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            const setDate = (inp, iso, label) => {
+                if (!inp) {
+                    dateDebug[label] = "input not found";
+                    return;
                 }
+                const before = inp.value;
+                // 1) flatpickr (most likely): use its API so the visible + hidden inputs sync
+                if (inp._flatpickr) {
+                    try { inp._flatpickr.setDate(iso, true); }
+                    catch (e) { dateDebug[label + "_fp_err"] = String(e?.message || e); }
+                }
+                // 2) Native React-style setter so frameworks see the change
+                try { nativeInputSetter.call(inp, iso); } catch (_) { inp.value = iso; }
+                // 3) Fire all common events
+                inp.dispatchEvent(new Event("input", { bubbles: true }));
+                inp.dispatchEvent(new Event("change", { bubbles: true }));
+                inp.dispatchEvent(new Event("blur", { bubbles: true }));
+                // 4) jQuery for handlers attached via $.on
+                if ($) {
+                    try { $(inp).val(iso).trigger("change").trigger("blur"); } catch (_) {}
+                }
+                dateDebug[label] = { before, requested: iso, after: inp.value };
             };
             const startInput = newContainer.querySelector('input[name$="[start_date]"]');
             const endInput = newContainer.querySelector('input[name$="[end_date]"]');
-            setDate(startInput, startDate);
-            setDate(endInput, endDate);
-            await sleep(300);
+            setDate(startInput, startDate, "start");
+            setDate(endInput, endDate, "end");
+            await sleep(400);
+            // Re-read post-settle
+            if (startInput) dateDebug.start_final = startInput.value;
+            if (endInput) dateDebug.end_final = endInput.value;
+            console.log("[MB-page] PH date set:", JSON.stringify(dateDebug));
         }
 
         if (dryRun) {
