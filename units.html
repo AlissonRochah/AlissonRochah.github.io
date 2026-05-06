@@ -284,8 +284,8 @@
             return res.data;
         }
 
-        async function maproAddService(reservaId, kind, price, date) {
-            const res = await jobberMessage("mapro-add-service", { reservaId, kind, price, date });
+        async function maproAddService(reservaId, kind, price, startDate, endDate) {
+            const res = await jobberMessage("mapro-add-service", { reservaId, kind, price, startDate, endDate });
             if (!res || !res.ok) {
                 const err = new Error(res && res.error || "mapro_service_unknown_error");
                 err.code = res && res.error;
@@ -294,9 +294,37 @@
             return res.data;
         }
 
-        function maproServiceForJob(cj) {
+        function maproServiceForJob(cj, allJobs) {
             const title = String(cj.title || "");
-            if (/\bbbq\b/i.test(title)) return { kind: "bbq", price: 75 };
+            if (/\bbbq\b/i.test(title)) {
+                const d = cj.startAt;
+                return { kind: "bbq", price: 75, startDate: d, endDate: d };
+            }
+            // Pool Heat: pareia PH On com PH Off da mesma reserva no mesmo batch.
+            // Botão aparece só no PH On; PH Off só recebe o status quando o On é processado.
+            if (/pool\s*heat/i.test(title)) {
+                const isOn = /\bon\b/i.test(title);
+                const isOff = /\boff\b/i.test(title);
+                if (isOff) return null;
+                if (!isOn) return null;
+                const list = allJobs || [];
+                const partner = list.find((j) =>
+                    j !== cj &&
+                    j.status === "ok" &&
+                    j._link === "linked" &&
+                    j._linkedReservaId === cj._linkedReservaId &&
+                    /pool\s*heat/i.test(String(j.title || "")) &&
+                    /\boff\b/i.test(String(j.title || ""))
+                );
+                if (!partner) return null;
+                const onDate = cj.startAt;
+                const offDate = partner.startAt;
+                if (!onDate || !offDate) return null;
+                const d = new Date(onDate + "T00:00:00");
+                d.setDate(d.getDate() + 1);
+                const startDate = d.toISOString().slice(0, 10);
+                return { kind: "ph", price: 0, startDate, endDate: offDate, partnerIdx: list.indexOf(partner) };
+            }
             return null;
         }
 
@@ -600,10 +628,14 @@
                 const lbl = cj._svcLabel ? ` <span class="svc-label">${escapeHtml(cj._svcLabel)}</span>` : "";
                 return `<span class="svc-tag svc-done">✓ service added${lbl}</span>`;
             }
+            const hasOwnAction = !!maproServiceForJob(cj, u._extraJobs);
             if (cj._svc === "error") {
-                return `<span class="svc-tag svc-error" title="${escapeHtml(cj._svcError || "")}">✗ service failed</span>
-                    <button class="btn-link-retry" type="button" onclick="addMaproService('${keyAttr}', ${idx})">Retry</button>`;
+                const retryBtn = hasOwnAction
+                    ? `<button class="btn-link-retry" type="button" onclick="addMaproService('${keyAttr}', ${idx})">Retry</button>`
+                    : "";
+                return `<span class="svc-tag svc-error" title="${escapeHtml(cj._svcError || "")}">✗ service failed</span>${retryBtn}`;
             }
+            if (!hasOwnAction) return "";
             return `<button class="btn-link-mapro" type="button" onclick="addMaproService('${keyAttr}', ${idx})">+ Add to MAPRO</button>`;
         }
 
@@ -741,7 +773,7 @@
                         ? `<span class="row-linked-tag" title="Linked to ${escapeHtml(cj._linkedGuest || "guest")}">linked</span>`
                         : "";
                     const idxAttr = created.indexOf(cj);
-                    const svcHtml = (cj._link === "linked" && maproServiceForJob(cj))
+                    const svcHtml = (cj._link === "linked" && (maproServiceForJob(cj, u._extraJobs) || cj._svc))
                         ? renderSvcAction(u, cj, idxAttr)
                         : "";
                     return `<div class="extras-created-row">
@@ -1435,18 +1467,26 @@
             if (!u || !u._extraJobs || !u._extraJobs[idx]) return;
             const cj = u._extraJobs[idx];
             if (!cj._linkedReservaId) { showToast("Link MAPRO booking first"); return; }
-            const action = maproServiceForJob(cj);
+            const action = maproServiceForJob(cj, u._extraJobs);
             if (!action) { showToast("No service mapping for this job"); return; }
+            const partner = (action.partnerIdx != null) ? u._extraJobs[action.partnerIdx] : null;
             cj._svc = "busy";
             cj._svcError = null;
+            if (partner) { partner._svc = "busy"; partner._svcError = null; }
             render();
             try {
-                const data = await maproAddService(cj._linkedReservaId, action.kind, action.price, cj.startAt);
+                const data = await maproAddService(cj._linkedReservaId, action.kind, action.price, action.startDate, action.endDate);
                 cj._svc = "done";
                 cj._svcLabel = data && data.serviceLabel;
+                if (partner) {
+                    partner._svc = "done";
+                    partner._svcLabel = data && data.serviceLabel;
+                }
             } catch (e) {
+                const msg = (e && e.message) || String(e);
                 cj._svc = "error";
-                cj._svcError = (e && e.message) || String(e);
+                cj._svcError = msg;
+                if (partner) { partner._svc = "error"; partner._svcError = msg; }
             }
             render();
         };

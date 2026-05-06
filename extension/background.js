@@ -71,12 +71,13 @@ async function openBookingTab(reservaId) {
     return { tabId: tab.id };
 }
 
-async function maproAddService({ reservaId, kind, price, date, dryRun }) {
-    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, date, dryRun: !!dryRun });
+async function maproAddService({ reservaId, kind, price, startDate, endDate, dryRun }) {
+    console.log("[MB-bg] mapro-add-service called:", { reservaId, kind, price, startDate, endDate, dryRun: !!dryRun });
     if (!reservaId) throw new Error("reservaId required");
-    if (!kind) throw new Error("kind required (bbq|ph35|ph75|ph)");
+    if (!kind) throw new Error("kind required (bbq|ph)");
     if (price == null || isNaN(Number(price))) throw new Error("price required (number)");
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) throw new Error("date required (YYYY-MM-DD)");
+    if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(String(startDate))) throw new Error("startDate required (YYYY-MM-DD)");
+    if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(String(endDate))) throw new Error("endDate required (YYYY-MM-DD)");
 
     const { tabId } = await openBookingTab(reservaId);
     try {
@@ -85,7 +86,7 @@ async function maproAddService({ reservaId, kind, price, date, dryRun }) {
             target: { tabId },
             world: "MAIN",
             func: pageRunner,
-            args: [{ kind, dryRun: !!dryRun }],
+            args: [{ kind, startDate, endDate, dryRun: !!dryRun }],
         });
         const wrapped = results && results[0] && results[0].result;
         console.log("[MB-bg] pageRunner returned:", wrapped);
@@ -101,16 +102,7 @@ async function maproAddService({ reservaId, kind, price, date, dryRun }) {
 // Must be self-contained — no closures over outer variables.
 async function pageRunner(cfg) {
     try {
-        const { kind, dryRun } = cfg;
-        const PATTERNS = {
-            bbq:  /\bbbq\b/i,
-            ph35: /(pool\s*heat.*35|ph\s*35)/i,
-            ph75: /(pool\s*heat.*75|ph\s*75)/i,
-            ph:   /pool\s*heat/i,
-        };
-        const pattern = PATTERNS[kind];
-        if (!pattern) throw new Error("Unknown service kind: " + kind);
-
+        const { kind, startDate, endDate, dryRun } = cfg;
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
         // Wait for booking form to load
@@ -122,10 +114,33 @@ async function pageRunner(cfg) {
         const sampleSelect = document.querySelector('form[data-ajax="booking-reservar"] select[name="id"]');
         if (!sampleSelect) throw new Error("Booking form did not load (15s)");
 
-        const opt = Array.from(sampleSelect.options).find((o) => o.value && pattern.test(o.textContent));
+        // Service matching strategy varies per kind:
+        //   bbq → first option containing "bbq"
+        //   ph  → "pool heat" option whose label price > 0 (skips the $0 Variable one)
+        const allOpts = Array.from(sampleSelect.options).filter((o) => o.value);
+        const parsePrice = (text) => {
+            const m = String(text || "").match(/\$\s*([\d.,]+)/);
+            if (!m) return null;
+            return parseFloat(m[1].replace(/,/g, ""));
+        };
+        let opt;
+        if (kind === "bbq") {
+            opt = allOpts.find((o) => /\bbbq\b/i.test(o.textContent));
+        } else if (kind === "ph") {
+            const phOpts = allOpts.filter((o) => /pool\s*heat/i.test(o.textContent));
+            opt = phOpts.find((o) => {
+                const p = parsePrice(o.textContent);
+                return p != null && p > 0;
+            });
+            if (!opt && phOpts.length) {
+                throw new Error("Pool Heat options found but none with price > 0: " + phOpts.map((o) => o.textContent.trim()).join(" | "));
+            }
+        } else {
+            throw new Error("Unknown service kind: " + kind);
+        }
         if (!opt) {
-            const available = Array.from(sampleSelect.options).filter((o) => o.value).map((o) => o.textContent.trim());
-            throw new Error(`No "${kind}" service. Available: ${available.join(" | ")}`);
+            const available = allOpts.map((o) => o.textContent.trim()).join(" | ");
+            throw new Error(`No "${kind}" service. Available: ${available}`);
         }
         const serviceId = opt.value;
         const serviceLabel = opt.textContent.trim();
@@ -161,6 +176,24 @@ async function pageRunner(cfg) {
             innerSel.dispatchEvent(new Event("change", { bubbles: true }));
         }
         await sleep(200);
+
+        // PH precisa de range (start/end). Sobreescreve as datas que MAPRO autopreencheu.
+        if (kind === "ph" && startDate && endDate) {
+            const setDate = (inp, iso) => {
+                if (!inp) return;
+                if ($) {
+                    $(inp).val(iso).trigger("change");
+                } else {
+                    inp.value = iso;
+                    inp.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+            };
+            const startInput = newContainer.querySelector('input[name$="[start_date]"]');
+            const endInput = newContainer.querySelector('input[name$="[end_date]"]');
+            setDate(startInput, startDate);
+            setDate(endInput, endDate);
+            await sleep(300);
+        }
 
         if (dryRun) {
             const fields = Array.from(newContainer.querySelectorAll("input,select,textarea"))
