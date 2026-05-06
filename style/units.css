@@ -784,8 +784,24 @@
     cursor: pointer;
 }
 .btn-link-mapro:hover { color: var(--accent); border-color: var(--accent); }
+.btn-link-continue {
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: var(--bg-primary, #fff);
+    border: 1px solid var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.btn-link-continue:hover { opacity: 0.9; }
 .link-label { font-size: 11px; color: var(--text-muted); }
-.stay-pick-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.link-step-input { gap: 6px; }
+.link-picking { justify-content: space-between; margin-bottom: 4px; }
+/* Lista de stays empilhada vertical pra caber em viewport estreito */
+.stay-pick-list { display: flex; flex-direction: column; gap: 6px; }
+.stay-pick-list .btn-stay-pick { width: 100%; }
 .btn-stay-pick {
     display: inline-flex;
     align-items: center;

@@ -674,10 +674,26 @@
                 </div>`;
             }
             if (u._maproPanelOpen) {
-                if (u._linkStaysFetching || !u._linkStays) {
-                    return `<div class="extras-link-row">Loading stays…
-                        <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}')">×</button>
+                const step = u._maproPanelStep || "link";
+                const cancelBtn = `<button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}')">×</button>`;
+
+                // Step 1: pede payment link
+                if (step === "link") {
+                    return `<div class="extras-link-panel">
+                        <div class="extras-link-row link-step-input">
+                            <input type="text" class="payment-link-input" id="payment-link-${keyAttr}"
+                                placeholder="Payment link (optional)"
+                                value="${escapeHtml(u._paymentLinkValue || "")}"
+                                onkeydown="if(event.key==='Enter'){event.preventDefault();advanceLinkMapro('${keyAttr}');}">
+                            <button class="btn-link-continue" type="button" onclick="advanceLinkMapro('${keyAttr}')">Continue</button>
+                            ${cancelBtn}
+                        </div>
                     </div>`;
+                }
+
+                // Step 2: mostra os 3 guests pra selecionar
+                if (u._linkStaysFetching || !u._linkStays) {
+                    return `<div class="extras-link-row">Loading stays… ${cancelBtn}</div>`;
                 }
                 const stays = [
                     { label: "Previous", stay: u._linkStays.previous },
@@ -686,14 +702,9 @@
                 ];
                 const hasAny = stays.some((s) => s.stay && Number(s.stay.id) > 0);
                 if (!hasAny) {
-                    return `<div class="extras-link-row">No stays available
-                        <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}')">×</button>
-                    </div>`;
+                    return `<div class="extras-link-row">No stays available ${cancelBtn}</div>`;
                 }
-                // PH ON é criado pro dia ANTES do check-in (gap entre guests), então
-                // usá-lo como referência faz o "Current" guest ficar vazio e o "Next"
-                // virar o guest real. Preferimos qualquer outro job (BBQ, PH OFF, etc.)
-                // que cai durante a estadia.
+                // PH ON cai no gap entre guests; preferimos outro job como referência.
                 const isPhOnJob = (cj) => {
                     const t = String(cj.title || "");
                     return isPoolHeatJob(t) && isOnJob(t);
@@ -721,14 +732,11 @@
                     </button>`;
                 }).join("");
                 return `<div class="extras-link-panel">
-                    <div class="extras-link-row">
-                        <input type="text" class="payment-link-input" id="payment-link-${keyAttr}" placeholder="Payment link (optional)">
-                        <button class="btn-link-cancel" type="button" onclick="cancelLinkMapro('${keyAttr}')">×</button>
-                    </div>
                     <div class="extras-link-row link-picking">
                         <span class="link-label">Pick guest:</span>
-                        <div class="stay-pick-list">${buttons}</div>
+                        ${cancelBtn}
                     </div>
+                    <div class="stay-pick-list">${buttons}</div>
                 </div>`;
             }
             if (ok.every((cj) => cj._link === "linked")) {
@@ -1538,8 +1546,10 @@
                 if (cj._link === "error") { cj._link = null; cj._linkError = null; }
             }
             u._maproPanelOpen = true;
-            // Referência pra busca de stays: prefere qualquer job que NÃO seja PH ON
-            // (PH ON cai no gap entre guests, joga o lookup pra estadia errada).
+            u._maproPanelStep = "link";
+            if (u._paymentLinkValue == null) u._paymentLinkValue = "";
+            // Já dispara o fetch dos stays em background — quando user avançar pra step 2
+            // já estarão prontos (ou no pior caso ainda carregando).
             const isPhOnJob = (cj) => {
                 const t = String(cj.title || "");
                 return isPoolHeatJob(t) && isOnJob(t);
@@ -1548,6 +1558,22 @@
             const refCj = okUnlinked.find((cj) => !isPhOnJob(cj)) || okUnlinked[0] || null;
             const ref = refCj?.startAt || null;
             fetchLinkStays(u, ref);
+            render();
+            // Foca no input pra o user já começar a digitar
+            setTimeout(() => {
+                const inp = document.getElementById("payment-link-" + key);
+                if (inp) inp.focus();
+            }, 50);
+        };
+
+        window.advanceLinkMapro = function (key) {
+            const u = filteredUnits.find((x) => x.key === key);
+            if (!u) return;
+            const inp = document.getElementById("payment-link-" + key);
+            const link = inp ? inp.value.trim() : "";
+            if (!link && !confirm("Continue without payment link?")) return;
+            u._paymentLinkValue = link;
+            u._maproPanelStep = "guest";
             render();
         };
 
@@ -1567,11 +1593,10 @@
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._extraJobs) return;
             if (!u.idMAPRO) { showToast("Unit has no MAPRO id"); return; }
-            const inputEl = document.getElementById("payment-link-" + key);
-            const paymentLink = inputEl ? inputEl.value.trim() : "";
+            // Já garantimos no advanceLinkMapro que tem (ou foi confirmado vazio)
+            const paymentLink = u._paymentLinkValue || "";
             const targets = u._extraJobs.filter((cj) => cj.status === "ok" && cj._link !== "linked");
             if (targets.length === 0) { showToast("Nothing to link"); return; }
-            if (!paymentLink && !confirm("Add note without payment link?")) return;
             const stays = u._linkStays || {};
             const stay = [stays.previous, stays.active, stays.next].find((s) => s && Number(s.id) === Number(reservaId));
             for (const cj of targets) cj._link = "linking";
@@ -1594,14 +1619,28 @@
                     cj._linkedConf = conf;
                     cj._linkedReservaId = reservaId;
                 }
+                render();
+                // Auto-roda os serviços MAPRO pra cada job linkado que tem um mapeamento
+                // (BBQ, PH On — PH Off é processado junto via partner)
+                const indicesToAdd = [];
+                for (let i = 0; i < u._extraJobs.length; i++) {
+                    const cj = u._extraJobs[i];
+                    if (cj._link !== "linked") continue;
+                    if (cj._svc === "done" || cj._svc === "busy") continue;
+                    if (!maproServiceForJob(cj, u._extraJobs)) continue;
+                    indicesToAdd.push(i);
+                }
+                for (const i of indicesToAdd) {
+                    await window.addMaproService(key, i);
+                }
             } catch (e) {
                 const msg = (e && e.message) || String(e);
                 for (const cj of targets) {
                     cj._link = "error";
                     cj._linkError = msg;
                 }
+                render();
             }
-            render();
         };
 
         async function copyText(text) {
