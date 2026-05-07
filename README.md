@@ -73,6 +73,79 @@ Admin endpoint:
 
 - `POST /api/admin/mapro-cookie` — uploads a fresh MAPRO `SID` cookie when the previous one expires. Requires a Firebase auth token from a user with `isAdmin: true`. No UI for it; you `curl` it manually.
 
+## API reference
+
+Three different sets of HTTP traffic flow out of this app: Jobber GraphQL (write actions, on the user's session), MAPRO direct (write actions, also user's session), and MAPRO via api-proxy (read-only, admin's session). Every Jobber/MAPRO call is *authenticated by browser cookies the user is already carrying* — no API tokens stored anywhere.
+
+### Jobber — GraphQL
+
+Hit by the extension's `jobber-query` action.
+
+- **Endpoint:** `POST https://secure.getjobber.com/api/graphql?location=j`
+- **Auth:** browser cookies (extension uses `credentials: "include"`; the user must be signed into Jobber on the same browser)
+- **Required headers:** `X-Jobber-Graphql-Version: 2026-04-16`, `X-Requested-With: XMLHttpRequest`
+
+Operations the front-end currently uses:
+
+| Operation | Type | Purpose | Variables |
+|---|---|---|---|
+| `JobberCurrentAccount` | query | Get the signed-in agent's display name (for stamping the "Member" custom field) | — |
+| `GlobalSearch` | query | Find a Property/Client by search term (used to link a MAPRO unit to its Jobber property) | `{ searchTerm, first }` |
+| `JobDefaultCustomFieldValues` | query | Read the `Member` dropdown options for the picked client/property | `{ clientId?, propertyId? }` |
+| `MasterBotPropertyJobs` | query | List existing jobs for a property (used to flag a PH-conflict before creating new ones) | `{ clientId, propertyIds, first }` |
+| `CreateJob` | mutation | Create a Jobber job | `{ input: JobCreateAttributes }` |
+
+Response shape: standard GraphQL — `{ data: {...}, errors?: [...] }`. The `userErrors` nested under `jobCreate` is a separate kind of error (validation) and the front-end surfaces those messages.
+
+### MAPRO — direct (extension, user session)
+
+These rides on whatever session the agent has open in the same browser (cookies sent automatically; the extension's `host_permissions` lists `https://app.mapro.us/*`).
+
+| Endpoint | Method | Used by | Notes |
+|---|---|---|---|
+| `/booking/reservation/{id}` | GET (page load) | `mapro-add-service`, `mapro-list-services` | Extension opens this page in a background tab and drives the on-page form via `chrome.scripting.executeScript` in the MAIN world (calls the page's own `add_service()` global, fills date inputs, fires a native MouseEvent on Save). |
+| `/ajax?manage-booking-details-commented` | POST (form-data) | `mapro-add-comment` | Body: `tx-comentario`, `reserva_id`, `casa_id`, `comentario`. Returns `{status: true, ...}` on success. |
+| `/ajax?booking-reservar` | POST (form-data) | indirectly, via the Save click during `mapro-add-service` | Returns `{status: true}` on save. The extension hooks `XMLHttpRequest.prototype.open` before the click so it can read the JSON response and decide success/error. |
+
+### MAPRO — via api-proxy (Vercel, admin session)
+
+Only used for *read-only* data that's the same for every agent (units catalog, stay calendar, addresses). Caller: `units.html`. The proxy keeps a single MAPRO `SID` cookie in Upstash KV.
+
+Front-end calls the proxy with a Firebase ID token in the `Authorization: Bearer ...` header — the proxy verifies it via Firebase Admin and only then forwards to MAPRO with the stored cookie.
+
+| Front-end call | What it returns | Underlying MAPRO requests |
+|---|---|---|
+| `GET /api/mapro/units` | array of unit objects (`{idMAPRO, ulid, code, title, …, bbq, poolHeater}`) | `GET /manage/houses/list` (catalog HTML) + `GET /manage/houses/resort/list` (resort lookup) + 3× `GET /settings/services/register/{id}` (which properties have BBQ/PH35/PH75) |
+| `GET /api/mapro/unit-stays?key={ulid}&date={YYYY-MM-DD}` | `{previous, active, next}` — each is a stay or `null` | `GET /calendar/reservation?start=…&properties=…&single_property=1` |
+| `GET /api/mapro/unit-address?id={mapro_id}` | `{street, city, state, zip}` | `GET /manage/houses/register/{id}` |
+| `POST /api/admin/mapro-cookie` (admin only) | `{ok: true}` | — (writes the new SID into Upstash KV) |
+
+If the stored SID is dead, the proxy responds `503` with `error: "MAPRO_NOT_LOGGED_IN"`. Refresh the cookie via the admin endpoint:
+
+```sh
+curl -X POST https://<vercel-url>/api/admin/mapro-cookie \
+     -H "Authorization: Bearer <firebase-id-token>" \
+     -H "Content-Type: application/json" \
+     -d '{"cookie":"<new-SID-value>"}'
+```
+
+### Extension — messaging API (page → extension)
+
+The website calls the extension via `chrome.runtime.sendMessage(EXT_ID, {action, payload}, callback)`. Allowed origins are listed in the manifest's `externally_connectable` (currently `https://alissonrochah.github.io/*` and `http://localhost:*/*`). Every response is `{ok: true, data}` or `{ok: false, error}`.
+
+| `action` | `payload` | `data` shape on success |
+|---|---|---|
+| `ping` | `{}` | `{version: "0.6.0"}` |
+| `jobber-query` | `{operationName, query, variables}` | the GraphQL `data` object |
+| `mapro-add-comment` | `{reservaId, casaId, comment}` | the MAPRO JSON response |
+| `mapro-add-service` | `{reservaId, kind: "bbq" \| "ph", price, startDate, endDate, dryRun?, force?, checkOnly?}` | `{serviceId, serviceLabel, status: "saved" \| "duplicate" \| "dry-run", existingLabel?, existingDate?, dateDebug?}` |
+| `mapro-list-services` | `{reservaId}` | `{services: [{label, value, start_date, end_date}, …]}` |
+
+Flags on `mapro-add-service`:
+- `dryRun: true` — adds the service block in MAPRO and sets the right option, but doesn't click Save (nothing persists).
+- `checkOnly: true` — only checks for an existing duplicate (returns `{status: "duplicate"}` or `{status: "not-duplicate"}`); doesn't add anything.
+- `force: true` — bypasses the "BBQ already exists for this date" check.
+
 ## Local development
 
 1. **Pages** — there's no build step. Open `index.html` in a browser, or run `python3 -m http.server` from the repo root and visit `http://localhost:8000/`.
