@@ -20,6 +20,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { auth, db, firebaseConfig } from "./js/firebase.js";
+        import { showToast } from "./js/toast.js";
         import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
         import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
@@ -492,13 +493,6 @@
                 btn.textContent = "Create User";
             }
         };
-
-        function showToast(message, type = "success") {
-            const toast = document.getElementById("toast");
-            toast.textContent = message;
-            toast.className = "toast " + type + " show";
-            setTimeout(() => toast.classList.remove("show"), 2500);
-        }
 
         window.logout = function () {
             signOut(auth).then(() => {

@@ -19,6 +19,7 @@
 
     <script type="module">
         import { auth, db } from "./js/firebase.js";
+        import { showToast } from "./js/toast.js";
         import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
         import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
@@ -381,20 +382,6 @@
             }
             return null;
         }
-
-        // Debug: na primeira vez que jobs forem renderizados, loga título dos jobs
-        // que parecem ser PH mas não casaram com a regra de pareamento.
-        window.debugMaproPH = function () {
-            for (const u of (filteredUnits || [])) {
-                if (!u._extraJobs) continue;
-                for (const cj of u._extraJobs) {
-                    const t = String(cj.title || "");
-                    if (isPoolHeatJob(t) || /heat/i.test(t)) {
-                        console.log(`[MB] PH-ish job in ${u.name || u.key}: title=${JSON.stringify(t)} link=${cj._link} reservaId=${cj._linkedReservaId} isOn=${isOnJob(t)} isOff=${isOffJob(t)}`);
-                    }
-                }
-            }
-        };
 
         function stayCoversDate(stay, dateStr) {
             if (!stay || !dateStr) return false;
@@ -1635,8 +1622,6 @@
             render();
             try {
                 let data = await maproAddService(cj._linkedReservaId, action.kind, action.price, action.startDate, action.endDate);
-                console.log("[MB] mapro-add-service result:", data);
-                if (data && data.dateDebug) console.log("[MB] dateDebug:", JSON.stringify(data.dateDebug, null, 2));
                 if (data && data.status === "duplicate") {
                     const msg = `Já tem "${data.existingLabel}" no dia ${data.existingDate} nessa reserva. Adicionar outro mesmo assim?`;
                     if (!confirm(msg)) {
@@ -1650,7 +1635,6 @@
                     if (partner) partner._svc = "busy";
                     render();
                     data = await maproAddService(cj._linkedReservaId, action.kind, action.price, action.startDate, action.endDate, { force: true });
-                    console.log("[MB] mapro-add-service (force) result:", data);
                 }
                 cj._svc = "done";
                 cj._svcLabel = data && data.serviceLabel;
@@ -1774,23 +1758,15 @@
         async function copyText(text) {
             try {
                 await navigator.clipboard.writeText(text);
-                showToast(text);
+                showToast("Copied: " + text);
             } catch (_) {
                 const ta = document.createElement("textarea");
                 ta.value = text;
                 document.body.appendChild(ta);
                 ta.select();
-                try { document.execCommand("copy"); showToast(text); } catch (__) {}
+                try { document.execCommand("copy"); showToast("Copied: " + text); } catch (__) {}
                 document.body.removeChild(ta);
             }
-        }
-
-        function showToast(text) {
-            const t = document.getElementById("toast");
-            t.textContent = "Copied: " + text;
-            t.classList.add("show");
-            clearTimeout(t._tid);
-            t._tid = setTimeout(() => t.classList.remove("show"), 1500);
         }
 
         function extrasHtml(u) {

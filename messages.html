@@ -19,6 +19,7 @@
 
     <script type="module">
         import { auth, db } from "./js/firebase.js";
+        import { showToast } from "./js/toast.js";
         import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
         import { collection, getDocs, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
@@ -443,13 +444,6 @@
                 saveNewTemplate();
             }
         });
-
-        function showToast(message, type = "success") {
-            const toast = document.getElementById("toast");
-            toast.textContent = message;
-            toast.className = "toast " + type + " show";
-            setTimeout(() => toast.classList.remove("show"), 2500);
-        }
 
         window.logout = function () {
             signOut(auth).then(() => {
