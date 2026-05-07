@@ -1,11 +1,9 @@
 import { requireFirebaseUser } from "../_lib/auth.js";
+import { applyCors } from "../_lib/cors.js";
 import { getUnitAddress, MaproNotLoggedIn } from "../_lib/mapro.js";
 
 export default async function handler(req, res) {
-    if (req.method === "OPTIONS") {
-        res.status(204).end();
-        return;
-    }
+    if (applyCors(req, res)) return;
     if (req.method !== "GET") {
         res.status(405).json({ error: "method not allowed" });
         return;
