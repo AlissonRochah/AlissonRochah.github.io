@@ -336,13 +336,6 @@
                 if (snap.exists()) {
                     const data = snap.data();
 
-                    // AI nav link and extension ID section
-                    if (data.aiEnabled) {
-                        document.getElementById("ai-nav-link").style.display = "";
-                        document.getElementById("extension-id-section").style.display = "";
-                        document.getElementById("user-extension-id").value = data.extensionId || localStorage.getItem("masterbotExtensionId") || "";
-                    }
-
                     // Greeting
                     if (data.greeting) {
                         greetingText = data.greeting;
@@ -383,22 +376,6 @@
                     // Admin-only sections
                     if (data.isAdmin) {
                         document.getElementById("user-management-section").style.display = "";
-                        document.getElementById("ai-config-section").style.display = "";
-                        try {
-                            const globalRef = doc(db, "settings", "global");
-                            const globalSnap = await getDoc(globalRef);
-                            if (globalSnap.exists()) {
-                                const globalData = globalSnap.data();
-                                document.getElementById("ai-api-url").value = globalData.aiApiUrl || "";
-                                document.getElementById("ai-groq-key").value = globalData.aiGroqKey || "";
-                                document.getElementById("ai-system-prompt").value = globalData.aiSystemPrompt || "";
-                                if (globalData.aiGroqKey) {
-                                    localStorage.setItem("masterbotGroqKey", globalData.aiGroqKey);
-                                }
-                            }
-                        } catch (e) {
-                            console.error("Error loading AI config:", e);
-                        }
                     }
                 }
 
@@ -435,7 +412,6 @@
                 const settingsRef = doc(db, "settings", user.uid);
                 const snap = await getDoc(settingsRef);
                 const existing = snap.exists() ? snap.data() : {};
-                const userExtId = document.getElementById("user-extension-id")?.value?.trim() || "";
                 const saveData = {
                     ...existing,
                     greeting: greetingText,
@@ -447,25 +423,7 @@
                     randomSignatures: randomSignatures,
                     categories: categories
                 };
-                if (userExtId) {
-                    saveData.extensionId = userExtId;
-                    localStorage.setItem("masterbotExtensionId", userExtId);
-                }
                 await setDoc(settingsRef, saveData);
-                // Save AI config if admin
-                const currentSnap = await getDoc(settingsRef);
-                if (currentSnap.exists() && currentSnap.data().isAdmin) {
-                    const globalRef = doc(db, "settings", "global");
-                    const groqKey = document.getElementById("ai-groq-key").value.trim();
-                    await setDoc(globalRef, {
-                        aiApiUrl: document.getElementById("ai-api-url").value.trim(),
-                        aiGroqKey: groqKey,
-                        aiSystemPrompt: document.getElementById("ai-system-prompt").value.trim()
-                    }, { merge: true });
-                    if (groqKey) {
-                        localStorage.setItem("masterbotGroqKey", groqKey);
-                    }
-                }
 
                 showToast("Settings saved!");
             } catch (error) {
@@ -574,7 +532,6 @@
                 <a href="template.html" class="nav-link">Templates</a>
                 <a href="messages.html" class="nav-link">Messages</a>
                 <a href="units.html" class="nav-link">Units</a>
-                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
                 <a href="settings.html" class="nav-link active">Settings</a>
             </nav>
         </div>
@@ -761,23 +718,6 @@ Your Name</pre>
             </div>
         </section>
 
-        <!-- Extension ID (for AI-enabled users) -->
-        <section id="extension-id-section" class="settings-section" style="display: none;">
-            <div class="section-header">
-                <div class="section-info">
-                    <h2>Browser Extension</h2>
-                    <p>Connect the MasterBot extension to enable conversation capture.</p>
-                </div>
-            </div>
-            <div style="margin-top:12px">
-                <div class="form-group">
-                    <label for="user-extension-id">Extension ID</label>
-                    <input type="text" id="user-extension-id" placeholder="Find it in chrome://extensions/">
-                    <p style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">Open chrome://extensions/, find MasterBot, copy the ID.</p>
-                </div>
-            </div>
-        </section>
-
         <section class="settings-section">
             <div class="section-header">
                 <div class="section-info">
@@ -817,30 +757,6 @@ Your Name</pre>
                 <input type="password" id="new-user-password" placeholder="At least 6 characters" autocomplete="new-password">
             </div>
             <button id="create-user-btn" onclick="createNewUser()" class="btn btn-primary btn-sm">Create User</button>
-        </section>
-
-        <!-- AI Configuration Section (admin only) -->
-        <section id="ai-config-section" class="settings-section" style="display: none;">
-            <div class="section-header">
-                <div class="section-info">
-                    <h2>AI Configuration</h2>
-                    <p>Configure the AI assistant. These settings apply to all users.</p>
-                </div>
-            </div>
-            <div class="ai-config-fields">
-                <div class="form-group">
-                    <label for="ai-api-url">Ollama API URL</label>
-                    <input type="text" id="ai-api-url" placeholder="e.g. https://your-tunnel.trycloudflare.com">
-                </div>
-                <div class="form-group">
-                    <label for="ai-groq-key">Groq API Key (for template suggestions)</label>
-                    <input type="password" id="ai-groq-key" placeholder="gsk_...">
-                </div>
-                <div class="form-group">
-                    <label for="ai-system-prompt">System Prompt</label>
-                    <textarea id="ai-system-prompt" class="ai-prompt-textarea" placeholder="Instructions for how the AI should behave..."></textarea>
-                </div>
-            </div>
         </section>
 
         <button onclick="saveSettings()" class="btn btn-primary btn-save">

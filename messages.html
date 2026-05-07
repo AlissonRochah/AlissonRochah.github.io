@@ -41,10 +41,6 @@
         let allTemplates = [];
         let favorites = [];
         let currentUserId = null;
-        let aiApiUrl = "";
-        let aiEnabled = false;
-        let suggestedTemplateIds = [];
-        let EXTENSION_ID = localStorage.getItem("masterbotExtensionId") || "";
 
         const TPL_CACHE_KEY = "masterbotTemplatesCache";
         const TPL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -90,19 +86,6 @@
                 await loadCategories(user.uid);
                 await loadTemplates(user.uid);
                 await loadSignature(user.uid);
-                // Load AI config
-                try {
-                    const globalRef = doc(db, "settings", "global");
-                    const globalSnap = await getDoc(globalRef);
-                    if (globalSnap.exists()) {
-                        aiApiUrl = globalSnap.data().aiApiUrl || "";
-                        if (globalSnap.data().aiGroqKey) {
-                            localStorage.setItem("masterbotGroqKey", globalSnap.data().aiGroqKey);
-                        }
-                    }
-                } catch (e) {
-                    console.error("Error loading AI config:", e);
-                }
             } else {
                 window.location.href = "index.html";
             }
@@ -121,15 +104,6 @@
                     userGreeting.text = data.greeting || "Hello";
                     userGreeting.mode = data.greetingMode || "fixed";
                     userGreeting.randomList = data.randomGreetings || [];
-                    if (data.aiEnabled) {
-                        document.getElementById("ai-nav-link").style.display = "";
-                        document.getElementById("suggest-btn").style.display = "";
-                        aiEnabled = true;
-                    }
-                    if (data.extensionId) {
-                        EXTENSION_ID = data.extensionId;
-                        localStorage.setItem("masterbotExtensionId", data.extensionId);
-                    }
                 }
             } catch (e) {
                 console.error("Error loading signature:", e);
@@ -184,7 +158,6 @@
                         description: (data.description || "").replace(/\\n/g, "\n"),
                         category: data.category || "",
                         order: data.order ?? 999999,
-                        aiSummary: data.aiSummary || ""
                     });
                 });
 
@@ -217,9 +190,8 @@
                 })
                 .forEach(t => {
                     const isFav = favorites.includes(t.id);
-                    const isSuggested = suggestedTemplateIds.includes(t.id);
                     const item = document.createElement("div");
-                    item.className = "checkbox-item" + (isSuggested ? " suggested" : "");
+                    item.className = "checkbox-item";
                     item.innerHTML = `
                         <label class="checkbox-inner">
                             <input type="checkbox" class="service" value="${t.id}" onchange="onTemplateToggle(this)">
@@ -401,127 +373,6 @@
             selectionOrder = [];
         };
 
-        // ========== AI SUGGEST TEMPLATES ==========
-
-        window.suggestTemplates = async function () {
-            if (!aiApiUrl) {
-                showToast("AI not configured. Ask admin to set API URL.", "error");
-                return;
-            }
-
-            const btn = document.getElementById("suggest-btn");
-            btn.disabled = true;
-            btn.textContent = "Thinking...";
-
-            // Get conversation from extension
-            let conversation = [];
-            try {
-                if (EXTENSION_ID) {
-                    const response = await new Promise((resolve) => {
-                        chrome.runtime.sendMessage(EXTENSION_ID, { action: "scrapeConversation" }, resolve);
-                    });
-                    if (response && response.success) {
-                        conversation = response.messages;
-                    }
-                }
-            } catch (e) {
-                console.error("Capture error:", e);
-            }
-
-            if (conversation.length === 0) {
-                showToast("Could not capture conversation. Open Airbnb inbox first.", "error");
-                btn.disabled = false;
-                btn.textContent = "Suggest";
-                return;
-            }
-
-            // Get unanswered guest messages, fallback to last 3
-            const reversed = [...conversation].reverse();
-            const lastHostIdx = reversed.findIndex(m => m.role === "host");
-            let unanswered = lastHostIdx === -1
-                ? reversed.filter(m => m.role === "guest")
-                : reversed.slice(0, lastHostIdx).filter(m => m.role === "guest");
-            unanswered.reverse();
-            if (unanswered.length === 0) {
-                unanswered = conversation.filter(m => m.role === "guest").slice(-3);
-            }
-
-            if (unanswered.length === 0) {
-                showToast("No guest messages found.", "error");
-                btn.disabled = false;
-                btn.textContent = "Suggest";
-                return;
-            }
-
-            const guestText = unanswered.map(m => m.text).join("\n");
-
-            // Build compact template list — ID + short summary only
-            const templateList = allTemplates.map(t => {
-                return "[" + t.id + "] " + (t.aiSummary || t.name);
-            }).join("\n");
-
-            try {
-                const groqKey = localStorage.getItem("masterbotGroqKey") || "";
-                if (!groqKey) {
-                    showToast("Groq API key not configured. Ask admin.", "error");
-                    btn.disabled = false;
-                    btn.textContent = "Suggest";
-                    return;
-                }
-                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": "Bearer " + groqKey
-                    },
-                    body: JSON.stringify({
-                        model: "llama-3.3-70b-versatile",
-                        messages: [
-                            {
-                                role: "system",
-                                content: "Pick templates matching the guest message. Reply ONLY with IDs in brackets, one per line. Max 5. If none match: NONE"
-                            },
-                            {
-                                role: "user",
-                                content: guestText + "\n\n" + templateList
-                            }
-                        ],
-                        temperature: 0,
-                        max_tokens: 100
-                    })
-                });
-
-                if (!res.ok) throw new Error("API error");
-
-                const data = await res.json();
-                const aiResponse = data.choices?.[0]?.message?.content || "";
-
-                // Parse template IDs from [brackets]
-                suggestedTemplateIds = [];
-                const bracketMatches = aiResponse.match(/\[([^\]]+)\]/g) || [];
-                bracketMatches.forEach(match => {
-                    const id = match.slice(1, -1).trim();
-                    if (allTemplates.some(t => t.id === id)) {
-                        suggestedTemplateIds.push(id);
-                    }
-                });
-
-                renderCheckboxes();
-
-                if (suggestedTemplateIds.length > 0) {
-                    showToast(suggestedTemplateIds.length + " template(s) suggested!");
-                } else {
-                    showToast("No matching templates found.", "error");
-                }
-            } catch (e) {
-                console.error("Suggest error:", e);
-                showToast("AI is unavailable.", "error");
-            } finally {
-                btn.disabled = false;
-                btn.textContent = "Suggest";
-            }
-        };
-
         // ========== ADD TEMPLATE MODAL ==========
 
         window.openAddTemplateModal = async function () {
@@ -633,7 +484,6 @@
                 <a href="template.html" class="nav-link">Templates</a>
                 <a href="messages.html" class="nav-link active">Messages</a>
                 <a href="units.html" class="nav-link">Units</a>
-                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
                 <a href="settings.html" class="nav-link">Settings</a>
             </nav>
         </div>
@@ -666,10 +516,6 @@
         <div class="services-section">
             <div class="services-header">
                 <h3>Select Templates</h3>
-                <button id="suggest-btn" onclick="suggestTemplates()" class="btn btn-outline btn-sm" style="display:none" title="AI suggests templates based on guest message">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    Suggest
-                </button>
                 <div class="services-filters">
                     <select id="category-filter" class="category-select" onchange="filterByCategory()">
                         <option value="all">All</option>

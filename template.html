@@ -40,21 +40,12 @@
         let editingTemplateId = null;
         let userCategories = [];
         let allTemplates = [];
-        let aiApiUrl = "";
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUserId = user.uid;
                 document.getElementById("user-email").innerText = user.email;
                 await loadCategories(user.uid);
-                // Load AI config first so templates can generate summaries
-                try {
-                    const globalRef = doc(db, "settings", "global");
-                    const globalSnap = await getDoc(globalRef);
-                    if (globalSnap.exists()) {
-                        aiApiUrl = globalSnap.data().aiApiUrl || "";
-                    }
-                } catch (e) {}
                 await loadTemplates(user.uid);
 
                 // If we arrived via the "+" shortcut from messages.html,
@@ -76,9 +67,6 @@
                     const data = snap.data();
                     if (data.categories) {
                         userCategories = data.categories;
-                    }
-                    if (data.aiEnabled) {
-                        document.getElementById("ai-nav-link").style.display = "";
                     }
                 }
             } catch (e) {
@@ -127,16 +115,12 @@
                 const existingTemplate = allTemplates.find(t => t.id === editingTemplateId);
                 const order = existingTemplate ? existingTemplate.order : allTemplates.length;
 
-                const manualSummary = document.getElementById("template-summary").value.trim();
                 const templateData = {
                     name: name,
                     description: formattedDescription,
                     category: category || "",
                     order: order
                 };
-                if (manualSummary) {
-                    templateData.aiSummary = manualSummary;
-                }
                 await setDoc(userTemplatesRef, templateData);
 
                 const wasEditing = !!editingTemplateId;
@@ -146,11 +130,6 @@
                 editingTemplateId = null;
                 closeModal();
                 showToast(wasEditing ? "Template updated!" : "Template added!");
-
-                // Generate AI summary only if not manually set
-                if (!manualSummary) {
-                    generateAiSummary(user.uid, name, name, description);
-                }
                 loadTemplates(user.uid);
             }
         };
@@ -191,35 +170,6 @@
                     console.error("Error updating order:", e);
                 }
             }
-
-            // Generate AI summaries for templates that don't have one
-            generateMissingSummaries(userId);
-        }
-
-        async function generateMissingSummaries(userId) {
-            if (!aiApiUrl) return;
-            const missing = allTemplates.filter(t => !t.aiSummary || t.aiSummary.split(" ").length > 15);
-            if (missing.length === 0) return;
-
-            const toast = document.getElementById("toast");
-            for (let i = 0; i < missing.length; i++) {
-                const t = missing[i];
-                toast.textContent = "Generating AI summaries... " + (i + 1) + "/" + missing.length;
-                toast.className = "toast success show";
-                const content = (t.description || "").replace(/\\n/g, "\n");
-                await generateAiSummary(userId, t.id, t.name, content);
-                const idx = allTemplates.findIndex(x => x.id === t.id);
-                if (idx !== -1) {
-                    const ref = doc(doc(db, "templates", userId), "userTemplates", t.id);
-                    const snap = await getDoc(ref);
-                    if (snap.exists() && snap.data().aiSummary) {
-                        allTemplates[idx].aiSummary = snap.data().aiSummary;
-                    }
-                }
-            }
-            renderTemplates(userId);
-            toast.textContent = "All AI summaries generated!";
-            setTimeout(() => toast.classList.remove("show"), 3000);
         }
 
         function renderTemplates(userId) {
@@ -246,9 +196,6 @@
                 const categoryBadge = data.category
                     ? `<span class="category-badge">${data.category}</span>`
                     : '';
-                const aiBadge = (aiApiUrl && data.aiSummary)
-                    ? `<span class="category-badge ai-badge" onclick="event.stopPropagation(); showSummary('${data.aiSummary.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">AI</span>`
-                    : '';
 
                 const item = document.createElement("div");
                 item.className = "template-card";
@@ -269,7 +216,6 @@
                             </span>
                             <h3 class="template-card-title">${data.name}</h3>
                             ${categoryBadge}
-                            ${aiBadge}
                         </div>
                         <div class="template-card-actions">
                             <button onclick="editTemplate('${data.id}')" class="btn-icon btn-edit" title="Edit template">
@@ -422,10 +368,6 @@
                 document.getElementById("template-name").value = data.name;
                 document.getElementById("template-description").value = data.description.replace(/\\n/g, "\n");
                 document.getElementById("template-category").value = data.category || "";
-                if (data.aiSummary) {
-                    document.getElementById("template-summary").value = data.aiSummary;
-                    document.getElementById("summary-group").style.display = "";
-                }
                 document.getElementById("modal-title").textContent = "Edit Template";
                 document.getElementById("modal-save-btn").textContent = "Save Changes";
                 document.getElementById("add-modal").classList.add("active");
@@ -461,8 +403,6 @@
             document.getElementById("template-name").value = "";
             document.getElementById("template-description").value = "";
             document.getElementById("template-category").value = "";
-            document.getElementById("template-summary").value = "";
-            document.getElementById("summary-group").style.display = "none";
             document.getElementById("modal-title").textContent = "New Template";
             document.getElementById("modal-save-btn").textContent = "Save Template";
             document.getElementById("add-modal").classList.add("active");
@@ -471,8 +411,6 @@
 
         window.closeModal = function () {
             document.getElementById("add-modal").classList.remove("active");
-            document.getElementById("summary-group").style.display = "none";
-            document.getElementById("template-summary").value = "";
             editingTemplateId = null;
         };
 
@@ -544,48 +482,6 @@
             event.target.value = "";
         };
 
-        window.showSummary = function (text) {
-            const toast = document.getElementById("toast");
-            toast.textContent = "AI: " + text;
-            toast.className = "toast success show";
-            setTimeout(() => toast.classList.remove("show"), 5000);
-        };
-
-        // Generate AI summary for a template (runs in background)
-        async function generateAiSummary(userId, templateId, name, content) {
-            if (!aiApiUrl) return;
-            try {
-                const res = await fetch(aiApiUrl + "/v1/chat/completions", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        model: "gemma3:12b",
-                        messages: [
-                            {
-                                role: "system",
-                                content: "Write a 5-10 word tag describing when to use this template. Examples: 'wifi not working', 'guest asks about check-in time', 'pool heat request', 'guest paid charge'. Reply with ONLY the short tag. No full sentences. No periods."
-                            },
-                            {
-                                role: "user",
-                                content: "Template name: " + name + "\n\nTemplate content:\n" + content
-                            }
-                        ],
-                        temperature: 0
-                    })
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                const summary = data.choices?.[0]?.message?.content || "";
-                if (summary) {
-                    const userDocRef = doc(db, "templates", userId);
-                    const ref = doc(collection(userDocRef, "userTemplates"), templateId);
-                    await setDoc(ref, { aiSummary: summary }, { merge: true });
-                }
-            } catch (e) {
-                console.error("AI summary error:", e);
-            }
-        }
-
         // Toast notification
         function showToast(message, type = "success") {
             const toast = document.getElementById("toast");
@@ -613,7 +509,6 @@
                 <a href="template.html" class="nav-link active">Templates</a>
                 <a href="messages.html" class="nav-link">Messages</a>
                 <a href="units.html" class="nav-link">Units</a>
-                <a href="ai.html" class="nav-link" id="ai-nav-link" style="display:none">AI</a>
                 <a href="settings.html" class="nav-link">Settings</a>
             </nav>
         </div>
@@ -681,10 +576,6 @@
                 <div class="form-group">
                     <label for="template-description">Template Content</label>
                     <textarea id="template-description" placeholder="Write your template message here..."></textarea>
-                </div>
-                <div id="summary-group" class="form-group" style="display:none">
-                    <label for="template-summary" style="font-size:0.75rem; color:var(--text-muted)">AI Summary <span style="font-weight:400">(auto-generated, edit if needed)</span></label>
-                    <input type="text" id="template-summary" placeholder="e.g. guest asks about check-in time" style="font-size:0.78rem; padding:7px 12px; color:var(--text-muted)">
                 </div>
             </div>
             <div class="modal-footer">
