@@ -391,8 +391,7 @@ async function maproAddComment({ reservaId, casaId, comment }) {
 // ====================================================================
 
 // Sheet ID from the URL: https://docs.google.com/spreadsheets/d/<ID>/edit
-// TODO: paste the real sheet ID here once you have it.
-const GATE_SHEET_ID = "REPLACE_WITH_GATE_ACCESS_SHEET_ID";
+const GATE_SHEET_ID = "15rnSnXSX9jOkxR0Gn9teNs3WUJYIHeWf_RzN1hzDBRg";
 
 const GATE_BASE = "https://gateaccess.net";
 const GATE_CREDS_CACHE_KEY = "gateCredsCache";
