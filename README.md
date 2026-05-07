@@ -1,198 +1,199 @@
 # MasterBot
 
-Internal dashboard used by Master Vacation Homes to manage Airbnb messaging templates, on-the-day cleaning/heating jobs, and the resulting MAPRO booking notes — all from a single browser tab and the user's own Brave/Chrome session.
+Painel interno usado pela Master Vacation Homes pra gerenciar templates de mensagem do Airbnb, criar jobs do dia (BBQ / Pool Heat / Deliver-Pickup) e adicionar a nota correspondente no MAPRO — tudo numa aba só, usando a própria sessão Brave/Chrome do agent.
 
-Live at <https://alissonrochah.github.io/>.
+No ar em <https://alissonrochah.github.io/>.
 
-## How the pieces fit together
+## Como as peças se encaixam
 
 ```
 ┌────────────────┐    ┌──────────────────────┐    ┌────────────────────┐
-│  Pages (here)  │ →  │  MasterBot Bridge    │ →  │  Jobber + MAPRO    │
-│  GitHub Pages  │    │  Browser extension   │    │  (user's session)  │
+│  Páginas       │ →  │  MasterBot Bridge    │ →  │  Jobber + MAPRO    │
+│  GitHub Pages  │    │  Extensão do browser │    │  (sessão do user)  │
 └────────────────┘    └──────────────────────┘    └────────────────────┘
        │                                                     ↑
-       └──────── api-proxy (Vercel) ─── shared MAPRO admin ──┘
-                       (read-only data: units list, stays)
+       └──────── api-proxy (Vercel) ─── admin MAPRO ─────────┘
+                       (só leitura: lista de unidades, stays)
 ```
 
-Three layers of code live in this repo:
+Três camadas de código vivem nesse repo:
 
-| Layer | What it does | Where |
+| Camada | O que faz | Onde |
 |---|---|---|
-| **Pages** | Login, message templates, units dashboard, settings | `*.html`, `style/`, `js/` |
-| **Extension** | Bridges the pages with the user's logged-in Jobber and MAPRO sessions for write actions (create job, add note, add service) | `extension/` |
-| **API proxy** | Read-only Vercel functions that fetch shared MAPRO data (units catalog, stays per booking) using a single admin cookie | `api-proxy/` |
+| **Páginas** | Login, templates de mensagens, dashboard de unidades, settings | `*.html`, `style/`, `js/` |
+| **Extensão** | Faz a ponte entre as páginas e a sessão Jobber/MAPRO já logada do user pra ações de escrita (criar job, postar nota, adicionar service) | `extension/` |
+| **API proxy** | Funções Vercel só de leitura que puxam dados compartilhados do MAPRO (catálogo de unidades, stays por reserva) usando um cookie admin único | `api-proxy/` |
 
-## What this app does NOT do
+## O que esse app NÃO faz
 
-This section exists so anyone — technical or not — can audit the data path themselves and see that the app **does not exfiltrate or hoard company data**. Every claim below is verifiable in the source under `extension/` and `api-proxy/`.
+Essa seção existe pra qualquer pessoa — técnica ou não — auditar o caminho dos dados sozinha e ver que o app **não exfiltra nem armazena dados da empresa**. Cada afirmação abaixo é verificável no código em `extension/` e `api-proxy/`.
 
-**The app is a UI shortcut, not a data pipeline.** Every booking detail, guest name, gate code, or job number you see on screen is fetched live from MAPRO or Jobber — the same systems your team is already paying for. Nothing is scraped, mirrored, or archived elsewhere.
+**O app é um atalho de interface, não um pipeline de dados.** Cada detalhe de reserva, nome de hóspede, gate code ou número de job que aparece na tela é puxado ao vivo do MAPRO ou do Jobber — os mesmos sistemas que o time já paga pra usar. Nada é raspado, espelhado ou arquivado em outro lugar.
 
-**No user logs into MAPRO, Jobber, or Airbnb through the app.** The extension does not ask for or see your MAPRO/Jobber/Airbnb password. It rides whichever session your browser already has — exactly the same cookies your normal browser tab uses. If you weren't allowed to do something manually in MAPRO, you can't do it through the app either.
+**Nenhum usuário faz login no MAPRO, Jobber ou Airbnb por meio do app.** A extensão não pede e não vê sua senha do MAPRO/Jobber/Airbnb. Ela usa a sessão que o browser já tem aberta — exatamente os mesmos cookies que sua aba normal usa. Se você não pode fazer algo manualmente no MAPRO, também não consegue pelo app.
 
-**The app cannot do anything you couldn't do in 5 manual clicks.** "Create a job", "post a comment", "add a service" — these are the same actions a manager already performs by hand in Jobber/MAPRO. The app just chains them so you click once instead of fifteen times. There's no privileged backdoor, no service account, no hidden access.
+**O app não consegue fazer nada que você não pudesse fazer em 5 cliques manuais.** "Criar um job", "postar um comentário", "adicionar um service" — são as mesmas ações que um manager já faz no Jobber/MAPRO na mão. O app só encadeia pra você clicar uma vez em vez de quinze. Não tem backdoor privilegiada, não tem service account, não tem acesso escondido.
 
-### What is stored, and where
+### O que é armazenado, e onde
 
-| Where | What | Owned by |
+| Onde | O quê | De quem é |
 |---|---|---|
-| **Your browser's session cookies** | MAPRO `SID`, Jobber session, Airbnb auth | You / the company (same as if you opened MAPRO in a new tab) |
-| **Firebase / Firestore** (`templates/`, `settings/`) | Your message templates, signatures, category list, favorites | The company's Firebase project |
-| **Browser localStorage** | Theme preference (dark/light), small caches (units list, member name) — purely to make the page faster, never sent anywhere | Your local browser only |
-| **Upstash KV** (used by api-proxy) | A single MAPRO admin `SID` cookie, refreshed manually when it expires | Same company-owned MAPRO admin who logs into MAPRO daily |
+| **Cookies da sua sessão no browser** | `SID` do MAPRO, sessão do Jobber, auth do Airbnb | Você / a empresa (igualzinho a abrir MAPRO numa aba nova) |
+| **Firebase / Firestore** (`templates/`, `settings/`) | Seus templates de mensagem, assinaturas, lista de categorias, favoritos | O projeto Firebase da empresa |
+| **localStorage do browser** | Preferência de tema (dark/light), pequenos caches (lista de unidades, nome do member) — só pra deixar a página mais rápida, nunca enviado pra lugar nenhum | Apenas seu browser local |
+| **Upstash KV** (usado pelo api-proxy) | Um único cookie `SID` admin do MAPRO, atualizado manualmente quando expira | O mesmo admin MAPRO da empresa que loga no MAPRO todo dia |
 
-That's the **complete** list of persistent storage. There is no separate database recording who saw which booking, no analytics on guest data, no third-party tracker. Booking/guest/listing data flows through memory only — fetched from MAPRO when a page renders, then thrown away.
+Esta é a lista **completa** de tudo que fica armazenado em algum lugar. Não tem banco de dados separado registrando quem viu qual reserva, não tem analytics em cima de dados de hóspedes, não tem rastreador terceirizado. Dados de booking/hóspede/listing passam só pela memória — buscados do MAPRO quando a página renderiza, descartados depois.
 
-### What goes "off-machine"
+### O que sai "da máquina"
 
-| Destination | What goes there | Why |
+| Destino | O que vai pra lá | Por quê |
 |---|---|---|
-| `secure.getjobber.com` | Jobber GraphQL queries (search property, create job) — sent **from your browser** with **your** cookies | This is your Jobber, the same site your tab opens |
-| `app.mapro.us` | MAPRO booking actions (post note, add service) — sent **from your browser** with **your** cookies | This is your MAPRO, same as above |
-| `firebaseapp.com` / Firestore | Reads/writes of templates and per-user settings tied to your UID | Where your templates and settings live |
-| `<vercel-url>/api/mapro/*` | Read-only requests for unit list / stays / addresses, signed with your Firebase ID token | A thin transport that holds the *admin's* MAPRO cookie so each agent doesn't need their own MAPRO admin login. The proxy stores nothing about the request. |
+| `secure.getjobber.com` | Queries GraphQL do Jobber (buscar property, criar job) — enviadas **do seu browser** com **seus** cookies | Esse é o Jobber, o mesmo site que sua aba abre |
+| `app.mapro.us` | Ações de booking no MAPRO (postar nota, adicionar service) — enviadas **do seu browser** com **seus** cookies | Esse é o MAPRO, idem |
+| `firebaseapp.com` / Firestore | Leituras/escritas dos templates e settings do seu user, ligados ao seu UID | Onde os seus templates e settings ficam |
+| `<vercel-url>/api/mapro/*` | Requests só de leitura pra catálogo de unidades / stays / endereços, assinadas com seu token Firebase | Um transporte fininho que segura o cookie do admin MAPRO pra cada agent não precisar do próprio login admin. O proxy não guarda nada da request. |
 
-Nothing is sent to any server outside that list.
+Nada é enviado pra nenhum servidor fora dessa lista.
 
-### How to verify
+### Como verificar
 
-- Open DevTools → Network while using the app. Every request goes to one of the four destinations above. There's nothing else.
-- Read `extension/background.js` — that's the entire extension's logic, ~400 lines. The only `fetch()` calls go to `secure.getjobber.com` (Jobber) and `app.mapro.us` (MAPRO). No other hosts.
-- Read `api-proxy/api/_lib/mapro.js` — the proxy fetches a few HTML pages from MAPRO and parses them. It writes nothing back to MAPRO except when an actual user action triggers a write (and that write happens from the user's browser, not the proxy).
-- The whole codebase is in this repo. Anyone with read access can audit any line.
+- Abre DevTools → aba Network enquanto usa o app. Toda request vai pra um dos quatro destinos acima. Não tem mais nada.
+- Lê `extension/background.js` — é a lógica completa da extensão, ~400 linhas. As únicas chamadas `fetch()` vão pra `secure.getjobber.com` (Jobber) e `app.mapro.us` (MAPRO). Nenhum outro host.
+- Lê `api-proxy/api/_lib/mapro.js` — o proxy busca algumas páginas HTML do MAPRO e faz parsing. Não escreve nada de volta no MAPRO, exceto quando uma ação real do user dispara uma escrita (e essa escrita acontece a partir do browser do user, não do proxy).
+- O código todo tá nesse repo. Qualquer um com acesso de leitura pode auditar qualquer linha.
 
-## Pages
+## Páginas
 
-| Page | What it does |
+| Página | O que faz |
 |---|---|
-| `index.html` | Firebase email/password login |
-| `messages.html` | Pick from saved message templates and copy-paste into Airbnb |
-| `template.html` | CRUD for those templates (categories, drag-to-reorder, import/export) |
-| `units.html` | The day's calendar: shows each unit's stays, lets you create BBQ / Pool Heat / Deliver-Pickup jobs in Jobber, then auto-link them to the right MAPRO booking and add the matching service |
-| `settings.html` | Per-user signature/greeting setup, plus admin-only user management |
+| `index.html` | Login Firebase com email + senha |
+| `messages.html` | Escolhe um template salvo e copia pro Airbnb |
+| `template.html` | CRUD desses templates (categorias, drag-to-reorder, import/export) |
+| `units.html` | A agenda do dia: mostra as stays de cada unidade, deixa criar jobs (BBQ / Pool Heat / Deliver-Pickup) no Jobber, e auto-vincula com a reserva certa do MAPRO já adicionando o service |
+| `settings.html` | Configuração de assinatura/saudação por user, mais gerenciamento de users (admin only) |
 
-Authentication is Firebase. User-specific config (signatures, categories, favorites) lives in Firestore under `settings/{uid}`. Shared admin data (user creation) checks `isAdmin` on the same doc.
+Auth é Firebase. Config por usuário (assinaturas, categorias, favoritos) fica no Firestore em `settings/{uid}`. Dados administrativos (criar usuários) checam o flag `isAdmin` no mesmo doc.
 
-Shared front-end code under `js/`:
+Código compartilhado de front-end em `js/`:
 
-- `js/firebase.js` — single source of truth for the Firebase config + `app`/`auth`/`db` exports
-- `js/toast.js` — `showToast(message, type)` helper
-- `js/theme.js` — applies saved dark/light theme before paint to avoid the flash
+- `js/firebase.js` — fonte única de verdade pra config do Firebase + exports `app`/`auth`/`db`
+- `js/toast.js` — helper `showToast(message, type)`
+- `js/nav.js` — header com logo + menu + Sign Out, renderizado pelas páginas
+- `js/theme.js` — aplica o tema (dark/light) salvo antes do paint pra evitar o flash
 
-## Extension — MasterBot Bridge
+## Extensão — MasterBot Bridge
 
-`extension/` is a Manifest V3 extension that runs the user's own Jobber and MAPRO sessions on behalf of the units page. It only acts as a transport — nothing is stored.
+`extension/` é uma extensão Manifest V3 que executa as sessões Jobber e MAPRO do próprio user em nome da página de units. Funciona só como transporte — nada fica armazenado.
 
-What it exposes via `chrome.runtime.onMessageExternal`:
+O que ela expõe via `chrome.runtime.onMessageExternal`:
 
-- `jobber-query` — runs a GraphQL query against `secure.getjobber.com`
-- `mapro-add-comment` — posts a note to a MAPRO booking
-- `mapro-add-service` — opens the booking page in a background tab and walks through MAPRO's own UI (call `add_service`, select the right service from the dropdown, fill dates if needed, click Save). Detects success by hooking `XMLHttpRequest` and watching for the `/ajax?booking-reservar` JSON response.
-- `mapro-list-services` — same kind of background-tab probe, returns the list of services already on the booking (used by the BBQ duplicate warning)
+- `jobber-query` — roda uma query GraphQL contra `secure.getjobber.com`
+- `mapro-add-comment` — posta uma nota em uma reserva no MAPRO
+- `mapro-add-service` — abre a página da reserva numa aba em background e dirige a UI nativa do MAPRO (chama `add_service`, seleciona o service certo no dropdown, preenche datas se necessário, clica Save). Detecta sucesso hookeando `XMLHttpRequest` e observando a resposta JSON de `/ajax?booking-reservar`.
+- `mapro-list-services` — mesmo tipo de probe via aba background, retorna a lista de services que já existem na reserva (usado pelo aviso de BBQ duplicado)
 
-The host page (`units.html`) only knows the extension ID — the entire MAPRO/Jobber flow is opaque to it.
+A página host (`units.html`) só conhece o ID da extensão — todo o fluxo MAPRO/Jobber é opaco pra ela.
 
-To install for development: `chrome://extensions` → developer mode → "Load unpacked" → pick `extension/`.
+Pra instalar pra dev: `chrome://extensions` → modo desenvolvedor → "Load unpacked" → escolhe `extension/`.
 
-A zipped build (`extension.zip`) is regenerated automatically by `.github/workflows/build-extension-zip.yml` on every push that touches `extension/`.
+Um build zipado (`extension.zip`) é regenerado automaticamente por `.github/workflows/build-extension-zip.yml` em todo push que toca em `extension/`.
 
 ## API proxy
 
-`api-proxy/` is a tiny Vercel deployment with a few endpoints under `/api/mapro/*`:
+`api-proxy/` é um deploy minúsculo no Vercel com alguns endpoints sob `/api/mapro/*`:
 
-- `units` — full list of units (catalog)
-- `unit-stays?key={ulid}&date={YYYY-MM-DD}` — Previous/Active/Next stays around a date
-- `unit-address?id={mapro_id}` — full address
+- `units` — lista completa das unidades (catálogo)
+- `unit-stays?key={ulid}&date={YYYY-MM-DD}` — stays Anterior/Atual/Próxima ao redor de uma data
+- `unit-address?id={mapro_id}` — endereço completo
 
-These all use a single shared MAPRO admin cookie kept in Upstash KV. They're read-only — anything that *writes* to MAPRO goes through the extension on the user's own session.
+Tudo só de leitura — qualquer coisa que *escreve* no MAPRO passa pela extensão usando a sessão do próprio user. Esses 3 endpoints usam um único cookie admin do MAPRO guardado no Upstash KV.
 
-Admin endpoint:
+Endpoint admin:
 
-- `POST /api/admin/mapro-cookie` — uploads a fresh MAPRO `SID` cookie when the previous one expires. Requires a Firebase auth token from a user with `isAdmin: true`. No UI for it; you `curl` it manually.
+- `POST /api/admin/mapro-cookie` — sobe um `SID` cookie novo do MAPRO quando o anterior expira. Exige um token Firebase de um user com `isAdmin: true`. Não tem UI; você manda via `curl` na mão.
 
-## API reference
+## Referência das APIs
 
-Three different sets of HTTP traffic flow out of this app: Jobber GraphQL (write actions, on the user's session), MAPRO direct (write actions, also user's session), and MAPRO via api-proxy (read-only, admin's session). Every Jobber/MAPRO call is *authenticated by browser cookies the user is already carrying* — no API tokens stored anywhere.
+Três conjuntos de tráfego HTTP saem do app: GraphQL do Jobber (escrita, sessão do user), MAPRO direto (escrita, também sessão do user) e MAPRO via api-proxy (só leitura, sessão do admin). Toda chamada Jobber/MAPRO é *autenticada por cookies que o browser do user já tem* — nenhum API token é guardado em lugar nenhum.
 
 ### Jobber — GraphQL
 
-Hit by the extension's `jobber-query` action.
+Atingido pela action `jobber-query` da extensão.
 
 - **Endpoint:** `POST https://secure.getjobber.com/api/graphql?location=j`
-- **Auth:** browser cookies (extension uses `credentials: "include"`; the user must be signed into Jobber on the same browser)
-- **Required headers:** `X-Jobber-Graphql-Version: 2026-04-16`, `X-Requested-With: XMLHttpRequest`
+- **Auth:** cookies do browser (extensão usa `credentials: "include"`; o user precisa estar logado no Jobber no mesmo browser)
+- **Headers obrigatórios:** `X-Jobber-Graphql-Version: 2026-04-16`, `X-Requested-With: XMLHttpRequest`
 
-Operations the front-end currently uses:
+Operations que o front usa hoje:
 
-| Operation | Type | Purpose | Variables |
+| Operation | Tipo | Pra que serve | Variables |
 |---|---|---|---|
-| `JobberCurrentAccount` | query | Get the signed-in agent's display name (for stamping the "Member" custom field) | — |
-| `GlobalSearch` | query | Find a Property/Client by search term (used to link a MAPRO unit to its Jobber property) | `{ searchTerm, first }` |
-| `JobDefaultCustomFieldValues` | query | Read the `Member` dropdown options for the picked client/property | `{ clientId?, propertyId? }` |
-| `MasterBotPropertyJobs` | query | List existing jobs for a property (used to flag a PH-conflict before creating new ones) | `{ clientId, propertyIds, first }` |
-| `CreateJob` | mutation | Create a Jobber job | `{ input: JobCreateAttributes }` |
+| `JobberCurrentAccount` | query | Pega o nome do agent logado (pra carimbar no custom field "Member") | — |
+| `GlobalSearch` | query | Busca Property/Client por termo (usado pra vincular uma unidade do MAPRO ao seu property no Jobber) | `{ searchTerm, first }` |
+| `JobDefaultCustomFieldValues` | query | Lê as opções do dropdown `Member` pro client/property escolhido | `{ clientId?, propertyId? }` |
+| `MasterBotPropertyJobs` | query | Lista jobs existentes pra um property (usado pra avisar se há conflito de PH antes de criar novos) | `{ clientId, propertyIds, first }` |
+| `CreateJob` | mutation | Cria um job no Jobber | `{ input: JobCreateAttributes }` |
 
-Response shape: standard GraphQL — `{ data: {...}, errors?: [...] }`. The `userErrors` nested under `jobCreate` is a separate kind of error (validation) and the front-end surfaces those messages.
+Formato da resposta: GraphQL padrão — `{ data: {...}, errors?: [...] }`. O `userErrors` aninhado dentro de `jobCreate` é outro tipo de erro (validação) e o front mostra essas mensagens ao user.
 
-### MAPRO — direct (extension, user session)
+### MAPRO — direto (extensão, sessão do user)
 
-These rides on whatever session the agent has open in the same browser (cookies sent automatically; the extension's `host_permissions` lists `https://app.mapro.us/*`).
+Tudo isso anda em cima da sessão que o agent tem aberta no mesmo browser (cookies enviados automaticamente; o `host_permissions` da extensão lista `https://app.mapro.us/*`).
 
-| Endpoint | Method | Used by | Notes |
+| Endpoint | Método | Usado por | Notas |
 |---|---|---|---|
-| `/booking/reservation/{id}` | GET (page load) | `mapro-add-service`, `mapro-list-services` | Extension opens this page in a background tab and drives the on-page form via `chrome.scripting.executeScript` in the MAIN world (calls the page's own `add_service()` global, fills date inputs, fires a native MouseEvent on Save). |
-| `/ajax?manage-booking-details-commented` | POST (form-data) | `mapro-add-comment` | Body: `tx-comentario`, `reserva_id`, `casa_id`, `comentario`. Returns `{status: true, ...}` on success. |
-| `/ajax?booking-reservar` | POST (form-data) | indirectly, via the Save click during `mapro-add-service` | Returns `{status: true}` on save. The extension hooks `XMLHttpRequest.prototype.open` before the click so it can read the JSON response and decide success/error. |
+| `/booking/reservation/{id}` | GET (carregar página) | `mapro-add-service`, `mapro-list-services` | A extensão abre essa página em uma aba background e dirige o form via `chrome.scripting.executeScript` no MAIN world (chama o `add_service()` global da própria página, preenche inputs de data, dispara um MouseEvent nativo no Save). |
+| `/ajax?manage-booking-details-commented` | POST (form-data) | `mapro-add-comment` | Body: `tx-comentario`, `reserva_id`, `casa_id`, `comentario`. Retorna `{status: true, ...}` no sucesso. |
+| `/ajax?booking-reservar` | POST (form-data) | indiretamente, via o click no Save durante `mapro-add-service` | Retorna `{status: true}` quando salva. A extensão hookeia `XMLHttpRequest.prototype.open` antes do click pra ler o JSON da resposta e decidir success/error. |
 
-### MAPRO — via api-proxy (Vercel, admin session)
+### MAPRO — via api-proxy (Vercel, sessão do admin)
 
-Only used for *read-only* data that's the same for every agent (units catalog, stay calendar, addresses). Caller: `units.html`. The proxy keeps a single MAPRO `SID` cookie in Upstash KV.
+Usado só pra dados *somente-leitura* que são iguais pra todo agent (catálogo de unidades, calendar de stays, endereços). Caller: `units.html`. O proxy mantém um único `SID` admin do MAPRO no Upstash KV.
 
-Front-end calls the proxy with a Firebase ID token in the `Authorization: Bearer ...` header — the proxy verifies it via Firebase Admin and only then forwards to MAPRO with the stored cookie.
+O front chama o proxy mandando um Firebase ID token no header `Authorization: Bearer ...` — o proxy verifica via Firebase Admin e só então repassa pro MAPRO usando o cookie guardado.
 
-| Front-end call | What it returns | Underlying MAPRO requests |
+| Chamada do front | O que retorna | Requests subjacentes ao MAPRO |
 |---|---|---|
-| `GET /api/mapro/units` | array of unit objects (`{idMAPRO, ulid, code, title, …, bbq, poolHeater}`) | `GET /manage/houses/list` (catalog HTML) + `GET /manage/houses/resort/list` (resort lookup) + 3× `GET /settings/services/register/{id}` (which properties have BBQ/PH35/PH75) |
-| `GET /api/mapro/unit-stays?key={ulid}&date={YYYY-MM-DD}` | `{previous, active, next}` — each is a stay or `null` | `GET /calendar/reservation?start=…&properties=…&single_property=1` |
+| `GET /api/mapro/units` | array de unidades (`{idMAPRO, ulid, code, title, …, bbq, poolHeater}`) | `GET /manage/houses/list` (HTML do catálogo) + `GET /manage/houses/resort/list` (lookup de resorts) + 3× `GET /settings/services/register/{id}` (quais properties têm BBQ/PH35/PH75) |
+| `GET /api/mapro/unit-stays?key={ulid}&date={YYYY-MM-DD}` | `{previous, active, next}` — cada um é um stay ou `null` | `GET /calendar/reservation?start=…&properties=…&single_property=1` |
 | `GET /api/mapro/unit-address?id={mapro_id}` | `{street, city, state, zip}` | `GET /manage/houses/register/{id}` |
-| `POST /api/admin/mapro-cookie` (admin only) | `{ok: true}` | — (writes the new SID into Upstash KV) |
+| `POST /api/admin/mapro-cookie` (admin only) | `{ok: true}` | — (escreve o `SID` novo no Upstash KV) |
 
-If the stored SID is dead, the proxy responds `503` with `error: "MAPRO_NOT_LOGGED_IN"`. Refresh the cookie via the admin endpoint:
+Se o `SID` armazenado tiver morrido, o proxy responde `503` com `error: "MAPRO_NOT_LOGGED_IN"`. Atualiza o cookie via o endpoint admin:
 
 ```sh
 curl -X POST https://<vercel-url>/api/admin/mapro-cookie \
      -H "Authorization: Bearer <firebase-id-token>" \
      -H "Content-Type: application/json" \
-     -d '{"cookie":"<new-SID-value>"}'
+     -d '{"cookie":"<novo-valor-de-SID>"}'
 ```
 
-### Extension — messaging API (page → extension)
+### Extensão — API de mensageria (página → extensão)
 
-The website calls the extension via `chrome.runtime.sendMessage(EXT_ID, {action, payload}, callback)`. Allowed origins are listed in the manifest's `externally_connectable` (currently `https://alissonrochah.github.io/*` and `http://localhost:*/*`). Every response is `{ok: true, data}` or `{ok: false, error}`.
+A página chama a extensão via `chrome.runtime.sendMessage(EXT_ID, {action, payload}, callback)`. Origens permitidas estão em `externally_connectable` no manifest (atualmente `https://alissonrochah.github.io/*` e `http://localhost:*/*`). Toda resposta é `{ok: true, data}` ou `{ok: false, error}`.
 
-| `action` | `payload` | `data` shape on success |
+| `action` | `payload` | `data` no sucesso |
 |---|---|---|
 | `ping` | `{}` | `{version: "0.6.0"}` |
-| `jobber-query` | `{operationName, query, variables}` | the GraphQL `data` object |
-| `mapro-add-comment` | `{reservaId, casaId, comment}` | the MAPRO JSON response |
+| `jobber-query` | `{operationName, query, variables}` | o objeto `data` do GraphQL |
+| `mapro-add-comment` | `{reservaId, casaId, comment}` | a resposta JSON do MAPRO |
 | `mapro-add-service` | `{reservaId, kind: "bbq" \| "ph", price, startDate, endDate, dryRun?, force?, checkOnly?}` | `{serviceId, serviceLabel, status: "saved" \| "duplicate" \| "dry-run", existingLabel?, existingDate?, dateDebug?}` |
 | `mapro-list-services` | `{reservaId}` | `{services: [{label, value, start_date, end_date}, …]}` |
 
-Flags on `mapro-add-service`:
-- `dryRun: true` — adds the service block in MAPRO and sets the right option, but doesn't click Save (nothing persists).
-- `checkOnly: true` — only checks for an existing duplicate (returns `{status: "duplicate"}` or `{status: "not-duplicate"}`); doesn't add anything.
-- `force: true` — bypasses the "BBQ already exists for this date" check.
+Flags do `mapro-add-service`:
+- `dryRun: true` — adiciona o service block no MAPRO e seleciona a opção certa, mas não clica Save (nada persiste).
+- `checkOnly: true` — só checa se já existe um duplicado (retorna `{status: "duplicate"}` ou `{status: "not-duplicate"}`); não adiciona nada.
+- `force: true` — bypassa a checagem "já existe BBQ pra essa data".
 
-## Local development
+## Desenvolvimento local
 
-1. **Pages** — there's no build step. Open `index.html` in a browser, or run `python3 -m http.server` from the repo root and visit `http://localhost:8000/`.
-2. **Extension** — load `extension/` unpacked in your browser; reload from `chrome://extensions` after edits.
-3. **API proxy** — `cd api-proxy && npx vercel dev` to run it locally.
+1. **Páginas** — não tem build step. Abre `index.html` no browser, ou roda `python3 -m http.server` da raiz do repo e visita `http://localhost:8000/`.
+2. **Extensão** — carrega `extension/` unpacked no browser; recarrega em `chrome://extensions` depois de editar.
+3. **API proxy** — `cd api-proxy && npx vercel dev` pra rodar local.
 
 ## Branches
 
-- `main` — production. GitHub Pages serves from here.
-- `chore/polish` — current cleanup/refactor pass. Merged to `main` when ready.
-- `feature/mapro-integration` — preserved for reference. An older direction that built a "Resort Info" extension which injected gate-code/property-manager/extras buttons into Airbnb's UI directly. Not active, but worth raiding if we ever want that flow.
+- `main` — produção. GitHub Pages serve a partir daqui.
+- `chore/polish` — passe atual de cleanup/refatoração. Vai pra main quando estiver pronto.
+- `feature/mapro-integration` — preservada pra referência. Direção mais antiga que tinha uma extensão "Resort Info" injetando botões de gate-code/property-manager/extras direto na UI do Airbnb. Não está ativa, mas vale roubar dela se quisermos esse fluxo um dia.
