@@ -24,6 +24,45 @@ Three layers of code live in this repo:
 | **Extension** | Bridges the pages with the user's logged-in Jobber and MAPRO sessions for write actions (create job, add note, add service) | `extension/` |
 | **API proxy** | Read-only Vercel functions that fetch shared MAPRO data (units catalog, stays per booking) using a single admin cookie | `api-proxy/` |
 
+## What this app does NOT do
+
+This section exists so anyone — technical or not — can audit the data path themselves and see that the app **does not exfiltrate or hoard company data**. Every claim below is verifiable in the source under `extension/` and `api-proxy/`.
+
+**The app is a UI shortcut, not a data pipeline.** Every booking detail, guest name, gate code, or job number you see on screen is fetched live from MAPRO or Jobber — the same systems your team is already paying for. Nothing is scraped, mirrored, or archived elsewhere.
+
+**No user logs into MAPRO, Jobber, or Airbnb through the app.** The extension does not ask for or see your MAPRO/Jobber/Airbnb password. It rides whichever session your browser already has — exactly the same cookies your normal browser tab uses. If you weren't allowed to do something manually in MAPRO, you can't do it through the app either.
+
+**The app cannot do anything you couldn't do in 5 manual clicks.** "Create a job", "post a comment", "add a service" — these are the same actions a manager already performs by hand in Jobber/MAPRO. The app just chains them so you click once instead of fifteen times. There's no privileged backdoor, no service account, no hidden access.
+
+### What is stored, and where
+
+| Where | What | Owned by |
+|---|---|---|
+| **Your browser's session cookies** | MAPRO `SID`, Jobber session, Airbnb auth | You / the company (same as if you opened MAPRO in a new tab) |
+| **Firebase / Firestore** (`templates/`, `settings/`) | Your message templates, signatures, category list, favorites | The company's Firebase project |
+| **Browser localStorage** | Theme preference (dark/light), small caches (units list, member name) — purely to make the page faster, never sent anywhere | Your local browser only |
+| **Upstash KV** (used by api-proxy) | A single MAPRO admin `SID` cookie, refreshed manually when it expires | Same company-owned MAPRO admin who logs into MAPRO daily |
+
+That's the **complete** list of persistent storage. There is no separate database recording who saw which booking, no analytics on guest data, no third-party tracker. Booking/guest/listing data flows through memory only — fetched from MAPRO when a page renders, then thrown away.
+
+### What goes "off-machine"
+
+| Destination | What goes there | Why |
+|---|---|---|
+| `secure.getjobber.com` | Jobber GraphQL queries (search property, create job) — sent **from your browser** with **your** cookies | This is your Jobber, the same site your tab opens |
+| `app.mapro.us` | MAPRO booking actions (post note, add service) — sent **from your browser** with **your** cookies | This is your MAPRO, same as above |
+| `firebaseapp.com` / Firestore | Reads/writes of templates and per-user settings tied to your UID | Where your templates and settings live |
+| `<vercel-url>/api/mapro/*` | Read-only requests for unit list / stays / addresses, signed with your Firebase ID token | A thin transport that holds the *admin's* MAPRO cookie so each agent doesn't need their own MAPRO admin login. The proxy stores nothing about the request. |
+
+Nothing is sent to any server outside that list.
+
+### How to verify
+
+- Open DevTools → Network while using the app. Every request goes to one of the four destinations above. There's nothing else.
+- Read `extension/background.js` — that's the entire extension's logic, ~400 lines. The only `fetch()` calls go to `secure.getjobber.com` (Jobber) and `app.mapro.us` (MAPRO). No other hosts.
+- Read `api-proxy/api/_lib/mapro.js` — the proxy fetches a few HTML pages from MAPRO and parses them. It writes nothing back to MAPRO except when an actual user action triggers a write (and that write happens from the user's browser, not the proxy).
+- The whole codebase is in this repo. Anyone with read access can audit any line.
+
 ## Pages
 
 | Page | What it does |
