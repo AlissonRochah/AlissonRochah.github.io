@@ -44,6 +44,36 @@
 .units-status.error { color: var(--danger); }
 .units-status.warning { color: var(--warning); }
 
+/* Description modal */
+.description-modal {
+    max-width: 720px;
+}
+.description-body {
+    font-family: var(--font-sans);
+    font-size: 0.88rem;
+    line-height: 1.65;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    max-height: 60vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.unit-details-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.btn-description {
+    cursor: pointer;
+}
+
 .units-table-wrap {
     background: var(--bg-elevated, #fff);
     border: 1px solid var(--border, #d0d5dd);

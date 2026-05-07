@@ -126,6 +126,24 @@ function inputValue(html, name) {
     return m ? m[1] : "";
 }
 
+function textareaValueById(html, id) {
+    const re = new RegExp(`<textarea\\b[^>]*?\\bid="${id}"[^>]*?>([\\s\\S]*?)</textarea>`, "i");
+    const m = html.match(re);
+    if (!m) return "";
+    return decodeHtmlEntities(m[1]).trim();
+}
+
+function decodeHtmlEntities(s) {
+    return String(s)
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+        .replace(/&amp;/g, "&");
+}
+
 function titleCase(s) {
     return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -144,7 +162,9 @@ export async function getUnitAddress(id) {
     const state = stateAbbr(inputValue(html, "estado"));
     const zip = inputValue(html, "cep");
     const tail = [state, zip].filter(Boolean).join(" ");
-    return [street, city, tail].filter(Boolean).join(", ");
+    const address = [street, city, tail].filter(Boolean).join(", ");
+    const description = textareaValueById(html, "descricao_en");
+    return { address, description };
 }
 
 function parseChannel(title) {
