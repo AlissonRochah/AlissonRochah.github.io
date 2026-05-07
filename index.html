@@ -7,7 +7,7 @@
     <title>Login - Master Vacation Homes</title>
 
     <link rel="shortcut icon" href="img/MasterLogo.jpg" type="image/x-icon">
-    <script src="style/theme.js"></script>
+    <script src="js/theme.js"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,23 +18,11 @@
     <link rel="stylesheet" href="style/login.css">
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
+        import { app, auth } from "./js/firebase.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-analytics.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+        import { signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyAKYoUaxhOX1pagezUTTDbwWVg5ktcSEcY",
-            authDomain: "templatemaster-a2d6e.firebaseapp.com",
-            projectId: "templatemaster-a2d6e",
-            storageBucket: "templatemaster-a2d6e.firebasestorage.app",
-            messagingSenderId: "208432538664",
-            appId: "1:208432538664:web:10a29a55efbb824ae1411d",
-            measurementId: "G-LLVT6XW024"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const analytics = getAnalytics(app);
-        const auth = getAuth();
+        getAnalytics(app);
 
         function login() {
             const email = document.getElementById('email').value;
