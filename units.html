@@ -1423,13 +1423,25 @@
             if (type === "PH") {
                 u._extraDraft.existingPHJobs = null;
                 u._extraDraft.loadingExisting = true;
-                fetchPropertyPHJobs(u._jobber.match.clientId, u._jobber.match.propertyId).then((jobs) => {
-                    if (u._extraDraft && u._extraDraft.type === "PH") {
-                        u._extraDraft.existingPHJobs = jobs;
-                        u._extraDraft.loadingExisting = false;
-                        render();
-                    }
-                });
+                fetchPropertyPHJobs(u._jobber.match.clientId, u._jobber.match.propertyId)
+                    .then((jobs) => {
+                        if (u._extraDraft && u._extraDraft.type === "PH") {
+                            u._extraDraft.existingPHJobs = jobs;
+                        }
+                    })
+                    .catch((e) => {
+                        console.error("[MB] fetchPropertyPHJobs failed:", e);
+                        if (u._extraDraft && u._extraDraft.type === "PH") {
+                            u._extraDraft.existingPHJobs = [];
+                            u._extraDraft.phLoadError = (e && e.message) || String(e);
+                        }
+                    })
+                    .finally(() => {
+                        if (u._extraDraft && u._extraDraft.type === "PH") {
+                            u._extraDraft.loadingExisting = false;
+                            render();
+                        }
+                    });
             }
             render();
         };
