@@ -170,11 +170,6 @@
             render();
         }
 
-        function isAddressFull(addr) {
-            if (!addr) return false;
-            return /,/.test(addr) && /\b(FL|Florida)\b/i.test(addr);
-        }
-
         async function fetchFullAddress(u) {
             if (u._fullAddress || u._addressFetching) return;
             u._addressFetching = true;
@@ -585,7 +580,10 @@
             render();
             if (expandedKey) {
                 const u = filteredUnits.find((x) => x.key === key);
-                if (u && !isAddressFull(u.address)) fetchFullAddress(u);
+                // Always fetch the register page when expanding — it brings the
+                // description back even when the bulk address is already complete.
+                // The function self-guards against double-calls.
+                if (u) fetchFullAddress(u);
                 if (u) fetchStays(u);
                 if (u) fetchJobberMatch(u);
             }
