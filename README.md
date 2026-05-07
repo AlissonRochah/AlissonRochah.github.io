@@ -39,11 +39,13 @@ Essa seção existe pra qualquer pessoa — técnica ou não — auditar o camin
 | Onde | O quê | De quem é |
 |---|---|---|
 | **Cookies da sua sessão no browser** | `SID` do MAPRO, sessão do Jobber, auth do Airbnb | Você / a empresa (igualzinho a abrir MAPRO numa aba nova) |
-| **Firebase / Firestore** (`templates/`, `settings/`) | Seus templates de mensagem, assinaturas, lista de categorias, favoritos | O projeto Firebase da empresa |
+| **Firebase / Firestore** (`templates/`, `settings/`) | Templates de mensagem que o time escreve à mão + configurações de UI por usuário (assinatura, saudação, categorias, favoritos) | Banco pessoal do Alisson (dev). **Não contém nenhum dado puxado do MAPRO, Jobber ou Airbnb** — só o que os próprios atendentes digitam quando criam um template. |
 | **localStorage do browser** | Preferência de tema (dark/light), pequenos caches (lista de unidades, nome do member) — só pra deixar a página mais rápida, nunca enviado pra lugar nenhum | Apenas seu browser local |
 | **Upstash KV** (usado pelo api-proxy) | Um único cookie `SID` admin do MAPRO, atualizado manualmente quando expira | O mesmo admin MAPRO da empresa que loga no MAPRO todo dia |
 
 Esta é a lista **completa** de tudo que fica armazenado em algum lugar. Não tem banco de dados separado registrando quem viu qual reserva, não tem analytics em cima de dados de hóspedes, não tem rastreador terceirizado. Dados de booking/hóspede/listing passam só pela memória — buscados do MAPRO quando a página renderiza, descartados depois.
+
+Sobre o Firebase em particular: o projeto é pessoal (do dev) e contém **somente** o que o time decide salvar nele — os templates que os atendentes mesmos escrevem (ex: "Hi {name}, your gate code is..."), e umas preferências de UI por user. Nenhuma reserva, hóspede, listing, gate code real ou qualquer dado de operação cai lá. O Firebase aqui é, na prática, um caderno compartilhado de mensagens prontas — não um espelho do MAPRO.
 
 ### O que sai "da máquina"
 
@@ -51,7 +53,7 @@ Esta é a lista **completa** de tudo que fica armazenado em algum lugar. Não te
 |---|---|---|
 | `secure.getjobber.com` | Queries GraphQL do Jobber (buscar property, criar job) — enviadas **do seu browser** com **seus** cookies | Esse é o Jobber, o mesmo site que sua aba abre |
 | `app.mapro.us` | Ações de booking no MAPRO (postar nota, adicionar service) — enviadas **do seu browser** com **seus** cookies | Esse é o MAPRO, idem |
-| `firebaseapp.com` / Firestore | Leituras/escritas dos templates e settings do seu user, ligados ao seu UID | Onde os seus templates e settings ficam |
+| `firebaseapp.com` / Firestore | Leituras/escritas dos templates de mensagem que o time escreveu à mão e das suas preferências de UI (assinatura, categorias, etc.). Ligados ao seu UID. | Onde os templates ficam guardados. Nada que trafega aqui veio do MAPRO/Jobber/Airbnb. |
 | `<vercel-url>/api/mapro/*` | Requests só de leitura pra catálogo de unidades / stays / endereços, assinadas com seu token Firebase | Um transporte fininho que segura o cookie do admin MAPRO pra cada agent não precisar do próprio login admin. O proxy não guarda nada da request. |
 
 Nada é enviado pra nenhum servidor fora dessa lista.
@@ -73,7 +75,7 @@ Nada é enviado pra nenhum servidor fora dessa lista.
 | `units.html` | A agenda do dia: mostra as stays de cada unidade, deixa criar jobs (BBQ / Pool Heat / Deliver-Pickup) no Jobber, e auto-vincula com a reserva certa do MAPRO já adicionando o service |
 | `settings.html` | Configuração de assinatura/saudação por user, mais gerenciamento de users (admin only) |
 
-Auth é Firebase. Config por usuário (assinaturas, categorias, favoritos) fica no Firestore em `settings/{uid}`. Dados administrativos (criar usuários) checam o flag `isAdmin` no mesmo doc.
+Auth é Firebase (projeto pessoal do dev — ver a seção [O que esse app NÃO faz](#o-que-esse-app-nÃo-faz) pra detalhe sobre o que vai e o que não vai pra lá). Config por usuário (assinaturas, categorias, favoritos) fica no Firestore em `settings/{uid}`, e os templates que o time escreve ficam em `templates/{uid}/userTemplates/{name}`. Dados administrativos (criar usuários) checam o flag `isAdmin` no mesmo doc.
 
 Código compartilhado de front-end em `js/`:
 
