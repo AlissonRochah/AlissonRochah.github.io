@@ -63,11 +63,116 @@
   color: var(--text-subtle);
 }
 
-.btn-sort {
-  height: 38px;
-  padding: 0 14px;
-  font-size: 0.8rem;
+/* ========================================
+   FILTER + SORT BAR
+   ======================================== */
+.filter-sort-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.category-chips {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-chip {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur) var(--ease);
+}
+
+.filter-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.filter-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+html.light .filter-chip.active {
+  color: var(--accent);
+}
+
+.sort-control-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sort-control {
+  display: flex;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+}
+
+.apply-sort-btn {
+  height: 30px;
+  font-size: 0.78rem;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur) var(--ease);
+}
+
+.sort-btn:hover {
+  color: var(--text-primary);
+}
+
+.sort-btn.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* ========================================
+   GROUP HEADERS (category sort)
+   ======================================== */
+.group-header {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 14px 4px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.group-header:first-child {
+  padding-top: 0;
 }
 
 .template-count {
@@ -139,42 +244,54 @@
 .drag-handle {
   display: flex;
   align-items: center;
+  color: var(--text-muted);
+  transition: color var(--dur) var(--ease);
+  touch-action: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.template-list.manual-mode .template-card {
   cursor: grab;
-  color: var(--text-subtle);
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease),
-              color var(--dur) var(--ease);
   touch-action: none;
 }
 
-.drag-handle:hover {
-  color: var(--text-muted);
-}
-
-.drag-handle:active {
+.template-list.manual-mode .template-card:active {
   cursor: grabbing;
 }
 
-.template-card:hover .drag-handle {
-  opacity: 1;
+.template-list.manual-mode .template-card-actions,
+.template-list.manual-mode button {
+  cursor: pointer;
+  touch-action: auto;
 }
 
 .template-card.dragging {
-  opacity: 0.3;
+  opacity: 0.35;
 }
 
-.template-card.drag-over {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), var(--shadow-ring);
-}
-
-.drag-clone {
+.drag-ghost {
   position: fixed;
   z-index: 1000;
   pointer-events: none;
-  opacity: 0.9;
+  opacity: 0.95;
   box-shadow: var(--shadow-lg);
-  transform: rotate(1deg);
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  transform: rotate(0.5deg);
+}
+
+.drag-indicator {
+  position: fixed;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 999;
+  display: none;
+  box-shadow: 0 0 0 2px var(--bg-primary);
 }
 
 .template-card-title {

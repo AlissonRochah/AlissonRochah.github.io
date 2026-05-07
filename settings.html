@@ -56,31 +56,22 @@
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById("user-email").innerText = user.email;
-                loadTheme();
                 loadSettings(user.uid);
             } else {
                 window.location.href = "index.html";
             }
         });
 
-        // ========== THEME ==========
+        // ========== TABS ==========
 
-        window.setTheme = function (theme) {
-            localStorage.setItem("theme", theme);
-            if (theme === "light") {
-                document.documentElement.classList.add("light");
-            } else {
-                document.documentElement.classList.remove("light");
-            }
-            document.getElementById("theme-dark").classList.toggle("active", theme === "dark");
-            document.getElementById("theme-light").classList.toggle("active", theme === "light");
+        window.showTab = function (tabKey) {
+            document.querySelectorAll(".settings-tab").forEach((t) => {
+                t.classList.toggle("active", t.dataset.tab === tabKey);
+            });
+            document.querySelectorAll(".settings-panel").forEach((p) => {
+                p.classList.toggle("active", p.dataset.panel === tabKey);
+            });
         };
-
-        function loadTheme() {
-            const theme = localStorage.getItem("theme") || "dark";
-            document.getElementById("theme-dark").classList.toggle("active", theme === "dark");
-            document.getElementById("theme-light").classList.toggle("active", theme === "light");
-        }
 
         // ========== GREETING ==========
 
@@ -364,9 +355,9 @@
                         categories = data.categories;
                     }
 
-                    // Admin-only sections
+                    // Admin-only tab
                     if (data.isAdmin) {
-                        document.getElementById("user-management-section").style.display = "";
+                        document.getElementById("tab-users").style.display = "";
                     }
                 }
 
@@ -507,27 +498,17 @@
     <main class="settings-main">
         <h1>Settings</h1>
 
-        <!-- Appearance Section -->
-        <section class="settings-section">
-            <div class="section-header">
-                <div class="section-info">
-                    <h2>Appearance</h2>
-                    <p>Choose your preferred theme.</p>
-                </div>
-            </div>
-            <div class="theme-switcher">
-                <button id="theme-dark" class="theme-option active" onclick="setTheme('dark')">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                    Dark
-                </button>
-                <button id="theme-light" class="theme-option" onclick="setTheme('light')">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-                    Light
-                </button>
-            </div>
-        </section>
+        <!-- Tab Bar -->
+        <div class="settings-tabs" role="tablist">
+            <button class="settings-tab active" data-tab="greeting" onclick="showTab('greeting')" role="tab">Greeting</button>
+            <button class="settings-tab" data-tab="categories" onclick="showTab('categories')" role="tab">Categories</button>
+            <button class="settings-tab" data-tab="signature" onclick="showTab('signature')" role="tab">Signature</button>
+            <button class="settings-tab" data-tab="bridge" onclick="showTab('bridge')" role="tab">Bridge</button>
+            <button class="settings-tab" id="tab-users" data-tab="users" onclick="showTab('users')" role="tab" style="display:none;">Users</button>
+        </div>
 
-        <!-- Greeting Section -->
+        <!-- Greeting Panel -->
+        <div class="settings-panel active" data-panel="greeting">
         <section class="settings-section">
             <div class="section-header">
                 <div class="section-info">
@@ -586,8 +567,10 @@
                 </div>
             </div>
         </section>
+        </div><!-- /greeting panel -->
 
-        <!-- Categories Section -->
+        <!-- Categories Panel -->
+        <div class="settings-panel" data-panel="categories">
         <section class="settings-section">
             <div class="section-header">
                 <div class="section-info">
@@ -603,8 +586,10 @@
                 <div id="category-list" class="category-list"></div>
             </div>
         </section>
+        </div><!-- /categories panel -->
 
-        <!-- Signature Section -->
+        <!-- Signature Panel -->
+        <div class="settings-panel" data-panel="signature">
         <section class="settings-section">
             <div class="section-header">
                 <div class="section-info">
@@ -680,30 +665,27 @@ Your Name</pre>
             </div>
         </section>
 
+        </div><!-- /signature panel -->
+
+        <!-- Bridge Panel -->
+        <div class="settings-panel" data-panel="bridge">
         <section class="settings-section">
             <div class="section-header">
                 <div class="section-info">
-                    <h2>MasterBot Bridge (Jobber)</h2>
-                    <p>Browser extension that lets the units page create Jobber jobs using your existing browser session. Nothing is stored on the server — all data stays in your browser.</p>
+                    <h2>MasterBot Bridge</h2>
+                    <p>Browser extension for Jobber job creation.</p>
                 </div>
             </div>
-            <div style="margin-top:12px; display:flex; flex-direction:column; gap:12px;">
-                <a href="extension.zip" download class="btn-primary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 16px; border-radius:8px; text-decoration:none; max-width:fit-content;">Download Bridge Extension (.zip)</a>
-                <ol style="font-size:0.85rem; color:var(--text-secondary); margin-left:20px; display:flex; flex-direction:column; gap:6px;">
-                    <li>Click the button above to download <code>extension.zip</code>.</li>
-                    <li>Unzip it anywhere on your computer (you'll get a folder called <code>extension</code>).</li>
-                    <li>Open <code>brave://extensions</code> (or <code>chrome://extensions</code>).</li>
-                    <li>Toggle <strong>Developer mode</strong> ON (top-right).</li>
-                    <li>Click <strong>Load unpacked</strong> and select the unzipped <code>extension</code> folder.</li>
-                    <li>Make sure you're logged into <a href="https://secure.getjobber.com" target="_blank" rel="noopener">secure.getjobber.com</a> in the same browser.</li>
-                    <li>Reload the units page — the Extras section will now work.</li>
-                </ol>
-                <p style="font-size:0.72rem; color:var(--text-muted);">The extension's id is fixed (<code>dmaenamjjgeclplnofeoiipddinihhhl</code>) thanks to the embedded public key in <code>manifest.json</code>, so it works the same on any computer without configuration.</p>
-            </div>
+            <a href="extension.zip" download class="btn btn-primary" style="margin-top:18px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Extension
+            </a>
         </section>
+        </div><!-- /bridge panel -->
 
-        <!-- User Management Section (admin only) -->
-        <section id="user-management-section" class="settings-section" style="display: none;">
+        <!-- Users Panel (admin only) -->
+        <div class="settings-panel" data-panel="users">
+        <section id="user-management-section" class="settings-section">
             <div class="section-header">
                 <div class="section-info">
                     <h2>User Management</h2>
@@ -720,6 +702,7 @@ Your Name</pre>
             </div>
             <button id="create-user-btn" onclick="createNewUser()" class="btn btn-primary btn-sm">Create User</button>
         </section>
+        </div><!-- /users panel -->
 
         <button onclick="saveSettings()" class="btn btn-primary btn-save">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>

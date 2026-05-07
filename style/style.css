@@ -1,56 +1,56 @@
 /* ========================================
-   DESIGN TOKENS — Ink Navy + Electric Blue
+   DESIGN TOKENS — Clean dark (slate, refined)
    ======================================== */
 :root {
-  /* Backgrounds */
-  --bg-primary:   #070a10;
-  --bg-secondary: #0c1119;
-  --bg-card:      #0c1119;
-  --bg-elevated:  #10151f;
-  --bg-hover:     #10151f;
-  --bg-input:     #0a0e16;
+  /* Backgrounds — soft slate, not pure black */
+  --bg-primary:   #0d1117;
+  --bg-secondary: #151b23;
+  --bg-card:      #151b23;
+  --bg-elevated:  #1c2230;
+  --bg-hover:     #1c2230;
+  --bg-input:     #11161e;
 
-  /* Borders */
-  --border:        #161d2b;
-  --border-strong: #1f2638;
+  /* Borders — visible but quiet */
+  --border:        #232a36;
+  --border-strong: #2f3744;
   --border-focus:  #3b82f6;
 
-  /* Text */
-  --text-primary:   #f0f3f8;
-  --text-secondary: #b4bccb;
-  --text-muted:     #818a9c;
-  --text-subtle:    #555e70;
+  /* Text — calmer than near-white */
+  --text-primary:   #e6e9ef;
+  --text-secondary: #a4adbc;
+  --text-muted:     #7a8394;
+  --text-subtle:    #515b6e;
 
-  /* Accent — Electric Blue */
+  /* Accent — refined blue, not neon */
   --accent:        #3b82f6;
   --accent-hover:  #2563eb;
   --accent-active: #1d4ed8;
-  --accent-soft:   rgba(59, 130, 246, 0.14);
-  --accent-ring:   rgba(59, 130, 246, 0.25);
+  --accent-soft:   rgba(59, 130, 246, 0.10);
+  --accent-ring:   rgba(59, 130, 246, 0.22);
 
   /* Semantic */
   --danger:       #ef4444;
   --danger-hover: #dc2626;
-  --danger-soft:  rgba(239, 68, 68, 0.14);
-  --danger-ring:  rgba(239, 68, 68, 0.25);
+  --danger-soft:  rgba(239, 68, 68, 0.10);
+  --danger-ring:  rgba(239, 68, 68, 0.22);
 
   --success:      #10b981;
-  --success-soft: rgba(16, 185, 129, 0.12);
+  --success-soft: rgba(16, 185, 129, 0.10);
 
   --warning:      #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.12);
+  --warning-soft: rgba(245, 158, 11, 0.10);
 
   /* Radii */
   --radius-sm: 6px;
-  --radius:    10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
+  --radius:    8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-full: 999px;
 
-  /* Shadows */
+  /* Shadows — subtle, layered, no glow */
   --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow:      0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg:   0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow:      0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-lg:   0 10px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.25);
   --shadow-ring: 0 0 0 3px var(--accent-ring);
 
   /* Motion */
@@ -65,28 +65,31 @@
 
 /* Light Theme */
 html.light {
-  --bg-primary:   #f7f8fb;
+  --bg-primary:   #fafbfc;
   --bg-secondary: #ffffff;
   --bg-card:      #ffffff;
-  --bg-elevated:  #f1f3f8;
-  --bg-hover:     #f1f3f8;
-  --bg-input:     #f7f8fb;
+  --bg-elevated:  #f4f6f8;
+  --bg-hover:     #f1f3f6;
+  --bg-input:     #ffffff;
 
-  --border:        #e4e7ee;
-  --border-strong: #d4d8e1;
-  --border-focus:  #3b82f6;
+  --border:        #e5e8ec;
+  --border-strong: #d4d8de;
+  --border-focus:  #2563eb;
 
-  --text-primary:   #0b0f1a;
+  --text-primary:   #0f172a;
   --text-secondary: #475569;
   --text-muted:     #64748b;
   --text-subtle:    #94a3b8;
 
-  --accent-soft: rgba(59, 130, 246, 0.1);
-  --accent-ring: rgba(59, 130, 246, 0.2);
+  --accent:        #2563eb;
+  --accent-hover:  #1d4ed8;
+  --accent-active: #1e40af;
+  --accent-soft:   rgba(37, 99, 235, 0.08);
+  --accent-ring:   rgba(37, 99, 235, 0.18);
 
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow:    0 4px 16px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.12);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow:    0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 24px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
 }
 
 /* ========================================
@@ -265,17 +268,11 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  background: rgba(12, 17, 25, 0.8);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 100;
-}
-
-html.light .app-header {
-  background: rgba(255, 255, 255, 0.8);
 }
 
 .header-left {
@@ -293,8 +290,6 @@ html.light .app-header {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  box-shadow: 0 0 0 1px var(--border-strong),
-              0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .header-nav {
@@ -318,8 +313,7 @@ html.light .app-header {
 
 .nav-link.active {
   color: var(--text-primary);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
+  background: var(--bg-elevated);
 }
 
 .header-right {

@@ -22,7 +22,7 @@
         import { showToast } from "./js/toast.js";
         import { renderHeader } from "./js/nav.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-        import { collection, setDoc, getDocs, deleteDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+        import { collection, setDoc, getDocs, deleteDoc, doc, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
         renderHeader("templates");
 
@@ -30,6 +30,8 @@
         let editingTemplateId = null;
         let userCategories = [];
         let allTemplates = [];
+        let currentSort = "manual";       // "manual" | "alpha" | "category"
+        let currentFilter = "all";        // "all" | category name
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -133,23 +135,20 @@
             allTemplates = [];
             querySnapshot.forEach((docSnap) => {
                 const data = docSnap.data();
-                if (!data.name) return; // Skip invalid templates
+                if (!data.name) return;
                 allTemplates.push({ id: docSnap.id, order: data.order ?? 999999, ...data });
             });
 
-            // Assign order to templates that don't have one yet
+            // Backfill missing order values once
             allTemplates.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
             let needsOrderUpdate = false;
             allTemplates.forEach((t, i) => {
-                if (t.order === 999999) {
-                    t.order = i;
-                    needsOrderUpdate = true;
-                }
+                if (t.order === 999999) { t.order = i; needsOrderUpdate = true; }
             });
 
-            renderTemplates(userId);
+            renderCategoryChips();
+            renderTemplates();
 
-            // Update order in background (don't block rendering)
             if (needsOrderUpdate) {
                 try {
                     for (const t of allTemplates) {
@@ -162,16 +161,78 @@
             }
         }
 
-        function renderTemplates(userId) {
+        // ========== FILTER + SORT ==========
+
+        function renderCategoryChips() {
+            const host = document.getElementById("category-chips");
+            const usedCats = [...new Set(allTemplates.map(t => t.category).filter(Boolean))].sort();
+            const chips = [
+                `<button class="filter-chip ${currentFilter === "all" ? "active" : ""}" onclick="setFilter('all')">All</button>`,
+                ...usedCats.map(c => `<button class="filter-chip ${currentFilter === c ? "active" : ""}" onclick="setFilter('${c.replace(/'/g, "\\'")}')">${c}</button>`)
+            ];
+            host.innerHTML = chips.join("");
+        }
+
+        window.setFilter = function (cat) {
+            currentFilter = cat;
+            renderCategoryChips();
+            renderTemplates();
+        };
+
+        window.setSort = function (mode) {
+            if (currentSort === mode) return;
+            currentSort = mode;
+            document.querySelectorAll(".sort-btn").forEach(b => {
+                b.classList.toggle("active", b.dataset.sort === mode);
+            });
+            // Show "Apply this order" only when in a non-manual preview
+            const applyBtn = document.getElementById("apply-sort-btn");
+            applyBtn.style.display = mode === "manual" ? "none" : "";
+            renderTemplates();
+        };
+
+        function templateCardHTML(data) {
+            const formattedDescription = data.description.replace(/\\n/g, "<br>");
+            const categoryBadge = data.category ? `<span class="category-badge">${data.category}</span>` : '';
+            const handle = currentSort === "manual"
+                ? `<span class="drag-handle" title="Drag to reorder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg></span>`
+                : '';
+            return `
+                <div class="template-card-header">
+                    <div class="template-card-title-row">
+                        ${handle}
+                        <h3 class="template-card-title">${data.name}</h3>
+                        ${categoryBadge}
+                    </div>
+                    <div class="template-card-actions">
+                        <button onclick="editTemplate('${data.id}')" class="btn-icon btn-edit" title="Edit template">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button onclick="confirmDelete('${currentUserId}', '${data.id}')" class="btn-icon btn-delete" title="Delete template">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <p class="template-card-desc">${formattedDescription}</p>
+            `;
+        }
+
+        function buildCard(data) {
+            const item = document.createElement("div");
+            item.className = "template-card";
+            item.dataset.id = data.id;
+            item.innerHTML = templateCardHTML(data);
+            return item;
+        }
+
+        function renderTemplates() {
             const list = document.getElementById("template-list");
             const emptyState = document.getElementById("empty-state");
             const counter = document.getElementById("template-count");
             const query = document.getElementById("search-input").value.toLowerCase();
 
             list.innerHTML = "";
-
-            let filtered = allTemplates.filter(t => t.name.toLowerCase().includes(query));
-            filtered.sort((a, b) => a.order - b.order);
+            list.classList.toggle("manual-mode", currentSort === "manual");
 
             counter.textContent = allTemplates.length + " template" + (allTemplates.length !== 1 ? "s" : "");
 
@@ -181,166 +242,225 @@
             }
             emptyState.style.display = "none";
 
-            filtered.forEach((data, idx) => {
-                const formattedDescription = data.description.replace(/\\n/g, "<br>");
-                const categoryBadge = data.category
-                    ? `<span class="category-badge">${data.category}</span>`
-                    : '';
-
-                const item = document.createElement("div");
-                item.className = "template-card";
-                item.draggable = true;
-                item.dataset.id = data.id;
-                item.ondragstart = (e) => onDragStart(e, data.id);
-                item.ondragend = onDragEnd;
-                item.ondragover = onDragOver;
-                item.ondrop = (e) => onDropTemplate(e, data.id);
-                item.ontouchstart = (e) => {
-                    if (e.target.closest(".drag-handle")) onTouchDragStart(e, data.id);
-                };
-                item.innerHTML = `
-                    <div class="template-card-header">
-                        <div class="template-card-title-row">
-                            <span class="drag-handle" title="Drag to reorder">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg>
-                            </span>
-                            <h3 class="template-card-title">${data.name}</h3>
-                            ${categoryBadge}
-                        </div>
-                        <div class="template-card-actions">
-                            <button onclick="editTemplate('${data.id}')" class="btn-icon btn-edit" title="Edit template">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            </button>
-                            <button onclick="confirmDelete('${userId}', '${data.id}')" class="btn-icon btn-delete" title="Delete template">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
-                        </div>
-                    </div>
-                    <p class="template-card-desc">${formattedDescription}</p>
-                `;
-                list.appendChild(item);
+            let visible = allTemplates.filter(t => {
+                if (query && !t.name.toLowerCase().includes(query)) return false;
+                if (currentFilter !== "all" && (t.category || "") !== currentFilter) return false;
+                return true;
             });
+
+            if (currentSort === "manual") {
+                visible.sort((a, b) => a.order - b.order);
+                visible.forEach(t => list.appendChild(buildCard(t)));
+            } else if (currentSort === "alpha") {
+                visible.sort((a, b) => a.name.localeCompare(b.name));
+                visible.forEach(t => list.appendChild(buildCard(t)));
+            } else if (currentSort === "category") {
+                const groups = new Map();
+                visible.forEach(t => {
+                    const key = t.category || "Uncategorized";
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key).push(t);
+                });
+                [...groups.keys()].sort((a, b) => {
+                    if (a === "Uncategorized") return 1;
+                    if (b === "Uncategorized") return -1;
+                    return a.localeCompare(b);
+                }).forEach(key => {
+                    const header = document.createElement("div");
+                    header.className = "group-header";
+                    header.textContent = key;
+                    list.appendChild(header);
+                    groups.get(key).sort((a, b) => a.name.localeCompare(b.name)).forEach(t => list.appendChild(buildCard(t)));
+                });
+            }
         }
 
-        // Drag and drop reordering
-        let draggedId = null;
+        // ========== DRAG & DROP (pointer-based, manual mode only) ==========
 
-        window.onDragStart = function (e, templateId) {
-            draggedId = templateId;
-            e.dataTransfer.effectAllowed = "move";
-            e.target.closest(".template-card").classList.add("dragging");
-        };
+        let dragState = null; // { id, startY, ghost, indicator }
 
-        window.onDragEnd = function (e) {
-            draggedId = null;
-            document.querySelectorAll(".template-card").forEach(c => {
-                c.classList.remove("dragging", "drag-over");
-            });
-        };
-
-        window.onDragOver = function (e) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
+        document.getElementById("template-list").addEventListener("pointerdown", (e) => {
+            if (currentSort !== "manual") return;
+            // Don't start drag if user clicked an action button (edit/delete) or its icon
+            if (e.target.closest("button")) return;
             const card = e.target.closest(".template-card");
-            if (card) {
-                document.querySelectorAll(".template-card.drag-over").forEach(c => c.classList.remove("drag-over"));
-                card.classList.add("drag-over");
-            }
-        };
-
-        window.onDropTemplate = async function (e, targetId) {
+            if (!card) return;
+            // Only react to primary button (left mouse / single touch)
+            if (e.button !== undefined && e.button !== 0) return;
             e.preventDefault();
-            if (!draggedId || draggedId === targetId) return;
+            startDrag(card, e);
+        });
 
-            const sorted = [...allTemplates].sort((a, b) => a.order - b.order);
-            const fromIdx = sorted.findIndex(t => t.id === draggedId);
-            const toIdx = sorted.findIndex(t => t.id === targetId);
-            if (fromIdx === -1 || toIdx === -1) return;
+        function startDrag(card, e) {
+            const rect = card.getBoundingClientRect();
+            const ghost = card.cloneNode(true);
+            ghost.classList.add("drag-ghost");
+            ghost.style.width = rect.width + "px";
+            ghost.style.left = rect.left + "px";
+            ghost.style.top = rect.top + "px";
+            document.body.appendChild(ghost);
 
-            const [moved] = sorted.splice(fromIdx, 1);
-            sorted.splice(toIdx, 0, moved);
-
-            sorted.forEach((t, i) => t.order = i);
-            renderTemplates(currentUserId);
-
-            for (const t of sorted) {
-                const ref = doc(doc(db, "templates", currentUserId), "userTemplates", t.id);
-                await setDoc(ref, { order: t.order }, { merge: true });
-            }
-        };
-
-        // Touch drag support
-        let touchDragId = null;
-        let touchClone = null;
-
-        window.onTouchDragStart = function (e, templateId) {
-            const touch = e.touches[0];
-            touchDragId = templateId;
-
-            const card = e.target.closest(".template-card");
-            touchClone = card.cloneNode(true);
-            touchClone.className = "template-card drag-clone";
-            touchClone.style.width = card.offsetWidth + "px";
-            document.body.appendChild(touchClone);
-            touchClone.style.top = touch.clientY - 20 + "px";
-            touchClone.style.left = card.getBoundingClientRect().left + "px";
+            const indicator = document.createElement("div");
+            indicator.className = "drag-indicator";
+            document.body.appendChild(indicator);
 
             card.classList.add("dragging");
-            e.preventDefault();
-        };
 
-        document.addEventListener("touchmove", function (e) {
-            if (!touchDragId || !touchClone) return;
-            const touch = e.touches[0];
-            touchClone.style.top = touch.clientY - 20 + "px";
+            dragState = {
+                id: card.dataset.id,
+                offsetY: e.clientY - rect.top,
+                ghost,
+                indicator,
+                targetIndex: null,
+            };
 
-            document.querySelectorAll(".template-card.drag-over").forEach(c => c.classList.remove("drag-over"));
-            const el = document.elementFromPoint(touch.clientX, touch.clientY);
-            if (el) {
-                const card = el.closest(".template-card:not(.drag-clone)");
-                if (card) card.classList.add("drag-over");
-            }
-            e.preventDefault();
-        }, { passive: false });
+            try { card.setPointerCapture?.(e.pointerId); } catch (_) {}
+            document.addEventListener("pointermove", onDragMove);
+            document.addEventListener("pointerup", onDragEnd, { once: true });
+            document.addEventListener("pointercancel", onDragEnd, { once: true });
+        }
 
-        document.addEventListener("touchend", async function (e) {
-            if (!touchDragId) return;
+        function onDragMove(e) {
+            if (!dragState) return;
+            dragState.ghost.style.top = (e.clientY - dragState.offsetY) + "px";
 
-            if (touchClone) {
-                touchClone.remove();
-                touchClone = null;
-            }
-
-            const touch = e.changedTouches[0];
-            const el = document.elementFromPoint(touch.clientX, touch.clientY);
-            let targetId = null;
-            if (el) {
-                const card = el.closest(".template-card");
-                if (card && card.dataset.id) targetId = card.dataset.id;
+            const list = document.getElementById("template-list");
+            const cards = [...list.querySelectorAll(".template-card:not(.dragging)")];
+            if (cards.length === 0) {
+                dragState.indicator.style.display = "none";
+                dragState.targetIndex = 0;
+                return;
             }
 
-            document.querySelectorAll(".template-card").forEach(c => {
-                c.classList.remove("dragging", "drag-over");
+            // Find which card the pointer is over (or after)
+            let insertBefore = null;
+            for (const c of cards) {
+                const r = c.getBoundingClientRect();
+                if (e.clientY < r.top + r.height / 2) { insertBefore = c; break; }
+            }
+
+            const listRect = list.getBoundingClientRect();
+            const ind = dragState.indicator;
+            ind.style.display = "block";
+            ind.style.left = listRect.left + "px";
+            ind.style.width = listRect.width + "px";
+
+            if (insertBefore) {
+                const r = insertBefore.getBoundingClientRect();
+                ind.style.top = (r.top - 5) + "px";
+                dragState.targetIndex = cards.indexOf(insertBefore);
+            } else {
+                const last = cards[cards.length - 1].getBoundingClientRect();
+                ind.style.top = (last.bottom + 1) + "px";
+                dragState.targetIndex = cards.length;
+            }
+        }
+
+        function onDragEnd() {
+            document.removeEventListener("pointermove", onDragMove);
+            if (!dragState) return;
+
+            const { id, ghost, indicator, targetIndex } = dragState;
+            ghost.remove();
+            indicator.remove();
+            document.querySelector(".template-card.dragging")?.classList.remove("dragging");
+            dragState = null;
+
+            if (targetIndex == null) return;
+
+            // Compute new visible-order splice, then merge with full list.
+            // targetIndex was computed against cards excluding the dragging one,
+            // which equals visibleIds after we remove the dragged id — so use it as-is.
+            const list = document.getElementById("template-list");
+            const visibleIds = [...list.querySelectorAll(".template-card")].map(c => c.dataset.id);
+            const fromIdx = visibleIds.indexOf(id);
+            if (fromIdx === -1) return;
+            visibleIds.splice(fromIdx, 1);
+            visibleIds.splice(targetIndex, 0, id);
+
+            // Merge visible reorder into the full list — hidden (filtered) items keep their
+            // relative spots; visible items take the new sequence.
+            const baseIds = [...allTemplates].sort((a, b) => a.order - b.order).map(t => t.id);
+            const visibleSet = new Set(visibleIds);
+            const visibleQueue = [...visibleIds];
+            const newOrder = baseIds.map(origId => visibleSet.has(origId) ? visibleQueue.shift() : origId);
+
+            // Skip if nothing actually changed
+            if (newOrder.join("|") === baseIds.join("|")) {
+                renderTemplates();
+                return;
+            }
+
+            // Compute which templates actually need a write (order changed)
+            const oldOrderById = new Map(allTemplates.map(t => [t.id, t.order]));
+            const changes = [];
+            newOrder.forEach((id, i) => {
+                if (oldOrderById.get(id) !== i) changes.push({ id, order: i });
+                const t = allTemplates.find(t => t.id === id);
+                if (t) t.order = i;
             });
+            renderTemplates();
+            persistOrderChanges(changes);
+        }
 
-            if (targetId && targetId !== touchDragId) {
-                const sorted = [...allTemplates].sort((a, b) => a.order - b.order);
-                const fromIdx = sorted.findIndex(t => t.id === touchDragId);
-                const toIdx = sorted.findIndex(t => t.id === targetId);
-                if (fromIdx !== -1 && toIdx !== -1) {
-                    const [moved] = sorted.splice(fromIdx, 1);
-                    sorted.splice(toIdx, 0, moved);
-                    sorted.forEach((t, i) => t.order = i);
-                    renderTemplates(currentUserId);
-                    for (const t of sorted) {
-                        const ref = doc(doc(db, "templates", currentUserId), "userTemplates", t.id);
-                        await setDoc(ref, { order: t.order }, { merge: true });
-                    }
+        async function persistOrderChanges(changes) {
+            if (changes.length === 0) return;
+            try {
+                const batch = writeBatch(db);
+                const userDocRef = doc(db, "templates", currentUserId);
+                for (const c of changes) {
+                    batch.set(doc(userDocRef, "userTemplates", c.id), { order: c.order }, { merge: true });
                 }
+                await batch.commit();
+                showToast("Order saved");
+            } catch (e) {
+                console.error("Save order error:", e);
+                showToast("Failed to save order: " + e.message, "error");
             }
+        }
 
-            touchDragId = null;
-        });
+        // ========== APPLY SORT (write current view as the new order) ==========
+
+        window.applyCurrentSort = async function () {
+            if (currentSort === "manual") return;
+
+            const list = document.getElementById("template-list");
+            const visibleIds = [...list.querySelectorAll(".template-card")].map(c => c.dataset.id);
+            if (visibleIds.length === 0) return;
+
+            // Merge into the full id list so filtered-out items keep their spots
+            const baseIds = [...allTemplates].sort((a, b) => a.order - b.order).map(t => t.id);
+            const visibleSet = new Set(visibleIds);
+            const visibleQueue = [...visibleIds];
+            const newOrder = baseIds.map(origId => visibleSet.has(origId) ? visibleQueue.shift() : origId);
+
+            const btn = document.getElementById("apply-sort-btn");
+            btn.disabled = true;
+            btn.textContent = "Applying...";
+            try {
+                const batch = writeBatch(db);
+                const userDocRef = doc(db, "templates", currentUserId);
+                const oldOrderById = new Map(allTemplates.map(t => [t.id, t.order]));
+                let touched = 0;
+                newOrder.forEach((id, i) => {
+                    if (oldOrderById.get(id) !== i) {
+                        batch.set(doc(userDocRef, "userTemplates", id), { order: i }, { merge: true });
+                        touched++;
+                    }
+                    const t = allTemplates.find(t => t.id === id);
+                    if (t) t.order = i;
+                });
+                if (touched > 0) await batch.commit();
+                showToast("Order applied — also visible in Messages");
+                setSort("manual");
+            } catch (e) {
+                console.error("Apply sort error:", e);
+                showToast("Failed to apply: " + e.message, "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Apply this order";
+            }
+        };
 
         // Edit template
         window.editTemplate = async function (templateId) {
@@ -405,7 +525,7 @@
         };
 
         window.filterTemplates = function () {
-            renderTemplates(currentUserId);
+            renderTemplates();
         };
 
         // Export templates
@@ -497,6 +617,28 @@
                 Add
             </button>
         </div>
+        <!-- Filter / Sort Bar -->
+        <div class="filter-sort-bar">
+            <div id="category-chips" class="category-chips"></div>
+            <div class="sort-control-wrap">
+                <div class="sort-control">
+                    <button class="sort-btn active" data-sort="manual" onclick="setSort('manual')" title="Custom order — drag to reorder">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="9" y2="18"/></svg>
+                        Manual
+                    </button>
+                    <button class="sort-btn" data-sort="alpha" onclick="setSort('alpha')" title="Alphabetical preview">
+                        A–Z
+                    </button>
+                    <button class="sort-btn" data-sort="category" onclick="setSort('category')" title="Preview grouped by category">
+                        Category
+                    </button>
+                </div>
+                <button id="apply-sort-btn" class="btn btn-primary btn-sm apply-sort-btn" onclick="applyCurrentSort()" style="display:none;">
+                    Apply this order
+                </button>
+            </div>
+        </div>
+
         <p id="template-count" class="template-count"></p>
 
         <!-- Template List -->

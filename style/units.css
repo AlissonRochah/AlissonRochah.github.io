@@ -23,8 +23,8 @@
 
 .units-search:focus {
     outline: none;
-    border-color: var(--accent, #0f3a82);
-    box-shadow: 0 0 0 3px rgba(15, 58, 130, 0.15);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-ring);
 }
 
 .units-count {
@@ -41,7 +41,8 @@
 }
 
 .units-status.loading { color: var(--accent, #0f3a82); }
-.units-status.error { color: #c0392b; }
+.units-status.error { color: var(--danger); }
+.units-status.warning { color: var(--warning); }
 
 .units-table-wrap {
     background: var(--bg-elevated, #fff);
@@ -105,8 +106,8 @@
     font-weight: 600;
     text-transform: capitalize;
 }
-.status-active { background: #e6f4ea; color: #137333; }
-.status-inactive { background: #fce8e6; color: #a50e0e; }
+.status-active { background: var(--success-soft); color: var(--success); }
+.status-inactive { background: var(--danger-soft); color: var(--danger); }
 
 .col-extras {
     white-space: nowrap;
@@ -476,7 +477,7 @@
 }
 .extras-form input[type="date"]:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+    box-shadow: var(--shadow-ring);
 }
 .extras-form input[type="date"]::-webkit-calendar-picker-indicator {
     cursor: pointer;

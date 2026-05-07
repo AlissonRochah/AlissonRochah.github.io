@@ -110,7 +110,7 @@
 .toggle input:checked + .toggle-slider::before {
   transform: translateX(20px);
   background: #fff;
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .toggle input:focus-visible + .toggle-slider {
@@ -118,42 +118,66 @@
 }
 
 /* ========================================
-   THEME SWITCHER
+   SETTINGS TABS (top-level)
    ======================================== */
-.theme-switcher {
+.settings-tabs {
   display: flex;
-  gap: 8px;
-  margin-top: 18px;
+  gap: 2px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.theme-option {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 14px;
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius);
+.settings-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.settings-tab {
+  position: relative;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
   font-family: var(--font-sans);
   font-size: 0.85rem;
   font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--bg-input);
+  color: var(--text-muted);
   cursor: pointer;
-  transition: all var(--dur) var(--ease);
+  white-space: nowrap;
+  transition: color var(--dur) var(--ease);
 }
 
-.theme-option:hover {
-  border-color: var(--border-strong);
+.settings-tab:hover {
   color: var(--text-primary);
 }
 
-.theme-option.active {
-  border-color: var(--accent);
+.settings-tab.active {
   color: var(--text-primary);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.3);
+}
+
+.settings-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+.settings-panel {
+  display: none;
+}
+
+.settings-panel.active {
+  display: block;
+  animation: panel-in 200ms var(--ease);
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ========================================
