@@ -21,8 +21,11 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js";
         import { auth, db, firebaseConfig } from "./js/firebase.js";
         import { showToast } from "./js/toast.js";
-        import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
+        import { renderHeader } from "./js/nav.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
         import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+
+        renderHeader("settings");
 
         // Secondary app instance used only for creating new users without
         // signing the admin out of the primary session.
@@ -494,33 +497,11 @@
             }
         };
 
-        window.logout = function () {
-            signOut(auth).then(() => {
-                window.location.href = "index.html";
-            });
-        };
     </script>
 </head>
 
 <body>
-    <!-- Header -->
-    <header class="app-header">
-        <div class="header-left">
-            <a href="messages.html" class="header-logo">
-                <img src="img/MasterLogo.jpg" alt="Logo">
-            </a>
-            <nav class="header-nav">
-                <a href="template.html" class="nav-link">Templates</a>
-                <a href="messages.html" class="nav-link">Messages</a>
-                <a href="units.html" class="nav-link">Units</a>
-                <a href="settings.html" class="nav-link active">Settings</a>
-            </nav>
-        </div>
-        <div class="header-right">
-            <span id="user-email" class="header-email"></span>
-            <button onclick="window.logout()" class="btn btn-sm btn-outline">Sign Out</button>
-        </div>
-    </header>
+    <header id="app-header" class="app-header"></header>
 
     <!-- Main Content -->
     <main class="settings-main">
