@@ -32,10 +32,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet --exit-code -- extension.zip; then
+          # Stage first so the diff also catches the file when it's brand-new
+          # (untracked) — the previous version of this step skipped the commit
+          # if extension.zip wasn't already tracked.
+          git add extension.zip
+          if git diff --cached --quiet --exit-code -- extension.zip; then
             echo "extension.zip unchanged, nothing to commit"
             exit 0
           fi
-          git add extension.zip
           git commit -m "chore: rebuild extension.zip"
           git push
