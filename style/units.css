@@ -70,9 +70,85 @@
     gap: 8px;
     margin-top: 4px;
 }
-.btn-description {
+.btn-description,
+.btn-gate {
     cursor: pointer;
 }
+
+/* Gate Access modal */
+.gate-access-modal {
+    max-width: 920px;
+}
+.gate-rows-header {
+    display: flex;
+    gap: 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    padding: 0 4px 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+}
+#gate-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+.gate-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.gate-input {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    padding: 0 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.gate-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--shadow-ring);
+}
+.gate-input::placeholder {
+    color: var(--text-subtle);
+}
+.gate-row-remove {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+}
+.gate-row-remove:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+.gate-progress {
+    margin-top: 14px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-height: 20px;
+}
+.gate-progress.loading { color: var(--accent); }
+.gate-progress.error   { color: var(--danger); }
+.gate-progress.warning { color: var(--warning); }
+.gate-progress.ok      { color: var(--success); }
+.gate-line {
+    padding: 4px 0;
+    font-size: 0.85rem;
+}
+.gate-line-ok  { color: var(--success); }
+.gate-line-err { color: var(--danger); }
 
 .units-table-wrap {
     background: var(--bg-elevated, #fff);

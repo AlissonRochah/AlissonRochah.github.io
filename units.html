@@ -87,6 +87,12 @@
             } catch (_) { /* ignore */ }
 
             await loadUnits();
+
+            // Warm the gate-access creds cache (24h, in extension storage) if any
+            // Champions Gate units are loaded — fire-and-forget.
+            if (allUnits.some(isChampionsGate)) {
+                gateEnsureCredsAsync();
+            }
         });
 
         async function loadUnits(forceFresh) {
@@ -259,6 +265,184 @@
             }
             return res.data;
         }
+
+        // ========== GATE ACCESS (Champions Gate) ==========
+        // Talks to the same MasterBot Bridge extension. Pre-warms the gate
+        // credentials cache (24h) on units load so the modal opens instantly.
+
+        async function gateEnsureCredsAsync() {
+            // Fire-and-forget; status only logged. Refresh happens lazily inside the extension.
+            const res = await jobberMessage("gate-ensure-creds", {});
+            if (!res || !res.ok) {
+                console.warn("[gate] ensure failed:", res && res.error);
+                return null;
+            }
+            return res.data;
+        }
+
+        function isChampionsGate(unit) {
+            return unit && /champions\s*gate/i.test(String(unit.resort || ""));
+        }
+
+        // Split a guest name string into {firstName, lastName} for the gate form.
+        // Heuristic: trim parens, split on space; last word = last name, rest = first name.
+        function splitGuestName(full) {
+            const cleaned = String(full || "").replace(/\([^)]*\)/g, "").trim().replace(/\s+/g, " ");
+            if (!cleaned) return { firstName: "", lastName: "" };
+            const parts = cleaned.split(" ");
+            if (parts.length === 1) return { firstName: "", lastName: parts[0] };
+            return { firstName: parts.slice(0, -1).join(" "), lastName: parts.slice(-1)[0] };
+        }
+
+        // Convert "2026-05-09" or "2026-05-09 14:00:00" to "MM/DD/YYYY".
+        function gateFmtDate(s) {
+            if (!s) return "";
+            const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (!m) return s;
+            return `${m[2]}/${m[3]}/${m[1]}`;
+        }
+
+        // Pull pre-fill rows from a unit's _stays (active + next + previous).
+        function gateRowsFromStays(unit) {
+            const stays = unit && unit._stays;
+            if (!stays) return [];
+            const out = [];
+            const seen = new Set();
+            const push = (s) => {
+                if (!s || !s.guest) return;
+                const k = (s.guest || "") + "|" + (s.ci || "") + "|" + (s.co || "");
+                if (seen.has(k)) return;
+                seen.add(k);
+                const { firstName, lastName } = splitGuestName(s.guest);
+                out.push({
+                    firstName,
+                    lastName,
+                    startDate: gateFmtDate(s.ci),
+                    endDate: gateFmtDate(s.co),
+                    notes: s.confirmation ? `Conf: ${s.confirmation}` : "",
+                });
+            };
+            push(stays.active);
+            push(stays.next);
+            push(stays.previous);
+            return out;
+        }
+
+        window.openGateModal = function (key) {
+            const u = filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key);
+            if (!u) return;
+            if (!isChampionsGate(u)) {
+                showToast("Gate Access is only for Champions Gate units", "error");
+                return;
+            }
+            const houseLabel = u.code || u.title || "(unknown)";
+            document.getElementById("gate-house-label").textContent = houseLabel;
+            document.getElementById("gate-modal").dataset.unitKey = u.key;
+            document.getElementById("gate-modal").dataset.house = houseLabel;
+            const rows = gateRowsFromStays(u);
+            renderGateRows(rows.length ? rows : [{ firstName: "", lastName: "", startDate: "", endDate: "", notes: "" }]);
+            document.getElementById("gate-progress").textContent = "";
+            document.getElementById("gate-progress").className = "gate-progress";
+            document.getElementById("gate-modal").classList.add("active");
+        };
+
+        window.closeGateModal = function () {
+            document.getElementById("gate-modal").classList.remove("active");
+        };
+
+        function renderGateRows(rows) {
+            const host = document.getElementById("gate-rows");
+            host.innerHTML = "";
+            rows.forEach((r, i) => host.appendChild(buildGateRow(r, i)));
+            updateGateRowIndices();
+        }
+
+        function buildGateRow(r, idx) {
+            const div = document.createElement("div");
+            div.className = "gate-row";
+            div.innerHTML = `
+                <input type="text" class="gate-input gate-first" placeholder="First name" value="${escapeHtml(r.firstName || "")}">
+                <input type="text" class="gate-input gate-last" placeholder="Last name" value="${escapeHtml(r.lastName || "")}">
+                <input type="text" class="gate-input gate-start" placeholder="MM/DD/YYYY" value="${escapeHtml(r.startDate || "")}">
+                <input type="text" class="gate-input gate-end" placeholder="MM/DD/YYYY" value="${escapeHtml(r.endDate || "")}">
+                <input type="text" class="gate-input gate-notes" placeholder="Notes (optional)" value="${escapeHtml(r.notes || "")}">
+                <button type="button" class="btn-icon btn-delete gate-row-remove" title="Remove">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            `;
+            div.querySelector(".gate-row-remove").addEventListener("click", () => {
+                if (document.querySelectorAll("#gate-rows .gate-row").length <= 1) return;
+                div.remove();
+                updateGateRowIndices();
+            });
+            return div;
+        }
+
+        function updateGateRowIndices() {
+            const rows = document.querySelectorAll("#gate-rows .gate-row");
+            rows.forEach((row, i) => {
+                row.querySelector(".gate-row-remove").disabled = rows.length <= 1;
+            });
+        }
+
+        window.gateAddRow = function () {
+            const host = document.getElementById("gate-rows");
+            host.appendChild(buildGateRow({}, host.children.length));
+            updateGateRowIndices();
+        };
+
+        window.gateSendGuests = async function () {
+            const modal = document.getElementById("gate-modal");
+            const house = modal.dataset.house;
+            const rows = [...document.querySelectorAll("#gate-rows .gate-row")];
+            const guests = rows.map((row) => ({
+                firstName: row.querySelector(".gate-first").value.trim(),
+                lastName:  row.querySelector(".gate-last").value.trim(),
+                startDate: row.querySelector(".gate-start").value.trim(),
+                endDate:   row.querySelector(".gate-end").value.trim(),
+                notes:     row.querySelector(".gate-notes").value.trim(),
+            })).filter((g) => g.lastName);
+
+            if (guests.length === 0) {
+                showToast("Add at least one last name", "error");
+                return;
+            }
+
+            const sendBtn = document.getElementById("gate-send-btn");
+            const progress = document.getElementById("gate-progress");
+            sendBtn.disabled = true;
+            sendBtn.textContent = `Sending ${guests.length}...`;
+            progress.textContent = "Logging into gateaccess.net…";
+            progress.className = "gate-progress loading";
+
+            try {
+                const res = await jobberMessage("gate-add-guests", { house, guests });
+                if (!res || !res.ok) {
+                    progress.textContent = "Failed: " + (res && res.error || "unknown error");
+                    progress.className = "gate-progress error";
+                    showToast("Gate add failed: " + (res && res.error || "unknown"), "error");
+                    return;
+                }
+                const results = res.data && res.data.results || [];
+                const ok = results.filter((r) => r.ok).length;
+                const fail = results.length - ok;
+                progress.innerHTML = results.map((r) => {
+                    const name = [r.firstName, r.lastName].filter(Boolean).join(" ") || "(no name)";
+                    return r.ok
+                        ? `<div class="gate-line gate-line-ok">✓ ${escapeHtml(name)}</div>`
+                        : `<div class="gate-line gate-line-err">✗ ${escapeHtml(name)} — ${escapeHtml(r.error || "")}</div>`;
+                }).join("");
+                progress.className = "gate-progress " + (fail === 0 ? "ok" : "warning");
+                showToast(fail === 0 ? `${ok} guest${ok!==1?"s":""} added to gate` : `${ok} ok, ${fail} failed`, fail === 0 ? "success" : "warning");
+            } catch (e) {
+                progress.textContent = "Error: " + (e && e.message || e);
+                progress.className = "gate-progress error";
+                showToast("Gate error: " + (e && e.message || e), "error");
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = "Send to Gate";
+            }
+        };
 
         async function maproAddComment(reservaId, casaId, comment) {
             const res = await jobberMessage("mapro-add-comment", { reservaId, casaId, comment });
@@ -619,7 +803,15 @@
                    </button>`
                 : "";
 
-            return `<div class="unit-details">${detailsRows}${descBtn ? `<div class="unit-details-actions">${descBtn}</div>` : ""}</div>${staysHtml(u)}${jobberExtrasHtml(u)}`;
+            const gateBtn = isChampionsGate(u)
+                ? `<button class="btn btn-sm btn-outline btn-gate" onclick="event.stopPropagation();window.openGateModal('${escapeHtml(u.key)}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Gate Access
+                   </button>`
+                : "";
+
+            const actionsHtml = (descBtn || gateBtn) ? `<div class="unit-details-actions">${descBtn}${gateBtn}</div>` : "";
+            return `<div class="unit-details">${detailsRows}${actionsHtml}</div>${staysHtml(u)}${jobberExtrasHtml(u)}`;
         }
 
         function fmtDate(s) {
@@ -1895,6 +2087,38 @@
             </div>
             <div class="modal-footer">
                 <button onclick="closeDescription()" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gate Access modal (Champions Gate) -->
+    <div id="gate-modal" class="modal-overlay" onclick="if(event.target===this)closeGateModal()">
+        <div class="modal gate-access-modal">
+            <div class="modal-header">
+                <h2>Send to Gate Access — <span id="gate-house-label" style="color: var(--text-muted); font-weight: 500;"></span></h2>
+                <button onclick="closeGateModal()" class="btn-icon" title="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="gate-rows-header">
+                    <span style="flex:1;">First name</span>
+                    <span style="flex:1;">Last name</span>
+                    <span style="flex:1;">Start (MM/DD/YYYY)</span>
+                    <span style="flex:1;">End (MM/DD/YYYY)</span>
+                    <span style="flex:1;">Notes</span>
+                    <span style="width:32px;"></span>
+                </div>
+                <div id="gate-rows"></div>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="gateAddRow()" style="margin-top: 8px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add row
+                </button>
+                <div id="gate-progress" class="gate-progress"></div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeGateModal()" class="btn btn-ghost">Cancel</button>
+                <button id="gate-send-btn" onclick="gateSendGuests()" class="btn btn-primary">Send to Gate</button>
             </div>
         </div>
     </div>

@@ -383,6 +383,342 @@ async function maproAddComment({ reservaId, casaId, comment }) {
     return json;
 }
 
+// ====================================================================
+// GATE ACCESS (gateaccess.net) — Champions Gate guest submission.
+// Reads credentials from a hardcoded Google Sheet using the user's own
+// Google session cookies. Cache lives only in chrome.storage.local; no
+// credentials ever leave the extension sandbox.
+// ====================================================================
+
+// Sheet ID from the URL: https://docs.google.com/spreadsheets/d/<ID>/edit
+// TODO: paste the real sheet ID here once you have it.
+const GATE_SHEET_ID = "REPLACE_WITH_GATE_ACCESS_SHEET_ID";
+
+const GATE_BASE = "https://gateaccess.net";
+const GATE_CREDS_CACHE_KEY = "gateCredsCache";
+const GATE_CREDS_TTL_MS = 24 * 60 * 60 * 1000;
+
+function gateNormalizeHouse(s) {
+    return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// Minimal RFC-4180-ish CSV parser (handles quoted fields with commas/newlines).
+function gateParseCsv(text) {
+    const rows = [];
+    let row = [];
+    let cur = "";
+    let inQuote = false;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (inQuote) {
+            if (c === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+            else if (c === '"') { inQuote = false; }
+            else { cur += c; }
+        } else {
+            if (c === '"') { inQuote = true; }
+            else if (c === ',') { row.push(cur); cur = ""; }
+            else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ""; }
+            else if (c === '\r') { /* skip */ }
+            else { cur += c; }
+        }
+    }
+    if (cur || row.length) { row.push(cur); rows.push(row); }
+    return rows;
+}
+
+async function gateFetchSheetCsv() {
+    if (!GATE_SHEET_ID || GATE_SHEET_ID.startsWith("REPLACE_")) {
+        throw new Error("GATE_SHEET_ID is not set in extension/background.js");
+    }
+    const url = `https://docs.google.com/spreadsheets/d/${GATE_SHEET_ID}/export?format=csv`;
+    const res = await fetch(url, { credentials: "include", redirect: "follow" });
+    const text = await res.text();
+    if (!res.ok) {
+        throw new Error(`Sheet HTTP ${res.status} — sign in to the right Google account in this browser`);
+    }
+    if (/<html/i.test(text.slice(0, 200))) {
+        throw new Error("Sheet returned HTML — wrong Google account or no access to the sheet");
+    }
+    return text;
+}
+
+function gateBuildMap(csvText) {
+    const rows = gateParseCsv(csvText);
+    if (rows.length < 2) throw new Error("Sheet has no data rows");
+
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+        const norm = rows[i].map(gateNormalizeHouse);
+        if (norm.includes("house") && norm.some((c) => c.includes("user")) && norm.includes("password")) {
+            headerIdx = i;
+            break;
+        }
+    }
+    if (headerIdx === -1) throw new Error("Header row not found (expected HOUSE / USER NAME / PASSWORD)");
+
+    const header = rows[headerIdx].map(gateNormalizeHouse);
+    const findCol = (...names) => {
+        for (const n of names) {
+            const idx = header.indexOf(gateNormalizeHouse(n));
+            if (idx >= 0) return idx;
+        }
+        return -1;
+    };
+    const houseCol = findCol("house");
+    const resortCol = findCol("resort");
+    const userCol = findCol("user name", "username");
+    const passCol = findCol("password");
+    const ccCol = findCol("community", "community code", "cc");
+
+    if (houseCol < 0 || userCol < 0 || passCol < 0) {
+        throw new Error("Missing column. Header: " + header.join(" | "));
+    }
+
+    const map = {};
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        const house = (r[houseCol] || "").trim();
+        const user = (r[userCol] || "").trim();
+        const pass = (r[passCol] || "").trim();
+        const resort = resortCol >= 0 ? (r[resortCol] || "").trim() : "";
+        const cc = ccCol >= 0 ? (r[ccCol] || "").trim() : "";
+        if (!house || !user || !pass) continue;
+        // Champions Gate only — defensive filter even if the whole sheet is CG.
+        if (resort && !/champions\s*gate/i.test(resort)) continue;
+        map[gateNormalizeHouse(house)] = {
+            house, resort, username: user, password: pass,
+            communityCode: cc || "CG",
+        };
+    }
+    return map;
+}
+
+async function gateGetCacheRaw() {
+    const data = await chrome.storage.local.get(GATE_CREDS_CACHE_KEY);
+    const cache = data[GATE_CREDS_CACHE_KEY];
+    if (!cache || !cache.ts || !cache.map) return null;
+    if (Date.now() - cache.ts > GATE_CREDS_TTL_MS) return null;
+    return cache;
+}
+
+async function gateSetCache(map) {
+    await chrome.storage.local.set({
+        [GATE_CREDS_CACHE_KEY]: { ts: Date.now(), map },
+    });
+}
+
+async function gateEnsureCreds() {
+    let cache = await gateGetCacheRaw();
+    if (cache) return { cached: true, houseCount: Object.keys(cache.map).length };
+    const csv = await gateFetchSheetCsv();
+    const map = gateBuildMap(csv);
+    await gateSetCache(map);
+    return { cached: false, houseCount: Object.keys(map).length, refreshed: true };
+}
+
+async function gateCredsStatus() {
+    const cache = await gateGetCacheRaw();
+    return {
+        cached: !!cache,
+        expiresAt: cache ? cache.ts + GATE_CREDS_TTL_MS : null,
+        houseCount: cache ? Object.keys(cache.map).length : 0,
+    };
+}
+
+async function gateCredsForHouse(house) {
+    let cache = await gateGetCacheRaw();
+    if (!cache) {
+        const csv = await gateFetchSheetCsv();
+        const map = gateBuildMap(csv);
+        await gateSetCache(map);
+        cache = { ts: Date.now(), map };
+    }
+    const key = gateNormalizeHouse(house);
+    // 1. Exact match
+    if (cache.map[key]) return cache.map[key];
+    // 2. MAPRO uses "<number> <first-street-word>" (e.g. "453 Ocean") while
+    //    the sheet has the full street ("453 Ocean Way"). Match by that prefix.
+    const tokens = key.split(" ");
+    if (tokens.length >= 2) {
+        const prefix = tokens[0] + " " + tokens[1] + " ";
+        for (const k of Object.keys(cache.map)) {
+            if (k === key || k.startsWith(prefix)) return cache.map[k];
+        }
+    }
+    // 3. Last-resort: leading number alone ("1601" → "1601 …")
+    const numMatch = key.match(/^(\d+)/);
+    if (numMatch) {
+        const prefix = numMatch[1] + " ";
+        for (const k of Object.keys(cache.map)) {
+            if (k.startsWith(prefix)) return cache.map[k];
+        }
+    }
+    throw new Error(`No gate credentials for "${house}". Make sure the house is in the sheet.`);
+}
+
+async function gateWaitTabLoad(tabId, timeoutMs = 20000) {
+    return new Promise((resolve, reject) => {
+        const t = setTimeout(() => {
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            reject(new Error("tab load timed out"));
+        }, timeoutMs);
+        const onUpdated = (id, info) => {
+            if (id === tabId && info.status === "complete") {
+                clearTimeout(t);
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+                resolve();
+            }
+        };
+        chrome.tabs.onUpdated.addListener(onUpdated);
+    });
+}
+
+async function gateAddGuests({ house, guests }) {
+    if (!house) throw new Error("house required");
+    if (!Array.isArray(guests) || guests.length === 0) throw new Error("guests must be a non-empty array");
+
+    const creds = await gateCredsForHouse(house);
+
+    const tab = await chrome.tabs.create({
+        url: GATE_BASE + "/login.aspx",
+        active: false,
+    });
+    try {
+        await gateWaitTabLoad(tab.id);
+        await new Promise((r) => setTimeout(r, 500));
+
+        const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: "MAIN",
+            func: gatePageRunner,
+            args: [{ creds, guests }],
+        });
+        const wrapped = results && results[0] && results[0].result;
+        if (!wrapped) throw new Error("gatePageRunner returned no result");
+        if (!wrapped.ok) throw new Error(wrapped.error);
+        return wrapped.data;
+    } finally {
+        chrome.tabs.remove(tab.id).catch(() => {});
+    }
+}
+
+// Runs in MAIN world of gateaccess.net. Logs in once, then loops through
+// `guests` clicking Add → fill → Update for each.
+async function gatePageRunner({ creds, guests }) {
+    try {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const waitFor = async (sel, timeoutMs = 10000) => {
+            const t0 = Date.now();
+            while (Date.now() - t0 < timeoutMs) {
+                const el = document.querySelector(sel);
+                if (el && (el.offsetParent !== null || el.tagName === "SELECT")) return el;
+                await sleep(120);
+            }
+            throw new Error("Timed out waiting for: " + sel);
+        };
+
+        // ----- Login (only on /login.aspx) -----
+        if (/login\.aspx/i.test(location.pathname)) {
+            const ccSel = await waitFor('#ctl00_ContentPlaceHolder1_ASPxRoundPanel1_DropDownListClassic');
+            ccSel.value = creds.communityCode;
+            ccSel.dispatchEvent(new Event("change", { bubbles: true }));
+            const userInput = document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_UserName_I');
+            const passInput = document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_Password_I');
+            if (!userInput || !passInput) throw new Error("Login form not found");
+            userInput.value = creds.username;
+            passInput.value = creds.password;
+            userInput.dispatchEvent(new Event("change", { bubbles: true }));
+            passInput.dispatchEvent(new Event("change", { bubbles: true }));
+            // The Login button is an ASP submit input
+            const btn = document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_ASPxButton1') ||
+                        document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_ASPxButton1_I');
+            if (!btn) throw new Error("Login button not found");
+            btn.click();
+            const t0 = Date.now();
+            while (Date.now() - t0 < 15000) {
+                if (!/login\.aspx/i.test(location.pathname)) break;
+                await sleep(200);
+            }
+            if (/login\.aspx/i.test(location.pathname)) {
+                throw new Error("Login failed (still on login page) — wrong username/password/community?");
+            }
+        }
+
+        // ----- Navigate to Guest List -----
+        if (!/guests/i.test(location.pathname)) {
+            location.href = "/GuestsDevices.aspx";
+            const t0 = Date.now();
+            while (Date.now() - t0 < 15000) {
+                if (/guests/i.test(location.pathname)) break;
+                await sleep(200);
+            }
+        }
+        await waitFor('#ctl00_ContentPlaceHolder1_ASPxButton1_I');
+
+        const results = [];
+        for (let i = 0; i < guests.length; i++) {
+            const g = guests[i];
+            const lastName = String(g.lastName || "").trim();
+            const firstName = String(g.firstName || "").trim();
+            try {
+                if (!lastName) throw new Error("missing last name");
+
+                // Click "Add a New Guest/FastAccess Pass"
+                const addBtn = document.getElementById('ctl00_ContentPlaceHolder1_ASPxButton1_I');
+                if (!addBtn) throw new Error("Add button not found");
+                addBtn.click();
+
+                // Wait for the inline edit form
+                await waitFor('#ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor3_I');
+                // Tiny breath for DevExpress to fully wire up
+                await sleep(250);
+
+                const setVal = (id, value) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    el.value = value || "";
+                    el.dispatchEvent(new Event("input", { bubbles: true }));
+                    el.dispatchEvent(new Event("change", { bubbles: true }));
+                    el.dispatchEvent(new Event("blur", { bubbles: true }));
+                };
+                setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor3_I', lastName);
+                setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor4_I', firstName);
+                setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor5_I', g.startDate || '');
+                setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor6_I', g.endDate || '');
+                setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor10_I', g.notes || '');
+
+                await sleep(200);
+
+                // Click Update
+                const updateBtn = document.getElementById('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXCBtn60_I');
+                if (!updateBtn) throw new Error("Update button not found");
+                updateBtn.click();
+
+                // Wait for the form to disappear (it's gone when the row was saved)
+                const t0 = Date.now();
+                let formGone = false;
+                while (Date.now() - t0 < 12000) {
+                    const editor = document.getElementById('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor3_I');
+                    if (!editor || editor.offsetParent === null) { formGone = true; break; }
+                    await sleep(250);
+                }
+                if (!formGone) throw new Error("Form did not close after Update — submit may have failed");
+
+                // Verify in the rendered grid
+                await sleep(500);
+                const html = document.body.innerHTML;
+                const verified = html.includes(lastName) && (firstName ? html.includes(firstName) : true);
+                results.push({ lastName, firstName, ok: !!verified, error: verified ? null : "submitted but not visible in grid" });
+            } catch (e) {
+                results.push({ lastName, firstName, ok: false, error: String(e?.message || e) });
+            }
+        }
+        return { ok: true, data: { results } };
+    } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
+    }
+}
+
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
     (async () => {
         try {
@@ -411,6 +747,21 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
             }
             if (msg.action === "mapro-list-services") {
                 const data = await maproListServices(msg.payload || {});
+                sendResponse({ ok: true, data });
+                return;
+            }
+            if (msg.action === "gate-creds-status") {
+                const data = await gateCredsStatus();
+                sendResponse({ ok: true, data });
+                return;
+            }
+            if (msg.action === "gate-ensure-creds") {
+                const data = await gateEnsureCreds();
+                sendResponse({ ok: true, data });
+                return;
+            }
+            if (msg.action === "gate-add-guests") {
+                const data = await gateAddGuests(msg.payload || {});
                 sendResponse({ ok: true, data });
                 return;
             }
