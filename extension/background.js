@@ -649,9 +649,15 @@ function gateParseHiddenInputs(html) {
 }
 
 function gateDecodeEntities(s) {
+    // Order matters: DevExpress double-encodes attribute values. The JSON
+    // gets &quot;-encoded first (their pseudo-escape) and then HTML-attribute
+    // encoded (& → &amp;), so the raw bytes look like `&amp;quot;`. We must
+    // unwrap &amp; FIRST so that &amp;quot; becomes &quot; and then "; if
+    // we did &quot; first, &amp;quot; wouldn't match anything and the JSON
+    // would stay broken.
     return String(s)
-        .replace(/&quot;/g, '"')
         .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">")
         .replace(/&#39;/g, "'");
