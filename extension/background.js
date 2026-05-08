@@ -768,46 +768,39 @@ function gateExtractKeys(gridStateRaw) {
     } catch (_) { return []; }
 }
 
-async function gateHttpAddOneGuest(g) {
-    let pageState = await gateHttpFetchGuestPage();
-    if (pageState.needsLogin) {
-        throw new Error("Session lost — re-fetching landed on login");
-    }
-
-    const inputs = pageState.inputs;
-    const gridStateRaw = inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "";
-    const keys = gateExtractKeys(gridStateRaw);
-    const keysBefore = keys.length;
-
-    const sdShort = gateDateShort(g.startDate);
-    const edShort = gateDateShort(g.endDate);
-    const sdMs = gateDateMs(g.startDate);
-    const edMs = gateDateMs(g.endDate);
-    if (!sdShort || !edShort) throw new Error("Bad date format (need MM/DD/YYYY)");
-
-    const callbackParam = gateBuildCallbackParam(g, keys);
+// Build the full body including all grid + form fields. Caller supplies the
+// hidden inputs (parsed from the HTML snapshot it's submitting against),
+// which fields to override (overrides), and which __CALLBACKID/__CALLBACKPARAM
+// to use. EVENTTARGET/ARGUMENT are taken from overrides if present.
+function gateBuildPostBody(inputs, overrides, callbackId, callbackParam, guest) {
+    const sdShort = guest ? gateDateShort(guest.startDate) : "";
+    const edShort = guest ? gateDateShort(guest.endDate)   : "";
+    const sdMs    = guest ? gateDateMs(guest.startDate)    : 0;
+    const edMs    = guest ? gateDateMs(guest.endDate)      : 0;
+    const lastName  = guest ? (guest.lastName || "")  : "";
+    const firstName = guest ? (guest.firstName || "") : "";
 
     const body = new URLSearchParams();
-    body.append("__EVENTTARGET", "");
-    body.append("__EVENTARGUMENT", "");
+    body.append("__EVENTTARGET", overrides.__EVENTTARGET || "");
+    body.append("__EVENTARGUMENT", overrides.__EVENTARGUMENT || "");
     body.append("__VIEWSTATE", inputs.__VIEWSTATE || "");
     body.append("__VIEWSTATEGENERATOR", inputs.__VIEWSTATEGENERATOR || "");
     body.append("ctl00$ASPxBinaryImage1$State", gateJsonForPost({ uploadedFileName: "" }));
     body.append("ctl00$ASPxTabControl1", gateJsonForPost({ activeTabIndex: 5 }));
-    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1", gridStateRaw);
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1", inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "");
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXSE$State", gateJsonForPost({ rawValue: "" }));
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXSE", "");
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEFormState", gateJsonForPost({ windowsState: "0:0:-1:502:317:0:-10000:-10000:1:0:0:0" }));
-    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor3", g.lastName || "");
-    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor4", g.firstName || "");
-    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5$State", gateJsonForPost({ rawValue: String(sdMs), useMinDateInsteadOfNull: false }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor3", lastName);
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor4", firstName);
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5$State", gateJsonForPost({ rawValue: sdMs ? String(sdMs) : "N", useMinDateInsteadOfNull: false }));
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5", sdShort);
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5$DDDState", gateJsonForPost({ windowsState: "0:0:-1:0:0:0:-10000:-10000:1:0:0:0" }));
-    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5$DDD$C", gateJsonForPost({ visibleDate: sdShort, initialVisibleDate: sdShort, selectedDates: [] }));
-    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6$State", gateJsonForPost({ rawValue: String(edMs), useMinDateInsteadOfNull: false }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5$DDD$C", gateJsonForPost({ visibleDate: sdShort || "", initialVisibleDate: sdShort || "", selectedDates: [] }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6$State", gateJsonForPost({ rawValue: edMs ? String(edMs) : "N", useMinDateInsteadOfNull: false }));
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6", edShort);
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6$DDDState", gateJsonForPost({ windowsState: "0:0:-1:0:0:0:-10000:-10000:1:0:0:0" }));
-    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6$DDD$C", gateJsonForPost({ visibleDate: edShort, initialVisibleDate: edShort, selectedDates: [] }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6$DDD$C", gateJsonForPost({ visibleDate: edShort || "", initialVisibleDate: edShort || "", selectedDates: [] }));
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor10", "");
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor11", "U");
     body.append("ctl00$ContentPlaceHolder1$ASPxPopupControl2State", gateJsonForPost({ windowsState: "0:0:-1:0:0:0:-10000:-10000:1:0:0:0" }));
@@ -819,9 +812,59 @@ async function gateHttpAddOneGuest(g) {
     body.append("ctl00$ContentPlaceHolder1$HiddenField3", "");
     body.append("DXScript", inputs.DXScript || "");
     body.append("DXCss", inputs.DXCss || "");
-    body.append("__CALLBACKID", "ctl00$ContentPlaceHolder1$ASPxGridView1");
-    body.append("__CALLBACKPARAM", callbackParam);
+    if (callbackId) body.append("__CALLBACKID", callbackId);
+    if (callbackParam) body.append("__CALLBACKPARAM", callbackParam);
     body.append("__EVENTVALIDATION", inputs.__EVENTVALIDATION || "");
+    return body;
+}
+
+async function gateHttpAddOneGuest(g) {
+    // Step 1 — fetch the grid page to get the initial __VIEWSTATE.
+    let pageState = await gateHttpFetchGuestPage();
+    if (pageState.needsLogin) {
+        throw new Error("Session lost — re-fetching landed on login");
+    }
+    let inputs = pageState.inputs;
+    const gridStateRaw0 = inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "";
+    const keysBefore = gateExtractKeys(gridStateRaw0).length;
+
+    // Step 2 — emulate the Add button. ASPxButton1 fires a *full postback*
+    // (not a callback), which puts the GridView server-side into "new edit
+    // row" state. Skipping this step is why UPDATEEDIT alone is silently
+    // ignored — the server never enters edit mode.
+    const addBody = gateBuildPostBody(
+        inputs,
+        { __EVENTTARGET: "ctl00$ContentPlaceHolder1$ASPxButton1", __EVENTARGUMENT: "" },
+        null, null, null,
+    );
+    const addRes = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
+        method: "POST",
+        credentials: "include",
+        redirect: "follow",
+        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+        body: addBody.toString(),
+    });
+    if (!addRes.ok) throw new Error("Add postback HTTP " + addRes.status);
+    const addHtml = await addRes.text();
+    if (/login\.aspx/i.test(addRes.url)) throw new Error("Add postback redirected to login");
+    inputs = gateParseHiddenInputs(addHtml);
+    if (!inputs.__VIEWSTATE) throw new Error("Add postback returned a page with no VIEWSTATE — server may have rejected it");
+    const gridStateRaw = inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "";
+    const keys = gateExtractKeys(gridStateRaw);
+
+    const sdShort = gateDateShort(g.startDate);
+    const edShort = gateDateShort(g.endDate);
+    if (!sdShort || !edShort) throw new Error("Bad date format (need MM/DD/YYYY)");
+
+    // Step 3 — UPDATEEDIT callback against the now-in-edit-mode page.
+    const callbackParam = gateBuildCallbackParam(g, keys);
+    const body = gateBuildPostBody(
+        inputs,
+        { __EVENTTARGET: "", __EVENTARGUMENT: "" },
+        "ctl00$ContentPlaceHolder1$ASPxGridView1",
+        callbackParam,
+        g,
+    );
 
     const r = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
         method: "POST",
