@@ -816,6 +816,22 @@ async function gateHttpLogin(creds) {
     const html = await r1.text();
     const inputs = gateParseHiddenInputs(html);
 
+    // Sanity check the GET landed on a real login page. Stale cookies can
+    // cause /login.aspx to redirect somewhere else (or render a stub) — if we
+    // POST with that page's __VIEWSTATE the server returns 500 because the
+    // VIEWSTATE/EventValidation pair doesn't authorise the login button.
+    const r1Url = r1.url;
+    const hasLoginButton = /name="[^"]*ASPxRoundPanel1\$ButtonLogin"/i.test(html)
+                        || /id="[^"]*ASPxRoundPanel1_ButtonLogin"/i.test(html);
+    if (!hasLoginButton) {
+        const t = (html.match(/<title>([^<]+)<\/title>/i)?.[1] || "").trim();
+        throw new Error(
+            `GET /login.aspx didn't return the login form. Landed on: ${r1Url} ` +
+            `(title="${t}"). Likely cause: stale gateaccess.net cookies in this browser. ` +
+            `Clear cookies for gateaccess.net and try again.`
+        );
+    }
+
     // Validate communityCode against the dropdown the server actually rendered.
     // If creds.communityCode isn't in the list, ASP.NET will 500 with a
     // generic Runtime Error and there's nothing useful in the response body.
@@ -859,10 +875,15 @@ async function gateHttpLogin(creds) {
             const t = await r2.text();
             const titleMatch = t.match(/<title>([^<]+)<\/title>/i);
             const title = titleMatch ? titleMatch[1].trim() : "";
-            peek = (title ? `[${title}] ` : "") + t.slice(0, 400).replace(/\s+/g, " ");
+            // ASP.NET YSOD's actual exception is in the <pre> tags after the
+            // boilerplate header; surface that if we find it.
+            const exMatch = t.match(/<b>\s*Description:\s*<\/b>\s*([^<]+)/i)
+                         || t.match(/<pre[^>]*>([^<]{20,600})<\/pre>/i);
+            const ex = exMatch ? exMatch[1].trim().replace(/\s+/g, " ") : "";
+            peek = (title ? `[${title}] ` : "") + (ex ? `${ex} ` : "") + t.slice(0, 200).replace(/\s+/g, " ");
         } catch (_) { /* body unreadable */ }
         throw new Error(
-            `Login POST failed: HTTP ${r2.status} (cc="${creds.communityCode}", user="${creds.username}"). ${peek}`
+            `Login POST failed: HTTP ${r2.status} (cc="${creds.communityCode}", user="${creds.username}", get-url=${r1Url}). ${peek}`
         );
     }
     if (/login\.aspx/i.test(r2.url)) {
