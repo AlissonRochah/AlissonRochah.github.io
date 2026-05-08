@@ -631,14 +631,17 @@ async function gateAddGuests({ house, guests }) {
 async function gatePageRunner({ creds, guests }) {
     try {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-        const waitFor = async (sel, timeoutMs = 10000) => {
+        const waitFor = async (sel, timeoutMs = 20000) => {
             const t0 = Date.now();
             while (Date.now() - t0 < timeoutMs) {
                 const el = document.querySelector(sel);
                 if (el && (el.offsetParent !== null || el.tagName === "SELECT")) return el;
                 await sleep(120);
             }
-            throw new Error("Timed out waiting for: " + sel);
+            throw new Error(
+                "Timed out waiting for: " + sel +
+                " (at " + location.pathname + ", title='" + document.title + "')"
+            );
         };
 
         // ----- Login (only on /login.aspx) -----
@@ -653,13 +656,13 @@ async function gatePageRunner({ creds, guests }) {
             passInput.value = creds.password;
             userInput.dispatchEvent(new Event("change", { bubbles: true }));
             passInput.dispatchEvent(new Event("change", { bubbles: true }));
-            // The Login button is an ASP submit input
-            const btn = document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_ASPxButton1') ||
-                        document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_ASPxButton1_I');
-            if (!btn) throw new Error("Login button not found");
+            // Login button id confirmed via DOM inspection on gateaccess.net.
+            const btn = document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_ButtonLogin_I') ||
+                        document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_ButtonLogin');
+            if (!btn) throw new Error("Login button not found (#...ButtonLogin_I)");
             btn.click();
             const t0 = Date.now();
-            while (Date.now() - t0 < 15000) {
+            while (Date.now() - t0 < 20000) {
                 if (!/login\.aspx/i.test(location.pathname)) break;
                 await sleep(200);
             }
