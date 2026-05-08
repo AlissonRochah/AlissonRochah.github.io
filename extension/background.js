@@ -795,18 +795,18 @@ async function gateHttpLogin(creds) {
     if (!r1.ok) throw new Error("Login GET failed: HTTP " + r1.status);
     const html = await r1.text();
     const inputs = gateParseHiddenInputs(html);
+
+    // Same approach as the GuestsDevices flow: include every hidden input
+    // verbatim, then set the credential fields. The server returns 500 if
+    // a token like __VIEWSTATEGENERATOR or DXScript is missing.
     const body = new URLSearchParams();
-    body.append("__EVENTTARGET", "");
-    body.append("__EVENTARGUMENT", "");
-    body.append("__VIEWSTATE", inputs.__VIEWSTATE || "");
-    body.append("__VIEWSTATEGENERATOR", inputs.__VIEWSTATEGENERATOR || "");
+    for (const [k, v] of Object.entries(inputs)) body.append(k, v);
+    body.set("__EVENTTARGET", "");
+    body.set("__EVENTARGUMENT", "");
     body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$DropDownListClassic", creds.communityCode);
     body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$UserName", creds.username);
     body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$Password", creds.password);
     body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$ButtonLogin", "Login");
-    body.append("DXScript", inputs.DXScript || "");
-    body.append("DXCss", inputs.DXCss || "");
-    body.append("__EVENTVALIDATION", inputs.__EVENTVALIDATION || "");
 
     const r2 = await fetch(GATE_BASE + "/login.aspx", {
         method: "POST",
