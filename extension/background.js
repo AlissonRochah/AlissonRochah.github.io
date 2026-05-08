@@ -1094,21 +1094,43 @@ async function gateAddGuests({ house, guests }) {
 
     const creds = await gateCredsForHouse(house);
 
-    // Open a background tab to /login.aspx, then run gatePageRunner inside
-    // it via chrome.scripting.executeScript in MAIN world. The runner does
-    // login + add via DOM, so the resulting session is byte-identical to
-    // what the user sees when clicking around manually — no fingerprint
-    // fight with the server, no /offline.aspx redirect.
+    // Run gatePageRunner inside a popup window, then close the window.
     //
-    // Same pattern MAPRO uses (openBookingTab + pageRunner) which works
-    // reliably in Brave's background-tab regime.
+    // Tabs opened with active:false in Brave have their renderer paused,
+    // so the gateaccess.net DevExpress JS never runs and the dropdown
+    // never appears. A separate popup window with focused:false doesn't
+    // steal focus, but its renderer is the "active" view of that window
+    // and keeps running. state:"minimized" sends it to the dock so the
+    // user doesn't see it; width/height are explicitly NOT set because
+    // Chrome rejects state:"minimized" with size hints.
     const url = GATE_BASE + "/login.aspx";
-    let tab;
+    let win;
     try {
-        tab = await chrome.tabs.create({ url, active: false });
+        win = await chrome.windows.create({
+            url,
+            type: "popup",
+            state: "minimized",
+            focused: false,
+        });
     } catch (e) {
-        throw new Error("tabs.create failed: " + (e?.message || e));
+        // Fallback: some Chromium builds reject state:"minimized" outright.
+        // Try a tiny non-focused popup positioned offscreen.
+        try {
+            win = await chrome.windows.create({
+                url,
+                type: "popup",
+                focused: false,
+                width: 600,
+                height: 400,
+                top: -2000,
+                left: -2000,
+            });
+        } catch (e2) {
+            throw new Error("windows.create failed: " + (e2?.message || e2));
+        }
     }
+    const tabId = win.tabs && win.tabs[0] && win.tabs[0].id;
+    if (!tabId) throw new Error("popup window opened with no tab");
     try {
         // Wait for the login page to finish loading.
         await new Promise((resolve, reject) => {
@@ -1116,8 +1138,8 @@ async function gateAddGuests({ house, guests }) {
                 chrome.tabs.onUpdated.removeListener(onUpdated);
                 reject(new Error("tab load timed out after 25s"));
             }, 25000);
-            const onUpdated = (tabId, changeInfo) => {
-                if (tabId === tab.id && changeInfo.status === "complete") {
+            const onUpdated = (id, changeInfo) => {
+                if (id === tabId && changeInfo.status === "complete") {
                     clearTimeout(timeout);
                     chrome.tabs.onUpdated.removeListener(onUpdated);
                     resolve();
@@ -1129,7 +1151,7 @@ async function gateAddGuests({ house, guests }) {
         await new Promise((r) => setTimeout(r, 800));
 
         const results = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
+            target: { tabId },
             world: "MAIN",
             func: gatePageRunner,
             args: [{ creds, guests }],
@@ -1139,7 +1161,7 @@ async function gateAddGuests({ house, guests }) {
         if (!wrapped.ok) throw new Error(wrapped.error || "gatePageRunner returned error");
         return wrapped.data;
     } finally {
-        chrome.tabs.remove(tab.id).catch(() => {});
+        chrome.windows.remove(win.id).catch(() => {});
     }
 }
 
