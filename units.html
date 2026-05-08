@@ -302,30 +302,29 @@
             return `${m[2]}/${m[3]}/${m[1]}`;
         }
 
-        // Pull pre-fill rows from a unit's _stays (active + next + previous).
+        // Pull pre-fill data from active + next stays only (skip previous).
+        // Returns { names: [...], startDate, endDate } — dates come from the
+        // active stay if present, otherwise the next stay.
         function gateRowsFromStays(unit) {
             const stays = unit && unit._stays;
-            if (!stays) return [];
-            const out = [];
+            if (!stays) return { names: [], startDate: "", endDate: "" };
+            const names = [];
             const seen = new Set();
             const push = (s) => {
                 if (!s || !s.guest) return;
-                const k = (s.guest || "") + "|" + (s.ci || "") + "|" + (s.co || "");
-                if (seen.has(k)) return;
+                const k = String(s.guest).trim();
+                if (!k || seen.has(k)) return;
                 seen.add(k);
-                const { firstName, lastName } = splitGuestName(s.guest);
-                out.push({
-                    firstName,
-                    lastName,
-                    startDate: gateFmtDate(s.ci),
-                    endDate: gateFmtDate(s.co),
-                    notes: s.confirmation ? `Conf: ${s.confirmation}` : "",
-                });
+                names.push(k);
             };
             push(stays.active);
             push(stays.next);
-            push(stays.previous);
-            return out;
+            const dateSrc = stays.active || stays.next;
+            return {
+                names,
+                startDate: dateSrc ? gateFmtDate(dateSrc.ci) : "",
+                endDate:   dateSrc ? gateFmtDate(dateSrc.co) : "",
+            };
         }
 
         window.openGateModal = function (key) {
@@ -339,8 +338,10 @@
             document.getElementById("gate-house-label").textContent = houseLabel;
             document.getElementById("gate-modal").dataset.unitKey = u.key;
             document.getElementById("gate-modal").dataset.house = houseLabel;
-            const rows = gateRowsFromStays(u);
-            renderGateRows(rows.length ? rows : [{ firstName: "", lastName: "", startDate: "", endDate: "", notes: "" }]);
+            const { names, startDate, endDate } = gateRowsFromStays(u);
+            document.getElementById("gate-shared-start").value = startDate;
+            document.getElementById("gate-shared-end").value = endDate;
+            renderGateRows(names.length ? names : [""]);
             document.getElementById("gate-progress").textContent = "";
             document.getElementById("gate-progress").className = "gate-progress";
             document.getElementById("gate-modal").classList.add("active");
@@ -350,22 +351,18 @@
             document.getElementById("gate-modal").classList.remove("active");
         };
 
-        function renderGateRows(rows) {
+        function renderGateRows(names) {
             const host = document.getElementById("gate-rows");
             host.innerHTML = "";
-            rows.forEach((r, i) => host.appendChild(buildGateRow(r, i)));
+            names.forEach((name) => host.appendChild(buildGateRow(name)));
             updateGateRowIndices();
         }
 
-        function buildGateRow(r, idx) {
+        function buildGateRow(name) {
             const div = document.createElement("div");
             div.className = "gate-row";
             div.innerHTML = `
-                <input type="text" class="gate-input gate-first" placeholder="First name" value="${escapeHtml(r.firstName || "")}">
-                <input type="text" class="gate-input gate-last" placeholder="Last name" value="${escapeHtml(r.lastName || "")}">
-                <input type="text" class="gate-input gate-start" placeholder="MM/DD/YYYY" value="${escapeHtml(r.startDate || "")}">
-                <input type="text" class="gate-input gate-end" placeholder="MM/DD/YYYY" value="${escapeHtml(r.endDate || "")}">
-                <input type="text" class="gate-input gate-notes" placeholder="Notes (optional)" value="${escapeHtml(r.notes || "")}">
+                <input type="text" class="gate-input gate-name" placeholder="Guest name" value="${escapeHtml(name || "")}">
                 <button type="button" class="btn-icon btn-delete gate-row-remove" title="Remove">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
@@ -380,31 +377,38 @@
 
         function updateGateRowIndices() {
             const rows = document.querySelectorAll("#gate-rows .gate-row");
-            rows.forEach((row, i) => {
+            rows.forEach((row) => {
                 row.querySelector(".gate-row-remove").disabled = rows.length <= 1;
             });
         }
 
         window.gateAddRow = function () {
             const host = document.getElementById("gate-rows");
-            host.appendChild(buildGateRow({}, host.children.length));
+            host.appendChild(buildGateRow(""));
             updateGateRowIndices();
         };
 
         window.gateSendGuests = async function () {
             const modal = document.getElementById("gate-modal");
             const house = modal.dataset.house;
+            const startDate = document.getElementById("gate-shared-start").value.trim();
+            const endDate   = document.getElementById("gate-shared-end").value.trim();
+            if (!startDate || !endDate) {
+                showToast("Fill in both Start and End dates", "error");
+                return;
+            }
             const rows = [...document.querySelectorAll("#gate-rows .gate-row")];
-            const guests = rows.map((row) => ({
-                firstName: row.querySelector(".gate-first").value.trim(),
-                lastName:  row.querySelector(".gate-last").value.trim(),
-                startDate: row.querySelector(".gate-start").value.trim(),
-                endDate:   row.querySelector(".gate-end").value.trim(),
-                notes:     row.querySelector(".gate-notes").value.trim(),
-            })).filter((g) => g.lastName);
+            const guests = rows
+                .map((row) => row.querySelector(".gate-name").value.trim())
+                .filter((n) => n)
+                .map((name) => {
+                    const { firstName, lastName } = splitGuestName(name);
+                    return { firstName, lastName, startDate, endDate, notes: "" };
+                })
+                .filter((g) => g.lastName);
 
             if (guests.length === 0) {
-                showToast("Add at least one last name", "error");
+                showToast("Add at least one guest name", "error");
                 return;
             }
 
@@ -2101,18 +2105,24 @@
                 </button>
             </div>
             <div class="modal-body">
+                <div class="gate-shared-dates">
+                    <label class="gate-shared-field">
+                        <span>Start (MM/DD/YYYY)</span>
+                        <input type="text" id="gate-shared-start" class="gate-input" placeholder="MM/DD/YYYY">
+                    </label>
+                    <label class="gate-shared-field">
+                        <span>End (MM/DD/YYYY)</span>
+                        <input type="text" id="gate-shared-end" class="gate-input" placeholder="MM/DD/YYYY">
+                    </label>
+                </div>
                 <div class="gate-rows-header">
-                    <span style="flex:1;">First name</span>
-                    <span style="flex:1;">Last name</span>
-                    <span style="flex:1;">Start (MM/DD/YYYY)</span>
-                    <span style="flex:1;">End (MM/DD/YYYY)</span>
-                    <span style="flex:1;">Notes</span>
+                    <span style="flex:1;">Guest name</span>
                     <span style="width:32px;"></span>
                 </div>
                 <div id="gate-rows"></div>
                 <button type="button" class="btn btn-ghost btn-sm" onclick="gateAddRow()" style="margin-top: 8px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Add row
+                    Add guest
                 </button>
                 <div id="gate-progress" class="gate-progress"></div>
             </div>

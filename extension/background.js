@@ -429,14 +429,27 @@ async function gateFetchSheetCsv() {
     if (!GATE_SHEET_ID || GATE_SHEET_ID.startsWith("REPLACE_")) {
         throw new Error("GATE_SHEET_ID is not set in extension/background.js");
     }
+    // Google bounces /export?format=csv → *.googleusercontent.com. Both hosts
+    // need host_permissions in manifest.json so the redirect target also
+    // bypasses CORS — otherwise the wildcard ACAO header on the userscontent
+    // host clashes with credentials:include and the fetch is blocked.
     const url = `https://docs.google.com/spreadsheets/d/${GATE_SHEET_ID}/export?format=csv`;
-    const res = await fetch(url, { credentials: "include", redirect: "follow" });
-    const text = await res.text();
-    if (!res.ok) {
-        throw new Error(`Sheet HTTP ${res.status} — sign in to the right Google account in this browser`);
+    let res;
+    try {
+        res = await fetch(url, { credentials: "include" });
+    } catch (e) {
+        throw new Error(
+            "Could not reach the Gate Access sheet. Reload the extension at " +
+            "chrome://extensions, sign in to the Google account that owns the " +
+            "sheet, and try again. Underlying error: " + (e?.message || e)
+        );
     }
+    if (!res.ok) {
+        throw new Error(`Sheet HTTP ${res.status} — check the sheet ID and that the account has access`);
+    }
+    const text = await res.text();
     if (/<html/i.test(text.slice(0, 200))) {
-        throw new Error("Sheet returned HTML — wrong Google account or no access to the sheet");
+        throw new Error("Sheet returned HTML instead of CSV — sign in to the right Google account, or check sheet permissions");
     }
     return text;
 }
