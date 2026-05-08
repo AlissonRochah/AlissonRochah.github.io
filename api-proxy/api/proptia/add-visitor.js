@@ -14,8 +14,17 @@ const RESORTS = {
     },
 };
 
+// Bumped whenever the matching / submission logic changes so we can
+// curl-check which build of the function Vercel is serving.
+const FUNCTION_VERSION = "fallback-2";
+
 export default async function handler(req, res) {
     if (applyCors(req, res)) return;
+    if (req.method === "GET") {
+        // Health probe — no auth needed, just echoes the version.
+        res.status(200).json({ ok: true, v: FUNCTION_VERSION });
+        return;
+    }
     if (req.method !== "POST") {
         res.status(405).json({ error: "method not allowed" });
         return;
