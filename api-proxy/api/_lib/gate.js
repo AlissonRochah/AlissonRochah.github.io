@@ -207,12 +207,21 @@ function buildPostBody(inputs, overrides, callbackId, callbackParam, guest) {
 // ---------- request helpers (cookie-threaded fetch) ----------
 
 async function jarFetch(jar, url, init = {}) {
-    const headers = { ...(init.headers || {}) };
+    // Default to the same header set a real Chrome on macOS sends. Some
+    // ASP.NET sites use header presence as a "is this a real browser"
+    // heuristic. Caller-supplied headers always win.
+    const defaultHeaders = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Ch-Ua": '"Chromium";v="147", "Not.A/Brand";v="8"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"macOS"',
+    };
+    const headers = { ...defaultHeaders, ...(init.headers || {}) };
     const cookieHeader = jar.header();
     if (cookieHeader) headers["Cookie"] = cookieHeader;
-    if (!headers["User-Agent"]) {
-        headers["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
-    }
     const res = await fetch(url, { ...init, headers, redirect: init.redirect || "manual" });
     jar.absorb(res.headers);
     return res;
@@ -420,6 +429,18 @@ export async function gateAddOneGuest(jar, g) {
 export async function gateAddGuests(creds, guests) {
     const jar = new CookieJar();
     await gateLogin(jar, creds);
+
+    // Mirror the real UI flow: after login, the browser lands on
+    // /overview.aspx (or whatever default page). Visiting it lets the
+    // server complete any session warm-up (DevExpress likes to set
+    // additional cookies on first authenticated page load) before we
+    // start hitting GuestsDevices. Skipping this seems to be why the
+    // server was redirecting our Add postback to /offline.aspx.
+    try {
+        const ov = await jarFetch(jar, GATE_BASE + "/overview.aspx", { method: "GET" });
+        await followRedirects(jar, ov, {});
+    } catch (_) { /* best-effort */ }
+
     const results = [];
     for (const g of guests) {
         const lastName = String(g.lastName || "").trim();
