@@ -762,6 +762,12 @@ async function gateHttpLogin(creds) {
     }
 }
 
+function gateExtractKeys(gridStateRaw) {
+    try {
+        return (JSON.parse(gateDecodeEntities(gridStateRaw || "") || "{}").keys) || [];
+    } catch (_) { return []; }
+}
+
 async function gateHttpAddOneGuest(g) {
     let pageState = await gateHttpFetchGuestPage();
     if (pageState.needsLogin) {
@@ -770,9 +776,8 @@ async function gateHttpAddOneGuest(g) {
 
     const inputs = pageState.inputs;
     const gridStateRaw = inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "";
-    const gridStateDecoded = gateDecodeEntities(gridStateRaw);
-    let keys = [];
-    try { keys = (JSON.parse(gridStateDecoded || "{}").keys) || []; } catch (_) {}
+    const keys = gateExtractKeys(gridStateRaw);
+    const keysBefore = keys.length;
 
     const sdShort = gateDateShort(g.startDate);
     const edShort = gateDateShort(g.endDate);
@@ -830,17 +835,26 @@ async function gateHttpAddOneGuest(g) {
     });
     if (!r.ok) throw new Error("Update HTTP " + r.status);
     const respText = await r.text();
-    // DevExpress callback success starts with "0|/*DX*/("; explicit error
-    // strings include "Invalid" and "Login.aspx" if session expired.
     if (/Invalid value for state/i.test(respText)) throw new Error("Postback validation rejected the row");
     if (/login\.aspx/i.test(r.url)) throw new Error("Logged out mid-request");
 
-    // Verify by re-fetching the page and checking that the last name shows up.
-    await new Promise((res) => setTimeout(res, 400));
+    // Verify by re-fetching the page and counting keys in the grid state.
+    // Just searching for the last name in the HTML gave false positives
+    // (template strings, script blobs, etc).
+    await new Promise((res) => setTimeout(res, 600));
     const verify = await fetch(GATE_BASE + "/GuestsDevices.aspx", { credentials: "include" });
     const verifyHtml = await verify.text();
-    if (g.lastName && !verifyHtml.includes(g.lastName)) {
-        throw new Error("Submitted, but '" + g.lastName + "' did not appear in grid (server may have rejected)");
+    const verifyInputs = gateParseHiddenInputs(verifyHtml);
+    const keysAfter = gateExtractKeys(verifyInputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "").length;
+    if (keysAfter <= keysBefore) {
+        // The server returns 200 even when it silently rejects a row.
+        // Surface the first chunk of the response so the next failure is
+        // diagnosable instead of mysterious.
+        const respPeek = respText.slice(0, 250).replace(/\s+/g, " ");
+        throw new Error(
+            "Server accepted POST but row count is still " + keysAfter +
+            " (was " + keysBefore + "). Response head: " + respPeek
+        );
     }
 }
 
