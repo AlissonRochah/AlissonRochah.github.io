@@ -769,7 +769,10 @@ function gateBuildCallbackParam(guest, keys) {
 async function gateHttpFetchGuestPage() {
     const r = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
         credentials: "include",
+        cache: "no-store",
         redirect: "follow",
+        referrer: GATE_BASE + "/overview.aspx",
+        referrerPolicy: "unsafe-url",
     });
     if (!r.ok) throw new Error(`Could not load /GuestsDevices.aspx (HTTP ${r.status})`);
     const html = await r.text();
@@ -791,14 +794,14 @@ async function gateHttpFetchGuestPage() {
 }
 
 async function gateHttpLogin(creds) {
-    const r1 = await fetch(GATE_BASE + "/login.aspx", { credentials: "include" });
+    const r1 = await fetch(GATE_BASE + "/login.aspx", {
+        credentials: "include",
+        cache: "no-store",
+    });
     if (!r1.ok) throw new Error("Login GET failed: HTTP " + r1.status);
     const html = await r1.text();
     const inputs = gateParseHiddenInputs(html);
 
-    // Same approach as the GuestsDevices flow: include every hidden input
-    // verbatim, then set the credential fields. The server returns 500 if
-    // a token like __VIEWSTATEGENERATOR or DXScript is missing.
     const body = new URLSearchParams();
     for (const [k, v] of Object.entries(inputs)) body.append(k, v);
     body.set("__EVENTTARGET", "");
@@ -808,10 +811,16 @@ async function gateHttpLogin(creds) {
     body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$Password", creds.password);
     body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$ButtonLogin", "Login");
 
+    // Explicit Referer + Origin via referrer option — without these the
+    // ASP.NET pipeline can return HTTP 500 because anti-CSRF middleware
+    // doesn't recognise a chrome-extension:// origin.
     const r2 = await fetch(GATE_BASE + "/login.aspx", {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
         redirect: "follow",
+        referrer: GATE_BASE + "/login.aspx",
+        referrerPolicy: "unsafe-url",
         headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
         body: body.toString(),
     });
@@ -902,7 +911,10 @@ async function gateHttpAddOneGuest(g) {
     const addRes = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
         redirect: "follow",
+        referrer: GATE_BASE + "/GuestsDevices.aspx",
+        referrerPolicy: "unsafe-url",
         headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
         body: addBody.toString(),
     });
@@ -938,7 +950,10 @@ async function gateHttpAddOneGuest(g) {
     const r = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
         redirect: "follow",
+        referrer: GATE_BASE + "/GuestsDevices.aspx",
+        referrerPolicy: "unsafe-url",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "X-Requested-With": "XMLHttpRequest",
