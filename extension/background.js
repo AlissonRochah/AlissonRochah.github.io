@@ -1335,6 +1335,22 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
                 sendResponse({ ok: true, data });
                 return;
             }
+            if (msg.action === "gate-get-creds-for-house") {
+                // Page reads creds from us (loaded from the Google sheet under
+                // the user's Google session) and sends them to /api/gate/add
+                // on Vercel. Vercel does the actual gateaccess.net dance from
+                // a clean Node fetch — bypasses the chrome-extension://
+                // origin issue we couldn't crack.
+                const house = (msg.payload && msg.payload.house) || "";
+                if (!house) throw new Error("house required");
+                const creds = await gateCredsForHouse(house);
+                sendResponse({ ok: true, data: {
+                    communityCode: creds.communityCode,
+                    username: creds.username,
+                    password: creds.password,
+                } });
+                return;
+            }
             sendResponse({ ok: false, error: `unknown action: ${msg.action}` });
         } catch (e) {
             sendResponse({ ok: false, error: String(e?.message || e) });

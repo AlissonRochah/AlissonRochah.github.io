@@ -420,14 +420,41 @@
             progress.className = "gate-progress loading";
 
             try {
-                const res = await jobberMessage("gate-add-guests", { house, guests });
-                if (!res || !res.ok) {
-                    progress.textContent = "Failed: " + (res && res.error || "unknown error");
+                // Pull gate creds from the extension (it reads them under the
+                // user's Google session). Then ship them to /api/gate/add on
+                // Vercel — Node fetch from a clean origin avoids the opaque
+                // ASP.NET 500 we hit doing this from the extension SW.
+                const credsRes = await jobberMessage("gate-get-creds-for-house", { house });
+                if (!credsRes || !credsRes.ok) {
+                    progress.textContent = "Failed: " + (credsRes && credsRes.error || "no gate creds");
                     progress.className = "gate-progress error";
-                    showToast("Gate add failed: " + (res && res.error || "unknown"), "error");
+                    showToast("No gate creds: " + (credsRes && credsRes.error || ""), "error");
                     return;
                 }
-                const results = res.data && res.data.results || [];
+                if (!currentUser) {
+                    progress.textContent = "Failed: not signed in";
+                    progress.className = "gate-progress error";
+                    return;
+                }
+                const idToken = await currentUser.getIdToken();
+                const proxyRes = await fetch(proxyUrl + "/api/gate/add", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": "Bearer " + idToken,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ creds: credsRes.data, guests }),
+                });
+                if (!proxyRes.ok) {
+                    let msg = `proxy HTTP ${proxyRes.status}`;
+                    try { const j = await proxyRes.json(); if (j && j.error) msg = j.error; } catch (_) {}
+                    progress.textContent = "Failed: " + msg;
+                    progress.className = "gate-progress error";
+                    showToast("Gate add failed: " + msg, "error");
+                    return;
+                }
+                const proxyData = await proxyRes.json();
+                const results = proxyData && proxyData.results || [];
                 const ok = results.filter((r) => r.ok).length;
                 const fail = results.length - ok;
                 progress.innerHTML = results.map((r) => {
