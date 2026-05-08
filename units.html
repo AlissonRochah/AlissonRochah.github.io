@@ -309,6 +309,22 @@
             if (!m) return s;
             return `${m[2]}/${m[3]}/${m[1]}`;
         }
+        // Convert "2026-05-09 14:00:00" or "2026-05-09" to the YYYY-MM-DD
+        // format <input type="date"> needs.
+        function gateIsoDate(s) {
+            if (!s) return "";
+            const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+            return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
+        }
+        // Convert YYYY-MM-DD (datepicker output) to M/D/YYYY (what Proptia /
+        // Champions Gate accept).
+        function gateToShort(s) {
+            const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (m) return `${parseInt(m[2],10)}/${parseInt(m[3],10)}/${m[1]}`;
+            // Already MM/DD/YYYY? Return as-is.
+            const us = String(s || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            return us ? `${parseInt(us[1],10)}/${parseInt(us[2],10)}/${us[3]}` : "";
+        }
 
         // Pull pre-fill data from active + next stays only (skip previous).
         // Returns { names: [...], startDate, endDate } — dates come from the
@@ -330,8 +346,9 @@
             const dateSrc = stays.active || stays.next;
             return {
                 names,
-                startDate: dateSrc ? gateFmtDate(dateSrc.ci) : "",
-                endDate:   dateSrc ? gateFmtDate(dateSrc.co) : "",
+                // The modal uses <input type="date"> now → YYYY-MM-DD.
+                startDate: dateSrc ? gateIsoDate(dateSrc.ci) : "",
+                endDate:   dateSrc ? gateIsoDate(dateSrc.co) : "",
             };
         }
 
@@ -402,12 +419,16 @@
         window.gateSendGuests = async function () {
             const modal = document.getElementById("gate-modal");
             const house = modal.dataset.house;
-            const startDate = document.getElementById("gate-shared-start").value.trim();
-            const endDate   = document.getElementById("gate-shared-end").value.trim();
-            if (!startDate || !endDate) {
+            // <input type="date"> gives us YYYY-MM-DD; the gate backends
+            // (Proptia, gateaccess.net) want M/D/YYYY. Convert here once.
+            const startDateRaw = document.getElementById("gate-shared-start").value.trim();
+            const endDateRaw   = document.getElementById("gate-shared-end").value.trim();
+            if (!startDateRaw || !endDateRaw) {
                 showToast("Fill in both Start and End dates", "error");
                 return;
             }
+            const startDate = gateToShort(startDateRaw);
+            const endDate   = gateToShort(endDateRaw);
             const rows = [...document.querySelectorAll("#gate-rows .gate-row")];
             const guests = rows
                 .map((row) => row.querySelector(".gate-name").value.trim())
@@ -2163,12 +2184,12 @@
             <div class="modal-body">
                 <div class="gate-shared-dates">
                     <label class="gate-shared-field">
-                        <span>Start (MM/DD/YYYY)</span>
-                        <input type="text" id="gate-shared-start" class="gate-input" placeholder="MM/DD/YYYY">
+                        <span>Start</span>
+                        <input type="date" id="gate-shared-start" class="gate-input">
                     </label>
                     <label class="gate-shared-field">
-                        <span>End (MM/DD/YYYY)</span>
-                        <input type="text" id="gate-shared-end" class="gate-input" placeholder="MM/DD/YYYY">
+                        <span>End</span>
+                        <input type="date" id="gate-shared-end" class="gate-input">
                     </label>
                 </div>
                 <div class="gate-rows-header">
