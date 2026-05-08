@@ -603,9 +603,14 @@ async function gateAddGuests({ house, guests }) {
 
     const creds = await gateCredsForHouse(house);
 
+    // active:true — Brave/Chrome heavily throttle hidden tabs; the
+    // DevExpress login form on gateaccess.net wouldn't initialise in a
+    // background tab and the runner would time out waiting for the
+    // community dropdown. Tab is closed in finally so the focus theft
+    // is brief.
     const tab = await chrome.tabs.create({
         url: GATE_BASE + "/login.aspx",
-        active: false,
+        active: true,
     });
     try {
         await gateWaitTabLoad(tab.id);
@@ -638,15 +643,23 @@ async function gatePageRunner({ creds, guests }) {
                 if (el && (el.offsetParent !== null || el.tagName === "SELECT")) return el;
                 await sleep(120);
             }
+            const selects = Array.from(document.querySelectorAll("select"))
+                .map((s) => s.id || s.name).slice(0, 8).join(", ");
             throw new Error(
                 "Timed out waiting for: " + sel +
-                " (at " + location.pathname + ", title='" + document.title + "')"
+                " (at " + location.pathname + ", title='" + document.title +
+                "', body=" + document.body.children.length +
+                "el, selects=[" + selects + "])"
             );
         };
 
         // ----- Login (only on /login.aspx) -----
         if (/login\.aspx/i.test(location.pathname)) {
-            const ccSel = await waitFor('#ctl00_ContentPlaceHolder1_ASPxRoundPanel1_DropDownListClassic');
+            // Try id, then name suffix as fallback (handles minor renames).
+            const ccSel = await waitFor(
+                '#ctl00_ContentPlaceHolder1_ASPxRoundPanel1_DropDownListClassic, ' +
+                'select[name$="DropDownListClassic"]'
+            );
             ccSel.value = creds.communityCode;
             ccSel.dispatchEvent(new Event("change", { bubbles: true }));
             const userInput = document.getElementById('ctl00_ContentPlaceHolder1_ASPxRoundPanel1_UserName_I');
