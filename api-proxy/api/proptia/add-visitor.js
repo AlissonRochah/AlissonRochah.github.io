@@ -30,7 +30,9 @@ export default async function handler(req, res) {
 
     const { resort, houseHint, guests, creds: explicitCreds } = req.body || {};
     if (!houseHint || typeof houseHint !== "string") {
-        res.status(400).json({ error: "houseHint required" });
+        // The "v" marker confirms which build of the function is live —
+        // bump it whenever the matching logic changes so we can curl-check.
+        res.status(400).json({ error: "houseHint required", v: "fallback-2" });
         return;
     }
     if (!Array.isArray(guests) || guests.length === 0) {
