@@ -292,6 +292,15 @@ export async function gateFetchGuestPage(jar) {
     if (/login\.aspx/i.test(final.url)) {
         throw new Error("session lost — guest page redirected to login");
     }
+    if (/offline\.aspx/i.test(final.url)) {
+        throw new Error(
+            "gateaccess.net is currently OFF-LINE for this community " +
+            "(server message: \"The link between ABDI and your community " +
+            "is currently down due to connection problems at your gatehouse. " +
+            "Please try to connect again in an hour, otherwise call the gatehouse.\"). " +
+            "This is a server-side issue, not the extension."
+        );
+    }
     const html = await final.text();
     const inputs = parseHiddenInputs(html);
     if (!inputs.__VIEWSTATE) throw new Error("guest page missing __VIEWSTATE");
@@ -326,6 +335,13 @@ export async function gateAddOneGuest(jar, g) {
         if (!addRes.ok) throw new Error(`Add postback HTTP ${addRes.status}`);
         const addHtml = await addRes.text();
         if (/login\.aspx/i.test(addRes.url)) throw new Error("Add postback redirected to login");
+        if (/offline\.aspx/i.test(addRes.url)) {
+            throw new Error(
+                "gateaccess.net is OFF-LINE for this community right now " +
+                "(server says ABDI ↔ gatehouse link is down — try again in ~1 hour or call the gatehouse). " +
+                "This is on their side, not the extension."
+            );
+        }
         const newInputs = parseHiddenInputs(addHtml);
         if (!newInputs.__VIEWSTATE) throw new Error("Add postback returned a page with no VIEWSTATE");
         if (!/DXEFL_DXEditor3_I/.test(addHtml)) {
