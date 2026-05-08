@@ -1,6 +1,7 @@
 .superpowers/
 .playwright-mcp/
 .DS_Store
+extension/_metadata/
 /0*-*.png
 /btn-*.png
 /modal-*.png

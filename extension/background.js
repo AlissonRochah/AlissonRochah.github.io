@@ -904,15 +904,12 @@ async function gateHttpAddOneGuest(g) {
     const alreadyInEditMode = /DXEFL_DXEditor3_I/.test(pageState.html);
 
     if (!alreadyInEditMode) {
-        // Step 2 — emulate the Add button. ASPxButton1 fires a full postback
-        // (not a DevExpress callback) and puts the GridView into "new edit
-        // row" state on the server. We set both __EVENTTARGET (DevExpress'
-        // ASPxButton expects this) and the button's name=value pair (the
-        // standard ASP.NET WebForms submit mechanism) so either path the
-        // server uses to identify the click finds something.
+        // Step 2 — emulate the Add button via the standard ASP.NET WebForms
+        // submit mechanism: __EVENTTARGET stays empty, the button is
+        // identified by including its name=value pair in the body.
         const addBody = gateBuildPostBody(
             inputs,
-            { __EVENTTARGET: "ctl00$ContentPlaceHolder1$ASPxButton1", __EVENTARGUMENT: "" },
+            { __EVENTTARGET: "", __EVENTARGUMENT: "" },
             null, null, null,
         );
         addBody.append("ctl00$ContentPlaceHolder1$ASPxButton1", "Add a New Guest/FastAccess Pass");
