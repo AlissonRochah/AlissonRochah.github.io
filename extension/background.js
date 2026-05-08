@@ -763,11 +763,32 @@ async function gatePageRunner({ creds, guests }) {
                     el.dispatchEvent(new Event("input", { bubbles: true }));
                     el.dispatchEvent(new Event("change", { bubbles: true }));
                     el.dispatchEvent(new Event("blur", { bubbles: true }));
+                    // For DevExpress controls, also poke the client object so
+                    // it updates the hidden _State field. Without this the
+                    // server rejects the postback with "Invalid value for state".
+                    const baseId = id.replace(/_I$/, "");
+                    const ctrl = window[baseId];
+                    if (ctrl) {
+                        try {
+                            if (typeof ctrl.SetText === "function") ctrl.SetText(value || "");
+                            else if (typeof ctrl.SetValue === "function") ctrl.SetValue(value || null);
+                        } catch (_) { /* ignore — fallback events above */ }
+                    }
+                };
+                const setDate = (id, mmddyyyy) => {
+                    const baseId = id.replace(/_I$/, "");
+                    const ctrl = window[baseId];
+                    const m = String(mmddyyyy || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+                    if (ctrl && typeof ctrl.SetDate === "function" && m) {
+                        ctrl.SetDate(new Date(+m[3], +m[1] - 1, +m[2]));
+                        return;
+                    }
+                    setVal(id, mmddyyyy);
                 };
                 setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor3_I', lastName);
                 setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor4_I', firstName);
-                setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor5_I', g.startDate || '');
-                setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor6_I', g.endDate || '');
+                setDate('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor5_I', g.startDate || '');
+                setDate('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor6_I', g.endDate || '');
                 setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor10_I', g.notes || '');
 
                 await sleep(200);
