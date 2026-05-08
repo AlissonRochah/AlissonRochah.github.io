@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn/auwRHrl6w/92JsznBB3YhHyBoQNz0uHeWIUqN9NPNs9NTjw8wfs6K0+v7t479wCyBAEjWhKd10iSTInV3MBwEqzte8MY9KKAqjaRxlH/eHt+jBpOzWeg/b69QnrOYtJdwgs7wBhHG0EESoe2JCEd1Oa0b4WTPP8yGFM5Kq2TVjGpza9hyLtBVh0a4UEKdrEGkRqZMng6rUsKbN96hyPUJ5QoH0J7G+6PdfCvruGgke753Ny1iM2rkb+Tg1em9gkrpqtLGKQ1HaW/ZzwXlegFTdDX8Z4ZWXvvxpWbRmJlSIIQu8DWBJbEEHkgKadnk5aIwHJzPCzljbu4wm8XzgcwIDAQAB",
   "name": "MasterBot Bridge",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Bridge for MasterBot site to query Jobber, MAPRO, and submit guests to Champions Gate access on the user's behalf using their existing browser session.",
   "icons": {
     "48": "MasterLogo.jpg",

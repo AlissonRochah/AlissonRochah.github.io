@@ -392,6 +392,7 @@ async function maproAddComment({ reservaId, casaId, comment }) {
 
 // Sheet ID from the URL: https://docs.google.com/spreadsheets/d/<ID>/edit
 const GATE_SHEET_ID = "15rnSnXSX9jOkxR0Gn9teNs3WUJYIHeWf_RzN1hzDBRg";
+const GATE_SHEET_TAB = "GATE ACCESS";
 
 const GATE_BASE = "https://gateaccess.net";
 const GATE_CREDS_CACHE_KEY = "gateCredsCache";
@@ -429,11 +430,10 @@ async function gateFetchSheetCsv() {
     if (!GATE_SHEET_ID || GATE_SHEET_ID.startsWith("REPLACE_")) {
         throw new Error("GATE_SHEET_ID is not set in extension/background.js");
     }
-    // Google bounces /export?format=csv → *.googleusercontent.com. Both hosts
-    // need host_permissions in manifest.json so the redirect target also
-    // bypasses CORS — otherwise the wildcard ACAO header on the userscontent
-    // host clashes with credentials:include and the fetch is blocked.
-    const url = `https://docs.google.com/spreadsheets/d/${GATE_SHEET_ID}/export?format=csv`;
+    // gviz/tq lets us target a tab by name (export?format=csv only ever
+    // returns the first sheet). Like /export, this redirects to
+    // *.googleusercontent.com, so both hosts must be in host_permissions.
+    const url = `https://docs.google.com/spreadsheets/d/${GATE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(GATE_SHEET_TAB)}`;
     let res;
     try {
         res = await fetch(url, { credentials: "include" });
