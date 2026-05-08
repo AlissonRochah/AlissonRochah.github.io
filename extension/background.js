@@ -396,7 +396,11 @@ const GATE_SHEET_ID = "15rnSnXSX9jOkxR0Gn9teNs3WUJYIHeWf_RzN1hzDBRg";
 const GATE_SHEET_GID = "701856462";
 
 const GATE_BASE = "https://gateaccess.net";
-const GATE_CREDS_CACHE_KEY = "gateCredsCache";
+// Cache key was bumped (v2) when we switched from a house-keyed map to a
+// rows-array. Old caches stored only Champions Gate rows because of a
+// hard-coded filter and collided on house="ALL HOMES" anyway, so we
+// invalidate them on first read.
+const GATE_CREDS_CACHE_KEY = "gateCredsCacheV2";
 const GATE_CREDS_TTL_MS = 24 * 60 * 60 * 1000;
 
 function gateNormalizeHouse(s) {
@@ -498,7 +502,12 @@ function gateBuildMap(csvText) {
         throw new Error("Missing column. Header: " + header.join(" | "));
     }
 
-    const map = {};
+    // Store rows as an array. The previous implementation keyed by house
+    // and silently lost rows when several entries shared the same house
+    // value (e.g. all the "ALL HOMES" rows for resorts where one login
+    // covers every property — Apartment MIAMI, Venetian Bay Villages,
+    // Windsor Island Resort).
+    const out = [];
     for (let i = headerIdx + 1; i < rows.length; i++) {
         const r = rows[i];
         const house = (r[houseCol] || "").trim();
@@ -507,40 +516,42 @@ function gateBuildMap(csvText) {
         const resort = resortCol >= 0 ? (r[resortCol] || "").trim() : "";
         const cc = ccCol >= 0 ? (r[ccCol] || "").trim() : "";
         if (!house || !user || !pass) continue;
-        // Keep every row. Caller decides which integration to use based
-        // on `resort` (Champions Gate → gateaccess.net, Windsor Island →
-        // proptia, etc.). communityCode is only meaningful for Champions
-        // Gate; leave it empty for everything else so the proxy doesn't
-        // see a misleading "CG".
-        map[gateNormalizeHouse(house)] = {
+        out.push({
             house, resort, username: user, password: pass,
             communityCode: cc || "",
-        };
+        });
     }
-    return map;
+    return out;
 }
 
 async function gateGetCacheRaw() {
     const data = await chrome.storage.local.get(GATE_CREDS_CACHE_KEY);
     const cache = data[GATE_CREDS_CACHE_KEY];
-    if (!cache || !cache.ts || !cache.map) return null;
+    if (!cache || !cache.ts || !Array.isArray(cache.rows)) return null;
     if (Date.now() - cache.ts > GATE_CREDS_TTL_MS) return null;
     return cache;
 }
 
-async function gateSetCache(map) {
+async function gateSetCache(rows) {
     await chrome.storage.local.set({
-        [GATE_CREDS_CACHE_KEY]: { ts: Date.now(), map },
+        [GATE_CREDS_CACHE_KEY]: { ts: Date.now(), rows },
     });
 }
 
-async function gateEnsureCreds() {
+async function gateLoadRows() {
     let cache = await gateGetCacheRaw();
-    if (cache) return { cached: true, houseCount: Object.keys(cache.map).length };
+    if (cache) return cache.rows;
     const csv = await gateFetchSheetCsv();
-    const map = gateBuildMap(csv);
-    await gateSetCache(map);
-    return { cached: false, houseCount: Object.keys(map).length, refreshed: true };
+    const rows = gateBuildMap(csv);
+    await gateSetCache(rows);
+    return rows;
+}
+
+async function gateEnsureCreds() {
+    const cache = await gateGetCacheRaw();
+    if (cache) return { cached: true, rowCount: cache.rows.length };
+    const rows = await gateLoadRows();
+    return { cached: false, rowCount: rows.length, refreshed: true };
 }
 
 async function gateCredsStatus() {
@@ -548,59 +559,54 @@ async function gateCredsStatus() {
     return {
         cached: !!cache,
         expiresAt: cache ? cache.ts + GATE_CREDS_TTL_MS : null,
-        houseCount: cache ? Object.keys(cache.map).length : 0,
+        rowCount: cache ? cache.rows.length : 0,
     };
 }
 
 async function gateCredsForResort(resort) {
-    let cache = await gateGetCacheRaw();
-    if (!cache) {
-        const csv = await gateFetchSheetCsv();
-        const map = gateBuildMap(csv);
-        await gateSetCache(map);
-        cache = { ts: Date.now(), map };
-    }
-    const want = String(resort || "").toLowerCase();
+    const rows = await gateLoadRows();
+    const want = String(resort || "").toLowerCase().trim();
     if (!want) throw new Error("resort required");
-    // First match in the sheet wins. Resorts where the same login covers
-    // every house (e.g. Windsor Island Resort, where the row's house is
-    // literally "ALL HOMES") just need any one of their rows to be found.
-    for (const k of Object.keys(cache.map)) {
-        const row = cache.map[k];
-        if (String(row.resort || "").toLowerCase().includes(want) ||
-            want.includes(String(row.resort || "").toLowerCase())) {
+    // First row whose resort is similar wins. We accept either direction
+    // so "Windsor Island" matches "Windsor Island Resort" and vice-versa.
+    for (const row of rows) {
+        const have = String(row.resort || "").toLowerCase().trim();
+        if (!have) continue;
+        if (have === want || have.includes(want) || want.includes(have)) {
             return row;
         }
     }
-    throw new Error(`No gate credentials found in the sheet for resort "${resort}".`);
+    const sample = rows.map((r) => r.resort).filter(Boolean).slice(0, 8).join(" | ");
+    throw new Error(
+        `No gate credentials in the sheet for resort "${resort}". ` +
+        `Resorts in sheet (${rows.length} rows): ${sample}`
+    );
 }
 
 async function gateCredsForHouse(house) {
-    let cache = await gateGetCacheRaw();
-    if (!cache) {
-        const csv = await gateFetchSheetCsv();
-        const map = gateBuildMap(csv);
-        await gateSetCache(map);
-        cache = { ts: Date.now(), map };
-    }
+    const rows = await gateLoadRows();
     const key = gateNormalizeHouse(house);
     // 1. Exact match
-    if (cache.map[key]) return cache.map[key];
+    for (const row of rows) {
+        if (gateNormalizeHouse(row.house) === key) return row;
+    }
     // 2. MAPRO uses "<number> <first-street-word>" (e.g. "453 Ocean") while
     //    the sheet has the full street ("453 Ocean Way"). Match by that prefix.
     const tokens = key.split(" ");
     if (tokens.length >= 2) {
         const prefix = tokens[0] + " " + tokens[1] + " ";
-        for (const k of Object.keys(cache.map)) {
-            if (k === key || k.startsWith(prefix)) return cache.map[k];
+        for (const row of rows) {
+            const k = gateNormalizeHouse(row.house);
+            if (k === key || k.startsWith(prefix)) return row;
         }
     }
     // 3. Last-resort: leading number alone ("1601" → "1601 …")
     const numMatch = key.match(/^(\d+)/);
     if (numMatch) {
         const prefix = numMatch[1] + " ";
-        for (const k of Object.keys(cache.map)) {
-            if (k.startsWith(prefix)) return cache.map[k];
+        for (const row of rows) {
+            const k = gateNormalizeHouse(row.house);
+            if (k.startsWith(prefix)) return row;
         }
     }
     throw new Error(`No gate credentials for "${house}". Make sure the house is in the sheet.`);
