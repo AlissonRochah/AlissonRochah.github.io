@@ -329,7 +329,26 @@ export async function gateAddOneGuest(jar, g) {
         const newInputs = parseHiddenInputs(addHtml);
         if (!newInputs.__VIEWSTATE) throw new Error("Add postback returned a page with no VIEWSTATE");
         if (!/DXEFL_DXEditor3_I/.test(addHtml)) {
-            throw new Error("Add postback didn't open the edit form");
+            // Diagnostic: enumerate which DevExpress markers ARE present so we
+            // can tell whether the edit form moved (different DXEditorN suffix),
+            // whether the page redirected to a content-less stub, or whether
+            // some validation message landed in the body.
+            const markers = {
+                hasGrid:       /ASPxGridView1/.test(addHtml),
+                hasAddBtn:     /ASPxButton1/.test(addHtml),
+                hasUpdateBtn:  /DXCBtn60/.test(addHtml),
+                hasEditor3:    /DXEditor3/.test(addHtml),
+                hasEditor3_I:  /DXEFL_DXEditor3_I/.test(addHtml),
+                hasDXPEForm:   /DXPEForm/.test(addHtml),
+                hasError:      /(error|warning)/i.test(addHtml.match(/<title>([^<]+)<\/title>/i)?.[1] || ""),
+            };
+            const title = (addHtml.match(/<title>([^<]+)<\/title>/i)?.[1] || "").trim();
+            throw new Error(
+                `Add postback didn't open the edit form. ` +
+                `status=${addRes.status} url=${addRes.url} title="${title}" ` +
+                `len=${addHtml.length} markers=${JSON.stringify(markers)} ` +
+                `head=${addHtml.slice(0, 300).replace(/\s+/g, " ")}`
+            );
         }
         inputs = newInputs;
         stateLiteral = extractGridStateLiteral(addHtml);
