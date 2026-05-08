@@ -5,12 +5,24 @@ import { proptiaAddGuests } from "../_lib/proptia.js";
 // Per-resort static config. Add a new entry here to support another
 // Proptia portal. Email + password come from env vars so we don't echo
 // secrets in the page.
+//   - mode "resident": account lands on /chooser after login (Windsor)
+//   - mode "org-admin": account lands directly on the org dashboard, we
+//     locate the right resident via the resident-directory JSON endpoint
+//     (Solterra)
 const RESORTS = {
     "windsor-island": {
         slug: "windsorislandresort",
         orgUUID: "ebcdb215-ed1d-42fb-b837-bdfc78cbcb18",
+        mode: "resident",
         emailEnv: "PROPTIA_WINDSOR_EMAIL",
         passwordEnv: "PROPTIA_WINDSOR_PASSWORD",
+    },
+    "solterra": {
+        slug: "solterra",
+        orgUUID: "377b6383-fa36-11ef-bb04-0022480abcad",
+        mode: "org-admin",
+        emailEnv: "PROPTIA_SOLTERRA_EMAIL",
+        passwordEnv: "PROPTIA_SOLTERRA_PASSWORD",
     },
 };
 
@@ -67,7 +79,7 @@ export default async function handler(req, res) {
         res.status(400).json({ error: `creds not provided in body and ${cfg.emailEnv}/${cfg.passwordEnv} env vars are not set` });
         return;
     }
-    const creds = { email, password, slug: cfg.slug, orgUUID: cfg.orgUUID };
+    const creds = { email, password, slug: cfg.slug, orgUUID: cfg.orgUUID, mode: cfg.mode };
 
     try {
         const out = await proptiaAddGuests({ ...creds, houseHint }, guests);

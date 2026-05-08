@@ -194,15 +194,12 @@ export async function proptiaGetAddVisitorContext(jar, dashboardUrl, orgUUID, or
     const formHtml = await r2.text();
     const csrf = parseCsrf(formHtml);
     if (!csrf) throw new Error("Add Visitor GET: no csrf");
-    // The pass_name <select> only has the property's available passes; pick
-    // the first non-empty one.
+    // Pick the right pass — prefer STR / guest / selected over the first
+    // option, since some properties offer Vendor / Interviewee passes
+    // that the server then rejects with "Invalid Pass".
     const passSelectMatch = formHtml.match(/<select[^>]*name="pass_name"[^>]*>([\s\S]*?)<\/select>/i);
-    let passName = null;
-    if (passSelectMatch) {
-        const optMatch = passSelectMatch[1].match(/<option[^>]*value="([0-9a-f-]+)"/i);
-        if (optMatch) passName = optMatch[1];
-    }
-    if (!passName) throw new Error("Add Visitor GET: no pass_name option");
+    const passName = passSelectMatch ? pickPassFromSelect(passSelectMatch[1]) : null;
+    if (!passName) throw new Error("Add Visitor GET: no usable pass_name option");
     return { residentUUID, addUrl, csrf, passName };
 }
 
@@ -281,33 +278,168 @@ function shortHouseKey(s) {
     return `${m[1]} ${m[2]}`;
 }
 
-export async function proptiaAddGuests({ slug, email, password, orgUUID, houseHint }, guests) {
-    const jar = new CookieJar();
-    await proptiaLogin(jar, slug, email, password);
-    const properties = await proptiaListProperties(jar, orgUUID);
-    if (properties.length === 0) throw new Error("no properties listed in chooser");
+// ------------- org-admin mode (e.g. Solterra) -------------
+// The "billing" account on Solterra is an organization vendor, not a
+// resident — login lands directly on /proptia/organization/dashboard/
+// <org>/<user>. No chooser. To find the right Add Visitor URL we hit
+// the Resident Directory's DataTables endpoint and substring-match the
+// address; the response embeds the exact /resident/.../visitors/.../add/
+// link Proptia would build on the dashboard.
 
-    // Try in order:
-    //   1. Full hint (case-insensitive substring) — handles exact addresses.
-    //   2. "<number> <first-street-word>" — handles Lane/Ln/Lanes/Way/etc.
-    //      mismatches between MAPRO's short address and Proptia's label.
-    const wantFull = String(houseHint || "").toLowerCase();
+function parseOrgUserFromDashUrl(url) {
+    const m = String(url || "").match(/\/dashboard\/([0-9a-f-]+)\/([0-9a-f-]+)/i);
+    if (!m) return null;
+    return { orgUUID: m[1], userUUID: m[2] };
+}
+
+// Column metadata Proptia's view-side validates. Skip these and the
+// endpoint 500s. The captured request had 26 columns — we mirror those.
+const ORG_RESIDENTS_COLUMNS = [
+    "resident_type", "user", "user_last", "resident_type", "email", "mobile_phone",
+    "unit_number", "community", "street_address", "postal_code", "lot_number",
+    "floor_number", "property_type", "date_moved_in", "date_moved_out",
+    "resident_id", "verbal_code",
+    "field1", "field2", "field3", "field4", "field5", "field6", "field7", "field8",
+    "",
+];
+
+async function proptiaFetchOrgResidents(jar, orgUUID, userUUID) {
+    // DataTables-style endpoint. Don't paginate — pull everything in one
+    // shot (length=10000) and substring-match client-side.
+    const params = new URLSearchParams();
+    params.append("obj_type", "current");
+    params.append("draw", "1");
+    ORG_RESIDENTS_COLUMNS.forEach((name, idx) => {
+        params.append(`columns[${idx}][data]`, name);
+        params.append(`columns[${idx}][name]`, idx >= 17 && idx <= 24 ? "" : name);
+        params.append(`columns[${idx}][searchable]`, "true");
+        params.append(`columns[${idx}][orderable]`, "true");
+        params.append(`columns[${idx}][search][value]`, "");
+        params.append(`columns[${idx}][search][regex]`, "false");
+    });
+    params.append("order[0][column]", "0");
+    params.append("order[0][dir]", "asc");
+    params.append("order[0][name]", "resident_type");
+    params.append("start", "0");
+    params.append("length", "10000");
+    params.append("search[value]", "");
+    params.append("search[regex]", "false");
+    const url = `${BASE}/en-us/resident/organization_residents_table/${orgUUID}/${userUUID}?${params.toString()}`;
+    const r = await jarFetch(jar, url, {
+        method: "GET",
+        headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "application/json" },
+    });
+    if (!r.ok) {
+        const peek = await r.text().catch(() => "");
+        throw new Error(`organization_residents_table HTTP ${r.status}. peek: ${peek.slice(0, 200).replace(/\s+/g, " ")}`);
+    }
+    const j = JSON.parse(await r.text());
+    return Array.isArray(j.data) ? j.data : [];
+}
+
+function pickAddVisitorLink(resident) {
+    if (!resident || !Array.isArray(resident.links)) return null;
+    const a = resident.links.find((l) => /add\s*visitor/i.test(l.text || ""));
+    return a ? a.link : null;
+}
+
+// Prefer a "STR Pass" / "guest" / "visitor" option when the resort has
+// multiple pass types (Solterra has Interviewee / Registered Vendor /
+// STR Pass / Vendor Import; we want STR for vacation rentals). Falls
+// back to the currently selected option, then to the first non-placeholder.
+function pickPassFromSelect(selectInner) {
+    const opts = [];
+    const re = /<option([^>]*)>([\s\S]*?)<\/option>/gi;
+    let m;
+    while ((m = re.exec(selectInner)) !== null) {
+        const attrs = m[1];
+        const valM = attrs.match(/value="([^"]*)"/i);
+        const value = valM ? valM[1] : "";
+        if (!/^[0-9a-f-]+$/i.test(value)) continue; // skip the placeholder
+        const selected = /selected/i.test(attrs);
+        const text = m[2].replace(/<[^>]+>/g, " ").trim().toLowerCase();
+        opts.push({ value, text, selected });
+    }
+    if (opts.length === 0) return null;
+    // 1. STR / short-term-rental pass
+    const str = opts.find((o) => /\bstr\b|short[\-\s]*term/i.test(o.text));
+    if (str) return str.value;
+    // 2. Guest / visitor pass
+    const guest = opts.find((o) => /\b(guest|visitor)\b/i.test(o.text));
+    if (guest) return guest.value;
+    // 3. Whatever the form has selected by default
+    const sel = opts.find((o) => o.selected);
+    if (sel) return sel.value;
+    // 4. First option
+    return opts[0].value;
+}
+
+async function proptiaGetAddVisitorContextFromUrl(jar, addUrlPath) {
+    const addUrl = new URL(addUrlPath, BASE).toString();
+    const r2 = await jarFetch(jar, addUrl, { method: "GET" });
+    if (!r2.ok) throw new Error(`Add Visitor GET HTTP ${r2.status}`);
+    const formHtml = await r2.text();
+    const csrf = parseCsrf(formHtml);
+    if (!csrf) throw new Error("Add Visitor GET: no csrf");
+    const passSelectMatch = formHtml.match(/<select[^>]*name="pass_name"[^>]*>([\s\S]*?)<\/select>/i);
+    const passName = passSelectMatch ? pickPassFromSelect(passSelectMatch[1]) : null;
+    if (!passName) throw new Error("Add Visitor GET: no usable pass_name option");
+    return { addUrl, csrf, passName };
+}
+
+// Top-level entry point. mode="resident" goes through the chooser
+// (Windsor Island); mode="org-admin" hits the resident table directly
+// (Solterra).
+export async function proptiaAddGuests({ slug, email, password, orgUUID, houseHint, mode }, guests) {
+    const jar = new CookieJar();
+    const finalUrl = await proptiaLogin(jar, slug, email, password);
+
+    const wantFull = String(houseHint || "").toLowerCase().trim();
     const wantShort = (shortHouseKey(houseHint) || "").toLowerCase();
-    let target = wantFull
-        ? properties.find((p) => p.label.toLowerCase().includes(wantFull))
-        : null;
-    if (!target && wantShort) {
-        target = properties.find((p) => p.label.toLowerCase().includes(wantShort));
+
+    let label = "";
+    let getCtx;
+
+    if (mode === "org-admin") {
+        const ids = parseOrgUserFromDashUrl(finalUrl);
+        if (!ids) throw new Error(`org-admin login didn't redirect to a dashboard URL (got: ${finalUrl})`);
+        const residents = await proptiaFetchOrgResidents(jar, ids.orgUUID, ids.userUUID);
+        if (residents.length === 0) throw new Error("resident directory returned no rows");
+        const matchAddr = (r) => String(r.street_address || "").toLowerCase();
+        let target = wantFull ? residents.find((r) => matchAddr(r).includes(wantFull)) : null;
+        if (!target && wantShort) target = residents.find((r) => matchAddr(r).includes(wantShort));
+        if (!target) {
+            const sample = residents.slice(0, 5).map((r) => r.street_address).filter(Boolean).join(" | ");
+            throw new Error(
+                `no resident matched "${houseHint}" (also tried "${wantShort}"). ` +
+                `First few of ${residents.length}: ${sample}`
+            );
+        }
+        const link = pickAddVisitorLink(target);
+        if (!link) throw new Error(`resident "${target.street_address}" has no Add Visitor link`);
+        label = `${target.full_name || target.street_address} — ${target.street_address}`;
+        getCtx = () => proptiaGetAddVisitorContextFromUrl(jar, link);
+    } else {
+        // Default: resident-mode (Windsor Island).
+        const properties = await proptiaListProperties(jar, orgUUID);
+        if (properties.length === 0) throw new Error("no properties listed in chooser");
+        let target = wantFull
+            ? properties.find((p) => p.label.toLowerCase().includes(wantFull))
+            : null;
+        if (!target && wantShort) {
+            target = properties.find((p) => p.label.toLowerCase().includes(wantShort));
+        }
+        if (!target) {
+            const sample = properties.slice(0, 5).map((p) => p.label).join(" | ");
+            throw new Error(
+                `no property matched "${houseHint}" (also tried "${wantShort}"). ` +
+                `First few of ${properties.length}: ${sample}`
+            );
+        }
+        const picked = await proptiaPickProperty(jar, target.parentOrg, target.orgRole, target.property);
+        label = target.label;
+        getCtx = () => proptiaGetAddVisitorContext(jar, picked.dashboardUrl, target.parentOrg, target.orgRole, target.property);
     }
-    if (!target) {
-        const sample = properties.slice(0, 5).map((p) => p.label).join(" | ");
-        throw new Error(
-            `no property matched "${houseHint}" (also tried "${wantShort}"). ` +
-            `First few of ${properties.length}: ${sample}`
-        );
-    }
-    const picked = await proptiaPickProperty(jar, target.parentOrg, target.orgRole, target.property);
-    const ctx = await proptiaGetAddVisitorContext(jar, picked.dashboardUrl, target.parentOrg, target.orgRole, target.property);
 
     const results = [];
     for (const g of guests) {
@@ -315,9 +447,8 @@ export async function proptiaAddGuests({ slug, email, password, orgUUID, houseHi
         const firstName = String(g.firstName || "").trim();
         try {
             if (!lastName) throw new Error("missing last name");
-            // Re-fetch CSRF for each submission — the token sometimes
-            // single-uses on Django sites.
-            const fresh = await proptiaGetAddVisitorContext(jar, picked.dashboardUrl, target.parentOrg, target.orgRole, target.property);
+            // Re-fetch CSRF per submission — Django often single-uses tokens.
+            const fresh = await getCtx();
             const r = await proptiaSubmitVisitor(jar, fresh, { ...g, firstName, lastName });
             if (r.ok) results.push({ firstName, lastName, ok: true });
             else results.push({ firstName, lastName, ok: false, error: r.error });
@@ -325,5 +456,5 @@ export async function proptiaAddGuests({ slug, email, password, orgUUID, houseHi
             results.push({ firstName, lastName, ok: false, error: String(e?.message || e) });
         }
     }
-    return { house: target.label, results };
+    return { house: label, results };
 }

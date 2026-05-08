@@ -286,9 +286,13 @@
         function isWindsorIsland(unit) {
             return unit && /windsor\s*island/i.test(String(unit.resort || ""));
         }
+        function isSolterra(unit) {
+            return unit && /solterra/i.test(String(unit.resort || ""));
+        }
         function gateBackendForUnit(unit) {
             if (isChampionsGate(unit)) return "champions-gate";
             if (isWindsorIsland(unit)) return "windsor-island";
+            if (isSolterra(unit)) return "solterra";
             return null;
         }
 
@@ -356,8 +360,8 @@
             const u = filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key);
             if (!u) return;
             const backend = gateBackendForUnit(u);
-            if (backend !== "windsor-island") {
-                showToast("Gate Access is only available for Windsor Island units", "error");
+            if (backend !== "windsor-island" && backend !== "solterra") {
+                showToast("Gate Access is only available for Windsor Island / Solterra units", "error");
                 return;
             }
             const houseLabel = u.code || u.title || "(unknown)";
@@ -455,16 +459,16 @@
             const resortName = modal.dataset.resort || "";
             try {
                 let results = [];
-                if (backend !== "windsor-island") {
+                if (backend !== "windsor-island" && backend !== "solterra") {
                     progress.textContent = "Gate Access for this resort isn't supported yet.";
                     progress.className = "gate-progress error";
                     return;
                 }
-                // Windsor Island via Proptia/Vercel. One credential covers
-                // every WI house — extension looks the row up by resort
-                // name. The actual property is picked inside Proptia by
-                // matching `house` (number + first street word, e.g.
-                // "602 Jasmine") against the chooser entries.
+                // Both backends are Proptia portals (Windsor Island,
+                // Solterra). The extension looks up the right login by
+                // resort name in the gate-creds sheet — same code path,
+                // we just pass a different "resort" key downstream so
+                // Vercel knows which Proptia config to use.
                 const credsRes = await jobberMessage("gate-get-creds-for-resort", { resort: resortName });
                 if (!credsRes || !credsRes.ok) {
                     progress.textContent = "Failed: " + (credsRes && credsRes.error || "no creds for resort");
@@ -485,7 +489,7 @@
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                        resort: "windsor-island",
+                        resort: backend, // "windsor-island" or "solterra"
                         creds: { email: credsRes.data.username, password: credsRes.data.password },
                         houseHint: house,
                         guests,
@@ -900,11 +904,11 @@
                    </button>`
                 : "";
 
-            // Gate Access button: only Windsor Island for now. Champions
-            // Gate is gated server-side in ways we can't reliably automate
-            // from the extension (see git history); hide the button there
-            // until that path becomes viable again.
-            const gateBtn = isWindsorIsland(u)
+            // Gate Access button: shown for any resort whose backend is
+            // wired up (currently Windsor Island and Solterra — both go
+            // through Proptia/Vercel). Champions Gate stays hidden while
+            // its automation path is unreliable.
+            const gateBtn = (isWindsorIsland(u) || isSolterra(u))
                 ? `<button class="btn btn-sm btn-outline btn-gate" onclick="event.stopPropagation();window.openGateModal('${escapeHtml(u.key)}')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                         Gate Access
