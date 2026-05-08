@@ -580,6 +580,34 @@ async function gateCredsForHouse(house) {
     throw new Error(`No gate credentials for "${house}". Make sure the house is in the sheet.`);
 }
 
+// Polls the tab via a tiny scripting.executeScript every ~250ms until the
+// document body actually has children. "complete" fires too early on
+// gateaccess.net — the body has 1 element for a while before DevExpress
+// finishes painting.
+async function gateWaitForPopulatedBody(tabId, timeoutMs = 30000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) {
+        try {
+            const res = await chrome.scripting.executeScript({
+                target: { tabId },
+                world: "MAIN",
+                func: () => ({
+                    bodyChildren: document.body ? document.body.children.length : 0,
+                    hasSelect: !!document.querySelector("select"),
+                    title: document.title,
+                    pathname: location.pathname,
+                }),
+            });
+            const r = res && res[0] && res[0].result;
+            if (r && (r.hasSelect || r.bodyChildren >= 5)) return r;
+        } catch (_) {
+            // Tab may not be ready for scripting yet; keep polling.
+        }
+        await new Promise((r) => setTimeout(r, 250));
+    }
+    throw new Error("Page never populated within " + (timeoutMs / 1000) + "s");
+}
+
 async function gateWaitTabLoad(tabId, timeoutMs = 20000) {
     return new Promise((resolve, reject) => {
         const t = setTimeout(() => {
@@ -624,7 +652,12 @@ async function gateAddGuests({ house, guests }) {
 
     try {
         await gateWaitTabLoad(tabId);
-        await new Promise((r) => setTimeout(r, 500));
+        // The tab fires "complete" when the initial document is parsed but
+        // gateaccess.net's DevExpress-heavy login form keeps mutating the
+        // DOM for a couple more seconds — and on Brave/Chrome a popup
+        // window's first paint can lag behind that. Wait until we actually
+        // see a populated body instead of guessing with a fixed sleep.
+        await gateWaitForPopulatedBody(tabId);
 
         const results = await chrome.scripting.executeScript({
             target: { tabId },
