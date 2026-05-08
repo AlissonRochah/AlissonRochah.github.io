@@ -459,14 +459,20 @@ function gateBuildMap(csvText) {
     if (rows.length < 2) throw new Error("Sheet has no data rows");
 
     let headerIdx = -1;
-    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    for (let i = 0; i < rows.length; i++) {
         const norm = rows[i].map(gateNormalizeHouse);
-        if (norm.includes("house") && norm.some((c) => c.includes("user")) && norm.includes("password")) {
+        const hasHouse = norm.some((c) => c === "house" || c.includes("house"));
+        const hasUser  = norm.some((c) => c.includes("user"));
+        const hasPass  = norm.some((c) => c.includes("password") || c === "pass");
+        if (hasHouse && hasUser && hasPass) {
             headerIdx = i;
             break;
         }
     }
-    if (headerIdx === -1) throw new Error("Header row not found (expected HOUSE / USER NAME / PASSWORD)");
+    if (headerIdx === -1) {
+        const preview = rows.slice(0, 6).map((r) => r.join(" | ")).join("  //  ");
+        throw new Error("Header row not found (expected HOUSE / USER NAME / PASSWORD). First rows: " + preview);
+    }
 
     const header = rows[headerIdx].map(gateNormalizeHouse);
     const findCol = (...names) => {
@@ -474,13 +480,18 @@ function gateBuildMap(csvText) {
             const idx = header.indexOf(gateNormalizeHouse(n));
             if (idx >= 0) return idx;
         }
+        for (const n of names) {
+            const target = gateNormalizeHouse(n);
+            const idx = header.findIndex((c) => c.includes(target));
+            if (idx >= 0) return idx;
+        }
         return -1;
     };
     const houseCol = findCol("house");
     const resortCol = findCol("resort");
-    const userCol = findCol("user name", "username");
-    const passCol = findCol("password");
-    const ccCol = findCol("community", "community code", "cc");
+    const userCol = findCol("user name", "username", "user");
+    const passCol = findCol("password", "pass");
+    const ccCol = findCol("community code", "community", "cc");
 
     if (houseCol < 0 || userCol < 0 || passCol < 0) {
         throw new Error("Missing column. Header: " + header.join(" | "));
