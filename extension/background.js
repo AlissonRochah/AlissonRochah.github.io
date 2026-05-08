@@ -1096,39 +1096,39 @@ async function gateAddGuests({ house, guests }) {
 
     // Run gatePageRunner inside a popup window, then close the window.
     //
-    // Tabs opened with active:false in Brave have their renderer paused,
-    // so the gateaccess.net DevExpress JS never runs and the dropdown
-    // never appears. A separate popup window with focused:false doesn't
-    // steal focus, but its renderer is the "active" view of that window
-    // and keeps running. state:"minimized" sends it to the dock so the
-    // user doesn't see it; width/height are explicitly NOT set because
-    // Chrome rejects state:"minimized" with size hints.
+    // Brave pauses the renderer in background tabs / non-focused windows,
+    // so the gateaccess.net DevExpress JS never inits and the dropdown
+    // never appears. Workaround: open the popup *focused* so the renderer
+    // starts in foreground state, immediately give the user's window its
+    // focus back, and minimize the popup. The popup is then invisible to
+    // the user (minimized to the dock) but its renderer keeps running
+    // because it already booted in foreground. The "focus theft" is just
+    // a few hundred ms — long enough for Brave to commit to running the
+    // renderer at full speed.
     const url = GATE_BASE + "/login.aspx";
+    const prevWin = await chrome.windows.getCurrent().catch(() => null);
     let win;
     try {
         win = await chrome.windows.create({
             url,
             type: "popup",
-            state: "minimized",
-            focused: false,
+            focused: true,
+            width: 800,
+            height: 600,
+            top: 0,
+            left: 0,
         });
     } catch (e) {
-        // Fallback: some Chromium builds reject state:"minimized" outright.
-        // Try a tiny non-focused popup positioned offscreen.
-        try {
-            win = await chrome.windows.create({
-                url,
-                type: "popup",
-                focused: false,
-                width: 600,
-                height: 400,
-                top: -2000,
-                left: -2000,
-            });
-        } catch (e2) {
-            throw new Error("windows.create failed: " + (e2?.message || e2));
-        }
+        throw new Error("windows.create failed: " + (e?.message || e));
     }
+    // Give focus back to the user's previous window AND minimize the
+    // popup so they don't see it. Race is fine — even if the popup is
+    // visible for ~150 ms it's not stealing the window away from real
+    // work, and from then on it lives in the dock.
+    if (prevWin && prevWin.id !== win.id) {
+        chrome.windows.update(prevWin.id, { focused: true }).catch(() => {});
+    }
+    chrome.windows.update(win.id, { state: "minimized" }).catch(() => {});
     const tabId = win.tabs && win.tabs[0] && win.tabs[0].id;
     if (!tabId) throw new Error("popup window opened with no tab");
     try {
