@@ -1094,28 +1094,53 @@ async function gateAddGuests({ house, guests }) {
 
     const creds = await gateCredsForHouse(house);
 
-    // Lazy login — only POST credentials if we land on /login.aspx.
-    let pageState = await gateHttpFetchGuestPage();
-    if (pageState.needsLogin) {
-        await gateHttpLogin(creds);
-        pageState = await gateHttpFetchGuestPage();
-        if (pageState.needsLogin) throw new Error("Login appeared to succeed but guest list still redirects to login");
+    // Open a background tab to /login.aspx, then run gatePageRunner inside
+    // it via chrome.scripting.executeScript in MAIN world. The runner does
+    // login + add via DOM, so the resulting session is byte-identical to
+    // what the user sees when clicking around manually — no fingerprint
+    // fight with the server, no /offline.aspx redirect.
+    //
+    // Same pattern MAPRO uses (openBookingTab + pageRunner) which works
+    // reliably in Brave's background-tab regime.
+    const url = GATE_BASE + "/login.aspx";
+    let tab;
+    try {
+        tab = await chrome.tabs.create({ url, active: false });
+    } catch (e) {
+        throw new Error("tabs.create failed: " + (e?.message || e));
     }
+    try {
+        // Wait for the login page to finish loading.
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+                reject(new Error("tab load timed out after 25s"));
+            }, 25000);
+            const onUpdated = (tabId, changeInfo) => {
+                if (tabId === tab.id && changeInfo.status === "complete") {
+                    clearTimeout(timeout);
+                    chrome.tabs.onUpdated.removeListener(onUpdated);
+                    resolve();
+                }
+            };
+            chrome.tabs.onUpdated.addListener(onUpdated);
+        });
+        // DevExpress finishes wiring up after 'complete'.
+        await new Promise((r) => setTimeout(r, 800));
 
-    const results = [];
-    for (let i = 0; i < guests.length; i++) {
-        const g = guests[i];
-        const lastName = String(g.lastName || "").trim();
-        const firstName = String(g.firstName || "").trim();
-        try {
-            if (!lastName) throw new Error("missing last name");
-            await gateHttpAddOneGuest({ ...g, lastName, firstName });
-            results.push({ lastName, firstName, ok: true, error: null });
-        } catch (e) {
-            results.push({ lastName, firstName, ok: false, error: String(e?.message || e) });
-        }
+        const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: "MAIN",
+            func: gatePageRunner,
+            args: [{ creds, guests }],
+        });
+        const wrapped = results && results[0] && results[0].result;
+        if (!wrapped) throw new Error("gatePageRunner returned no result");
+        if (!wrapped.ok) throw new Error(wrapped.error || "gatePageRunner returned error");
+        return wrapped.data;
+    } finally {
+        chrome.tabs.remove(tab.id).catch(() => {});
     }
-    return { results };
 }
 
 // Runs in MAIN world of gateaccess.net. Logs in once, then loops through
