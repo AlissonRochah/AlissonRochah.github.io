@@ -807,7 +807,31 @@ function gateExtractDropdownValues(html) {
     return values;
 }
 
+// Wipe every cookie scoped to gateaccess.net. We only call this when the
+// user is logging in via the extension — at that moment they're not logged
+// in (otherwise we wouldn't be here), so there's no live session to disturb.
+// Stale cookies are the most plausible cause of an opaque login 500: an
+// expired session id or a duplicated ASP.NET_SessionId across domains can
+// make the server throw on POST validation while still rendering the GET.
+async function gateClearGateCookies() {
+    try {
+        const cookies = await chrome.cookies.getAll({ domain: "gateaccess.net" });
+        for (const c of cookies) {
+            const host = c.domain.startsWith(".") ? c.domain.slice(1) : c.domain;
+            await chrome.cookies.remove({
+                url: "https://" + host + c.path,
+                name: c.name,
+                storeId: c.storeId,
+            });
+        }
+        return cookies.length;
+    } catch (e) {
+        return -1;
+    }
+}
+
 async function gateHttpLogin(creds) {
+    await gateClearGateCookies();
     const r1 = await fetch(GATE_BASE + "/login.aspx", {
         credentials: "include",
         cache: "no-store",
