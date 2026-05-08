@@ -603,16 +603,31 @@ async function gateAddGuests({ house, guests }) {
 
     const creds = await gateCredsForHouse(house);
 
-    const tab = await chrome.tabs.create({
+    // chrome.tabs.create({active:false}) gives a tab the browser refuses to
+    // actually load (Brave/Chrome's hidden-tab heuristics — body stays at
+    // 1 element, scripts never run, page is essentially empty). A separate
+    // popup window with focused:false sidesteps that — the OS still creates
+    // a real window with full page rendering, but it never grabs focus.
+    const win = await chrome.windows.create({
         url: GATE_BASE + "/login.aspx",
-        active: false,
+        type: "popup",
+        focused: false,
+        state: "minimized",
+        width: 800,
+        height: 600,
     });
+    const tabId = win.tabs && win.tabs[0] && win.tabs[0].id;
+    if (!tabId) throw new Error("could not get tab id from new window");
+    // autoDiscardable:false prevents Brave's memory saver from discarding
+    // the tab while we're driving it.
+    try { await chrome.tabs.update(tabId, { autoDiscardable: false }); } catch (_) {}
+
     try {
-        await gateWaitTabLoad(tab.id);
+        await gateWaitTabLoad(tabId);
         await new Promise((r) => setTimeout(r, 500));
 
         const results = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
+            target: { tabId },
             world: "MAIN",
             func: gatePageRunner,
             args: [{ creds, guests }],
@@ -622,7 +637,7 @@ async function gateAddGuests({ house, guests }) {
         if (!wrapped.ok) throw new Error(wrapped.error);
         return wrapped.data;
     } finally {
-        chrome.tabs.remove(tab.id).catch(() => {});
+        chrome.windows.remove(win.id).catch(() => {});
     }
 }
 
