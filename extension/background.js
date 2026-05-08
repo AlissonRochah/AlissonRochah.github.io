@@ -552,6 +552,29 @@ async function gateCredsStatus() {
     };
 }
 
+async function gateCredsForResort(resort) {
+    let cache = await gateGetCacheRaw();
+    if (!cache) {
+        const csv = await gateFetchSheetCsv();
+        const map = gateBuildMap(csv);
+        await gateSetCache(map);
+        cache = { ts: Date.now(), map };
+    }
+    const want = String(resort || "").toLowerCase();
+    if (!want) throw new Error("resort required");
+    // First match in the sheet wins. Resorts where the same login covers
+    // every house (e.g. Windsor Island Resort, where the row's house is
+    // literally "ALL HOMES") just need any one of their rows to be found.
+    for (const k of Object.keys(cache.map)) {
+        const row = cache.map[k];
+        if (String(row.resort || "").toLowerCase().includes(want) ||
+            want.includes(String(row.resort || "").toLowerCase())) {
+            return row;
+        }
+    }
+    throw new Error(`No gate credentials found in the sheet for resort "${resort}".`);
+}
+
 async function gateCredsForHouse(house) {
     let cache = await gateGetCacheRaw();
     if (!cache) {
@@ -1383,6 +1406,20 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
             if (msg.action === "gate-add-guests") {
                 const data = await gateAddGuests(msg.payload || {});
                 sendResponse({ ok: true, data });
+                return;
+            }
+            if (msg.action === "gate-get-creds-for-resort") {
+                // For systems where one login covers every house (Windsor
+                // Island, Lake Berkley, …) the page identifies the row by
+                // resort name and the actual house is picked downstream.
+                const resort = (msg.payload && msg.payload.resort) || "";
+                const creds = await gateCredsForResort(resort);
+                sendResponse({ ok: true, data: {
+                    house: creds.house,
+                    resort: creds.resort,
+                    username: creds.username,
+                    password: creds.password,
+                } });
                 return;
             }
             if (msg.action === "gate-get-creds-for-house") {
