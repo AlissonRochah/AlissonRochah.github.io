@@ -625,59 +625,253 @@ async function gateWaitTabLoad(tabId, timeoutMs = 20000) {
     });
 }
 
+// ---------- Pure-HTTP gate automation ----------
+//
+// gateaccess.net is an ASP.NET WebForms + DevExpress site. We replicate the
+// exact POST the browser sends when you click Update on the inline edit form
+// (captured live via Playwright in 2026-05). Everything below — parsing
+// hidden inputs, building the DevExpress callback string, submitting via
+// fetch() with credentials:include — is so the extension never has to open
+// a window or run any scripting in the page.
+
+function gateParseHiddenInputs(html) {
+    const inputs = {};
+    const re = /<input\b([^>]*)>/gi;
+    let m;
+    while ((m = re.exec(html))) {
+        const attrs = m[1];
+        if (!/type\s*=\s*["']?hidden["']?/i.test(attrs)) continue;
+        const nameMatch = /name\s*=\s*"([^"]*)"/i.exec(attrs) || /name\s*=\s*'([^']*)'/i.exec(attrs);
+        const valueMatch = /value\s*=\s*"((?:[^"])*)"/i.exec(attrs) || /value\s*=\s*'([^']*)'/i.exec(attrs);
+        if (nameMatch) inputs[nameMatch[1]] = valueMatch ? valueMatch[1] : "";
+    }
+    return inputs;
+}
+
+function gateDecodeEntities(s) {
+    return String(s)
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&#39;/g, "'");
+}
+
+// Form posts on gateaccess.net keep JSON values as &quot;-encoded entities
+// instead of raw quotes. URLSearchParams URL-encodes the &/quot;/etc on top.
+function gateJsonForPost(obj) {
+    return JSON.stringify(obj).replace(/"/g, "&quot;");
+}
+
+function gateMmddyyyyParts(mmddyyyy) {
+    const m = String(mmddyyyy || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    return { m: +m[1], d: +m[2], y: +m[3] };
+}
+function gateDateMs(mmddyyyy) {
+    const p = gateMmddyyyyParts(mmddyyyy);
+    return p ? Date.UTC(p.y, p.m - 1, p.d) : 0;
+}
+function gateDateShort(mmddyyyy) {
+    const p = gateMmddyyyyParts(mmddyyyy);
+    return p ? `${p.m}/${p.d}/${p.y}` : "";
+}
+function gateDateLongEv(mmddyyyy) {
+    const p = gateMmddyyyyParts(mmddyyyy);
+    if (!p) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(p.m)}/${pad(p.d)}/${p.y} 00:00:00`;
+}
+
+// __CALLBACKPARAM for the ASPxGridView UpdateEdit callback.
+// Format: c0:EV|<len>;<count>;<field>;...;KV|<len>;<keysJson>;CT|2;{};CR|2;{};GB|13;10|UPDATEEDIT;
+function gateBuildCallbackParam(guest, keys) {
+    const ln = String(guest.lastName || "");
+    const fn = String(guest.firstName || "");
+    const startEv = gateDateLongEv(guest.startDate);
+    const endEv   = gateDateLongEv(guest.endDate);
+
+    const fields = [
+        `3,${ln.length},${ln}`,
+        `4,${fn.length},${fn}`,
+        `5,${startEv.length},${startEv}`,
+        `6,${endEv.length},${endEv}`,
+        `10,-1,`,
+        `11,5,false`,
+    ];
+    // Each field gets a trailing ; in the section content; the section is
+    // then closed with another ; (handled by the join below).
+    const evContent = `${fields.length};` + fields.join(";") + ";";
+    const keysJson = JSON.stringify(keys || []);
+
+    return (
+        "c0:" +
+        `EV|${evContent.length};${evContent};` +
+        `KV|${keysJson.length};${keysJson};` +
+        "CT|2;{};" +
+        "CR|2;{};" +
+        "GB|13;10|UPDATEEDIT;"
+    );
+}
+
+async function gateHttpFetchGuestPage() {
+    const r = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
+        credentials: "include",
+        redirect: "follow",
+    });
+    if (!r.ok) throw new Error(`Could not load /GuestsDevices.aspx (HTTP ${r.status})`);
+    const html = await r.text();
+    if (/login\.aspx/i.test(r.url) || /<title>[^<]*Login[^<]*<\/title>/i.test(html)) {
+        return { needsLogin: true };
+    }
+    const inputs = gateParseHiddenInputs(html);
+    if (!inputs.__VIEWSTATE) {
+        return { needsLogin: true };
+    }
+    return { needsLogin: false, html, inputs };
+}
+
+async function gateHttpLogin(creds) {
+    const r1 = await fetch(GATE_BASE + "/login.aspx", { credentials: "include" });
+    if (!r1.ok) throw new Error("Login GET failed: HTTP " + r1.status);
+    const html = await r1.text();
+    const inputs = gateParseHiddenInputs(html);
+    const body = new URLSearchParams();
+    body.append("__EVENTTARGET", "");
+    body.append("__EVENTARGUMENT", "");
+    body.append("__VIEWSTATE", inputs.__VIEWSTATE || "");
+    body.append("__VIEWSTATEGENERATOR", inputs.__VIEWSTATEGENERATOR || "");
+    body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$DropDownListClassic", creds.communityCode);
+    body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$UserName", creds.username);
+    body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$Password", creds.password);
+    body.append("ctl00$ContentPlaceHolder1$ASPxRoundPanel1$ButtonLogin", "Login");
+    body.append("DXScript", inputs.DXScript || "");
+    body.append("DXCss", inputs.DXCss || "");
+    body.append("__EVENTVALIDATION", inputs.__EVENTVALIDATION || "");
+
+    const r2 = await fetch(GATE_BASE + "/login.aspx", {
+        method: "POST",
+        credentials: "include",
+        redirect: "follow",
+        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+        body: body.toString(),
+    });
+    if (!r2.ok) throw new Error("Login POST failed: HTTP " + r2.status);
+    if (/login\.aspx/i.test(r2.url)) {
+        throw new Error("Login rejected — wrong credentials or community code (" + creds.communityCode + ")");
+    }
+}
+
+async function gateHttpAddOneGuest(g) {
+    let pageState = await gateHttpFetchGuestPage();
+    if (pageState.needsLogin) {
+        throw new Error("Session lost — re-fetching landed on login");
+    }
+
+    const inputs = pageState.inputs;
+    const gridStateRaw = inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "";
+    const gridStateDecoded = gateDecodeEntities(gridStateRaw);
+    let keys = [];
+    try { keys = (JSON.parse(gridStateDecoded || "{}").keys) || []; } catch (_) {}
+
+    const sdShort = gateDateShort(g.startDate);
+    const edShort = gateDateShort(g.endDate);
+    const sdMs = gateDateMs(g.startDate);
+    const edMs = gateDateMs(g.endDate);
+    if (!sdShort || !edShort) throw new Error("Bad date format (need MM/DD/YYYY)");
+
+    const callbackParam = gateBuildCallbackParam(g, keys);
+
+    const body = new URLSearchParams();
+    body.append("__EVENTTARGET", "");
+    body.append("__EVENTARGUMENT", "");
+    body.append("__VIEWSTATE", inputs.__VIEWSTATE || "");
+    body.append("__VIEWSTATEGENERATOR", inputs.__VIEWSTATEGENERATOR || "");
+    body.append("ctl00$ASPxBinaryImage1$State", gateJsonForPost({ uploadedFileName: "" }));
+    body.append("ctl00$ASPxTabControl1", gateJsonForPost({ activeTabIndex: 5 }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1", gridStateRaw);
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXSE$State", gateJsonForPost({ rawValue: "" }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXSE", "");
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEFormState", gateJsonForPost({ windowsState: "0:0:-1:502:317:0:-10000:-10000:1:0:0:0" }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor3", g.lastName || "");
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor4", g.firstName || "");
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5$State", gateJsonForPost({ rawValue: String(sdMs), useMinDateInsteadOfNull: false }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5", sdShort);
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5$DDDState", gateJsonForPost({ windowsState: "0:0:-1:0:0:0:-10000:-10000:1:0:0:0" }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor5$DDD$C", gateJsonForPost({ visibleDate: sdShort, initialVisibleDate: sdShort, selectedDates: [] }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6$State", gateJsonForPost({ rawValue: String(edMs), useMinDateInsteadOfNull: false }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6", edShort);
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6$DDDState", gateJsonForPost({ windowsState: "0:0:-1:0:0:0:-10000:-10000:1:0:0:0" }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor6$DDD$C", gateJsonForPost({ visibleDate: edShort, initialVisibleDate: edShort, selectedDates: [] }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor10", "");
+    body.append("ctl00$ContentPlaceHolder1$ASPxGridView1$DXPEForm$DXEFL$DXEditor11", "U");
+    body.append("ctl00$ContentPlaceHolder1$ASPxPopupControl2State", gateJsonForPost({ windowsState: "0:0:-1:0:0:0:-10000:-10000:1:0:0:0" }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxPopupControl2$ASPxPanel1$ASPxTextBox1$State", gateJsonForPost({ rawValue: "" }));
+    body.append("ctl00$ContentPlaceHolder1$ASPxPopupControl2$ASPxPanel1$ASPxTextBox1", "");
+    body.append("ctl00$ContentPlaceHolder1$ASPxHiddenField1", gateJsonForPost({ data: "12|#|#" }));
+    body.append("ctl00$ContentPlaceHolder1$HiddenField1", "");
+    body.append("ctl00$ContentPlaceHolder1$HiddenField2", "");
+    body.append("ctl00$ContentPlaceHolder1$HiddenField3", "");
+    body.append("DXScript", inputs.DXScript || "");
+    body.append("DXCss", inputs.DXCss || "");
+    body.append("__CALLBACKID", "ctl00$ContentPlaceHolder1$ASPxGridView1");
+    body.append("__CALLBACKPARAM", callbackParam);
+    body.append("__EVENTVALIDATION", inputs.__EVENTVALIDATION || "");
+
+    const r = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
+        method: "POST",
+        credentials: "include",
+        redirect: "follow",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        body: body.toString(),
+    });
+    if (!r.ok) throw new Error("Update HTTP " + r.status);
+    const respText = await r.text();
+    // DevExpress callback success starts with "0|/*DX*/("; explicit error
+    // strings include "Invalid" and "Login.aspx" if session expired.
+    if (/Invalid value for state/i.test(respText)) throw new Error("Postback validation rejected the row");
+    if (/login\.aspx/i.test(r.url)) throw new Error("Logged out mid-request");
+
+    // Verify by re-fetching the page and checking that the last name shows up.
+    await new Promise((res) => setTimeout(res, 400));
+    const verify = await fetch(GATE_BASE + "/GuestsDevices.aspx", { credentials: "include" });
+    const verifyHtml = await verify.text();
+    if (g.lastName && !verifyHtml.includes(g.lastName)) {
+        throw new Error("Submitted, but '" + g.lastName + "' did not appear in grid (server may have rejected)");
+    }
+}
+
 async function gateAddGuests({ house, guests }) {
     if (!house) throw new Error("house required");
     if (!Array.isArray(guests) || guests.length === 0) throw new Error("guests must be a non-empty array");
 
     const creds = await gateCredsForHouse(house);
 
-    // chrome.tabs.create({active:false}) gives a tab the browser refuses to
-    // actually load (Brave/Chrome's hidden-tab heuristics — body stays at
-    // 1 element, scripts never run, page is essentially empty). A separate
-    // popup window with focused:false sidesteps that — the OS still creates
-    // a real window with full page rendering, but it never grabs focus.
-    //
-    // chrome.windows.create rejects the call with "Invalid value for state"
-    // if state and width/height are combined, so we create unminimized and
-    // then minimize via update() right after.
-    const win = await chrome.windows.create({
-        url: GATE_BASE + "/login.aspx",
-        type: "popup",
-        focused: false,
-        width: 1,
-        height: 1,
-        left: 0,
-        top: 0,
-    });
-    try { await chrome.windows.update(win.id, { state: "minimized" }); } catch (_) {}
-    const tabId = win.tabs && win.tabs[0] && win.tabs[0].id;
-    if (!tabId) throw new Error("could not get tab id from new window");
-    // autoDiscardable:false prevents Brave's memory saver from discarding
-    // the tab while we're driving it.
-    try { await chrome.tabs.update(tabId, { autoDiscardable: false }); } catch (_) {}
-
-    try {
-        await gateWaitTabLoad(tabId);
-        // The tab fires "complete" when the initial document is parsed but
-        // gateaccess.net's DevExpress-heavy login form keeps mutating the
-        // DOM for a couple more seconds — and on Brave/Chrome a popup
-        // window's first paint can lag behind that. Wait until we actually
-        // see a populated body instead of guessing with a fixed sleep.
-        await gateWaitForPopulatedBody(tabId);
-
-        const results = await chrome.scripting.executeScript({
-            target: { tabId },
-            world: "MAIN",
-            func: gatePageRunner,
-            args: [{ creds, guests }],
-        });
-        const wrapped = results && results[0] && results[0].result;
-        if (!wrapped) throw new Error("gatePageRunner returned no result");
-        if (!wrapped.ok) throw new Error(wrapped.error);
-        return wrapped.data;
-    } finally {
-        chrome.windows.remove(win.id).catch(() => {});
+    // Lazy login — only POST credentials if we land on /login.aspx.
+    let pageState = await gateHttpFetchGuestPage();
+    if (pageState.needsLogin) {
+        await gateHttpLogin(creds);
+        pageState = await gateHttpFetchGuestPage();
+        if (pageState.needsLogin) throw new Error("Login appeared to succeed but guest list still redirects to login");
     }
+
+    const results = [];
+    for (let i = 0; i < guests.length; i++) {
+        const g = guests[i];
+        const lastName = String(g.lastName || "").trim();
+        const firstName = String(g.firstName || "").trim();
+        try {
+            if (!lastName) throw new Error("missing last name");
+            await gateHttpAddOneGuest({ ...g, lastName, firstName });
+            results.push({ lastName, firstName, ok: true, error: null });
+        } catch (e) {
+            results.push({ lastName, firstName, ok: false, error: String(e?.message || e) });
+        }
+    }
+    return { results };
 }
 
 // Runs in MAIN world of gateaccess.net. Logs in once, then loops through
