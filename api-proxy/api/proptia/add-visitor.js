@@ -37,26 +37,26 @@ export default async function handler(req, res) {
         res.status(400).json({ error: "guests must be a non-empty array" });
         return;
     }
-
-    // Resolve creds: explicit body wins (handy for one-off testing),
-    // otherwise look up the resort key against env vars.
-    let creds = null;
-    if (explicitCreds && explicitCreds.email && explicitCreds.password && explicitCreds.slug && explicitCreds.orgUUID) {
-        creds = explicitCreds;
-    } else {
-        const cfg = RESORTS[resort];
-        if (!cfg) {
-            res.status(400).json({ error: `unknown resort "${resort}". Known: ${Object.keys(RESORTS).join(", ")}` });
-            return;
-        }
-        const email = process.env[cfg.emailEnv];
-        const password = process.env[cfg.passwordEnv];
-        if (!email || !password) {
-            res.status(500).json({ error: `creds not configured for ${resort} (set ${cfg.emailEnv} + ${cfg.passwordEnv} on Vercel)` });
-            return;
-        }
-        creds = { email, password, slug: cfg.slug, orgUUID: cfg.orgUUID };
+    const cfg = RESORTS[resort];
+    if (!cfg) {
+        res.status(400).json({ error: `unknown resort "${resort}". Known: ${Object.keys(RESORTS).join(", ")}` });
+        return;
     }
+
+    // Resolve creds:
+    // 1. explicit body { email, password } (extension-provided, comes from the sheet)
+    // 2. fall back to env vars on Vercel
+    let email = explicitCreds?.email;
+    let password = explicitCreds?.password;
+    if (!email || !password) {
+        email = process.env[cfg.emailEnv];
+        password = process.env[cfg.passwordEnv];
+    }
+    if (!email || !password) {
+        res.status(400).json({ error: `creds not provided in body and ${cfg.emailEnv}/${cfg.passwordEnv} env vars are not set` });
+        return;
+    }
+    const creds = { email, password, slug: cfg.slug, orgUUID: cfg.orgUUID };
 
     try {
         const out = await proptiaAddGuests({ ...creds, houseHint }, guests);

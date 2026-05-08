@@ -283,6 +283,14 @@
         function isChampionsGate(unit) {
             return unit && /champions\s*gate/i.test(String(unit.resort || ""));
         }
+        function isWindsorIsland(unit) {
+            return unit && /windsor\s*island/i.test(String(unit.resort || ""));
+        }
+        function gateBackendForUnit(unit) {
+            if (isChampionsGate(unit)) return "champions-gate";
+            if (isWindsorIsland(unit)) return "windsor-island";
+            return null;
+        }
 
         // Split a guest name string into {firstName, lastName} for the gate form.
         // Heuristic: trim parens, split on space; last word = last name, rest = first name.
@@ -330,14 +338,16 @@
         window.openGateModal = function (key) {
             const u = filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key);
             if (!u) return;
-            if (!isChampionsGate(u)) {
-                showToast("Gate Access is only for Champions Gate units", "error");
+            const backend = gateBackendForUnit(u);
+            if (!backend) {
+                showToast("Gate Access is only available for Champions Gate or Windsor Island units", "error");
                 return;
             }
             const houseLabel = u.code || u.title || "(unknown)";
             document.getElementById("gate-house-label").textContent = houseLabel;
             document.getElementById("gate-modal").dataset.unitKey = u.key;
             document.getElementById("gate-modal").dataset.house = houseLabel;
+            document.getElementById("gate-modal").dataset.backend = backend;
             const { names, startDate, endDate } = gateRowsFromStays(u);
             document.getElementById("gate-shared-start").value = startDate;
             document.getElementById("gate-shared-end").value = endDate;
@@ -419,21 +429,60 @@
             progress.textContent = "Logging into gateaccess.net…";
             progress.className = "gate-progress loading";
 
+            const backend = modal.dataset.backend || "champions-gate";
             try {
-                // Run the gate add via the extension's page-runner: it opens
-                // a background tab to gateaccess.net, logs in with the per-
-                // house creds, and submits each guest via DOM. The resulting
-                // session is byte-identical to what the user gets clicking
-                // manually, so the /offline.aspx redirect we saw with the
-                // HTTP-login proxy doesn't happen.
-                const res = await jobberMessage("gate-add-guests", { house, guests });
-                if (!res || !res.ok) {
-                    progress.textContent = "Failed: " + (res && res.error || "unknown error");
-                    progress.className = "gate-progress error";
-                    showToast("Gate add failed: " + (res && res.error || "unknown"), "error");
-                    return;
+                let results = [];
+                if (backend === "windsor-island") {
+                    // Proptia portal flow via Vercel: extension hands us the
+                    // creds it loaded from the gate-access Google sheet, we
+                    // ship those + the house + guests to /api/proptia/add-visitor.
+                    const credsRes = await jobberMessage("gate-get-creds-for-house", { house });
+                    if (!credsRes || !credsRes.ok) {
+                        progress.textContent = "Failed: " + (credsRes && credsRes.error || "no creds for house");
+                        progress.className = "gate-progress error";
+                        showToast("No creds: " + (credsRes && credsRes.error || ""), "error");
+                        return;
+                    }
+                    if (!currentUser) {
+                        progress.textContent = "Failed: not signed in";
+                        progress.className = "gate-progress error";
+                        return;
+                    }
+                    const idToken = await currentUser.getIdToken();
+                    const proxyRes = await fetch(proxyUrl + "/api/proptia/add-visitor", {
+                        method: "POST",
+                        headers: {
+                            "Authorization": "Bearer " + idToken,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            resort: "windsor-island",
+                            creds: { email: credsRes.data.username, password: credsRes.data.password },
+                            houseHint: house,
+                            guests,
+                        }),
+                    });
+                    if (!proxyRes.ok) {
+                        let msg = `proxy HTTP ${proxyRes.status}`;
+                        try { const j = await proxyRes.json(); if (j && j.error) msg = j.error; } catch (_) {}
+                        progress.textContent = "Failed: " + msg;
+                        progress.className = "gate-progress error";
+                        showToast("Add failed: " + msg, "error");
+                        return;
+                    }
+                    const data = await proxyRes.json();
+                    results = (data && data.results) || [];
+                } else {
+                    // Champions Gate via extension page-runner.
+                    const res = await jobberMessage("gate-add-guests", { house, guests });
+                    if (!res || !res.ok) {
+                        progress.textContent = "Failed: " + (res && res.error || "unknown error");
+                        progress.className = "gate-progress error";
+                        showToast("Gate add failed: " + (res && res.error || "unknown"), "error");
+                        return;
+                    }
+                    results = res.data && res.data.results || [];
                 }
-                const results = res.data && res.data.results || [];
                 const ok = results.filter((r) => r.ok).length;
                 const fail = results.length - ok;
                 progress.innerHTML = results.map((r) => {

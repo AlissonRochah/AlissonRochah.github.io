@@ -507,11 +507,14 @@ function gateBuildMap(csvText) {
         const resort = resortCol >= 0 ? (r[resortCol] || "").trim() : "";
         const cc = ccCol >= 0 ? (r[ccCol] || "").trim() : "";
         if (!house || !user || !pass) continue;
-        // Champions Gate only — defensive filter even if the whole sheet is CG.
-        if (resort && !/champions\s*gate/i.test(resort)) continue;
+        // Keep every row. Caller decides which integration to use based
+        // on `resort` (Champions Gate → gateaccess.net, Windsor Island →
+        // proptia, etc.). communityCode is only meaningful for Champions
+        // Gate; leave it empty for everything else so the proxy doesn't
+        // see a misleading "CG".
         map[gateNormalizeHouse(house)] = {
             house, resort, username: user, password: pass,
-            communityCode: cc || "CG",
+            communityCode: cc || "",
         };
     }
     return map;
@@ -1383,26 +1386,19 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
                 return;
             }
             if (msg.action === "gate-get-creds-for-house") {
-                // Page reads creds from us (loaded from the Google sheet under
-                // the user's Google session) and sends them to /api/gate/add
-                // on Vercel. We also ship the user's existing gateaccess.net
-                // cookies — if they're logged in in their browser the Vercel
-                // can reuse that session and skip its own HTTP login (which
-                // works but produces a session that gets redirected to
-                // /offline.aspx by some server-side fingerprint check).
+                // Returns creds for any resort — the page picks the right
+                // integration based on the row's resort field. For Champions
+                // Gate the cc + username/password go to /api/gate/add. For
+                // Windsor Island (Proptia) we need email + password.
                 const house = (msg.payload && msg.payload.house) || "";
                 if (!house) throw new Error("house required");
                 const creds = await gateCredsForHouse(house);
-                let cookies = [];
-                try {
-                    const all = await chrome.cookies.getAll({ domain: "gateaccess.net" });
-                    cookies = all.map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }));
-                } catch (_) { /* cookies permission missing */ }
                 sendResponse({ ok: true, data: {
-                    communityCode: creds.communityCode,
+                    house: creds.house,
+                    resort: creds.resort,
+                    communityCode: creds.communityCode || "",
                     username: creds.username,
                     password: creds.password,
-                    cookies,
                 } });
                 return;
             }
