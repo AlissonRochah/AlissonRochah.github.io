@@ -793,6 +793,20 @@ async function gateHttpFetchGuestPage() {
     return { needsLogin: false, html, inputs, stateLiteral };
 }
 
+// Pull the <option value=""> values for the community-code dropdown out of
+// the login HTML. ASP.NET EventValidation 500s if we POST a value that isn't
+// in this list — so we use it both to validate before submitting and to
+// surface a precise error if the sheet has the wrong cc.
+function gateExtractDropdownValues(html) {
+    const sel = html.match(/<select[^>]*name="[^"]*DropDownListClassic"[^>]*>([\s\S]*?)<\/select>/i);
+    if (!sel) return null;
+    const values = [];
+    const re = /<option[^>]*value="([^"]*)"/gi;
+    let m;
+    while ((m = re.exec(sel[1])) !== null) values.push(m[1]);
+    return values;
+}
+
 async function gateHttpLogin(creds) {
     const r1 = await fetch(GATE_BASE + "/login.aspx", {
         credentials: "include",
@@ -801,6 +815,19 @@ async function gateHttpLogin(creds) {
     if (!r1.ok) throw new Error("Login GET failed: HTTP " + r1.status);
     const html = await r1.text();
     const inputs = gateParseHiddenInputs(html);
+
+    // Validate communityCode against the dropdown the server actually rendered.
+    // If creds.communityCode isn't in the list, ASP.NET will 500 with a
+    // generic Runtime Error and there's nothing useful in the response body.
+    const ccOptions = gateExtractDropdownValues(html);
+    if (ccOptions && !ccOptions.includes(creds.communityCode)) {
+        const sample = ccOptions.slice(0, 8).join(", ");
+        throw new Error(
+            `communityCode "${creds.communityCode}" not in the login dropdown ` +
+            `(${ccOptions.length} options, e.g. ${sample}…). ` +
+            `Fix the Community Code column in the gate-creds sheet for this house.`
+        );
+    }
 
     const body = new URLSearchParams();
     for (const [k, v] of Object.entries(inputs)) body.append(k, v);
@@ -824,7 +851,20 @@ async function gateHttpLogin(creds) {
         headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
         body: body.toString(),
     });
-    if (!r2.ok) throw new Error("Login POST failed: HTTP " + r2.status);
+    if (!r2.ok) {
+        // Capture a slice of the body — ASP.NET error pages often have a
+        // usable hint inside even when status is opaque.
+        let peek = "";
+        try {
+            const t = await r2.text();
+            const titleMatch = t.match(/<title>([^<]+)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : "";
+            peek = (title ? `[${title}] ` : "") + t.slice(0, 400).replace(/\s+/g, " ");
+        } catch (_) { /* body unreadable */ }
+        throw new Error(
+            `Login POST failed: HTTP ${r2.status} (cc="${creds.communityCode}", user="${creds.username}"). ${peek}`
+        );
+    }
     if (/login\.aspx/i.test(r2.url)) {
         throw new Error("Login rejected — wrong credentials or community code (" + creds.communityCode + ")");
     }
