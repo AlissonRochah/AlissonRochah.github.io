@@ -831,12 +831,15 @@ async function gateHttpAddOneGuest(g) {
     // Step 2 — emulate the Add button. ASPxButton1 fires a *full postback*
     // (not a callback), which puts the GridView server-side into "new edit
     // row" state. Skipping this step is why UPDATEEDIT alone is silently
-    // ignored — the server never enters edit mode.
+    // ignored — the server never enters edit mode. The button is an HTML
+    // <input type="submit">, so the canonical ASP.NET WebForms way to fire
+    // the click is to send the button's name=value pair in the body.
     const addBody = gateBuildPostBody(
         inputs,
-        { __EVENTTARGET: "ctl00$ContentPlaceHolder1$ASPxButton1", __EVENTARGUMENT: "" },
+        { __EVENTTARGET: "", __EVENTARGUMENT: "" },
         null, null, null,
     );
+    addBody.append("ctl00$ContentPlaceHolder1$ASPxButton1", "Add a New Guest/FastAccess Pass");
     const addRes = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
         method: "POST",
         credentials: "include",
@@ -849,6 +852,12 @@ async function gateHttpAddOneGuest(g) {
     if (/login\.aspx/i.test(addRes.url)) throw new Error("Add postback redirected to login");
     inputs = gateParseHiddenInputs(addHtml);
     if (!inputs.__VIEWSTATE) throw new Error("Add postback returned a page with no VIEWSTATE — server may have rejected it");
+    // Sanity check: an inline edit form should have rendered, which means
+    // the DXEditor3 last-name input is now in the DOM. Without it, the Add
+    // didn't actually fire and UPDATEEDIT will be silently dropped again.
+    if (!/DXEFL_DXEditor3_I/.test(addHtml)) {
+        throw new Error("Add postback returned the page WITHOUT the inline edit form — button click didn't fire on the server");
+    }
     const gridStateRaw = inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "";
     const keys = gateExtractKeys(gridStateRaw);
 
