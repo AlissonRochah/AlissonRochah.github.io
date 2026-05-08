@@ -636,14 +636,20 @@ async function gateAddGuests({ house, guests }) {
     // 1 element, scripts never run, page is essentially empty). A separate
     // popup window with focused:false sidesteps that — the OS still creates
     // a real window with full page rendering, but it never grabs focus.
+    //
+    // chrome.windows.create rejects the call with "Invalid value for state"
+    // if state and width/height are combined, so we create unminimized and
+    // then minimize via update() right after.
     const win = await chrome.windows.create({
         url: GATE_BASE + "/login.aspx",
         type: "popup",
         focused: false,
-        state: "minimized",
-        width: 800,
-        height: 600,
+        width: 1,
+        height: 1,
+        left: 0,
+        top: 0,
     });
+    try { await chrome.windows.update(win.id, { state: "minimized" }); } catch (_) {}
     const tabId = win.tabs && win.tabs[0] && win.tabs[0].id;
     if (!tabId) throw new Error("could not get tab id from new window");
     // autoDiscardable:false prevents Brave's memory saver from discarding
@@ -779,11 +785,33 @@ async function gatePageRunner({ creds, guests }) {
                     const baseId = id.replace(/_I$/, "");
                     const ctrl = window[baseId];
                     const m = String(mmddyyyy || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-                    if (ctrl && typeof ctrl.SetDate === "function" && m) {
-                        ctrl.SetDate(new Date(+m[3], +m[1] - 1, +m[2]));
-                        return;
+                    if (!m) { setVal(id, mmddyyyy); return; }
+                    const yyyy = m[3], mm = m[1].padStart(2, "0"), dd = m[2].padStart(2, "0");
+
+                    // Preferred: DevExpress client API.
+                    if (ctrl && typeof ctrl.SetDate === "function") {
+                        try {
+                            ctrl.SetDate(new Date(+yyyy, +m[1] - 1, +dd));
+                            return;
+                        } catch (_) { /* fall through */ }
                     }
-                    setVal(id, mmddyyyy);
+
+                    // Fallback: write the visible input AND the hidden _State
+                    // JSON the postback validator reads. Without rawValue here
+                    // the server replies with "Invalid value for state".
+                    const visEl = document.getElementById(id);
+                    if (visEl) {
+                        visEl.value = mmddyyyy;
+                        visEl.dispatchEvent(new Event("change", { bubbles: true }));
+                    }
+                    const stateEl = document.getElementById(baseId + "_State");
+                    if (stateEl) {
+                        let stateObj;
+                        try { stateObj = JSON.parse(stateEl.value || "{}"); }
+                        catch (_) { stateObj = {}; }
+                        stateObj.rawValue = `${yyyy}-${mm}-${dd}`;
+                        stateEl.value = JSON.stringify(stateObj);
+                    }
                 };
                 setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor3_I', lastName);
                 setVal('ctl00_ContentPlaceHolder1_ASPxGridView1_DXPEForm_DXEFL_DXEditor4_I', firstName);
