@@ -73,6 +73,14 @@
                 window.location.href = "index.html";
                 return;
             }
+            // Reset Jobber-related in-memory caches on any user change so
+            // we don't accidentally use the previous app-user's Jobber
+            // identity when creating jobs in the same tab.
+            if (currentUser && currentUser.uid !== user.uid) {
+                _jobberMember = null;
+                _jobberMemberUid = null;
+                _memberOptions = null;
+            }
             currentUser = user;
             document.getElementById("user-email").innerText = user.email;
 
@@ -1559,13 +1567,24 @@
         }
 
         let _jobberMember = null;
+        let _jobberMemberUid = null;   // Firebase uid the in-memory value belongs to
         let _memberOptions = null;
-        const JOBBER_MEMBER_CACHE_KEY = "masterbotJobberMember";
+        const JOBBER_MEMBER_CACHE_PREFIX = "masterbotJobberMember:"; // suffix = firebase uid
         const JOBBER_MEMBER_VERSION_KEY = "masterbotJobberMemberV";
-        const JOBBER_MEMBER_VERSION = "v3";
+        const JOBBER_MEMBER_VERSION = "v4";
         if (localStorage.getItem(JOBBER_MEMBER_VERSION_KEY) !== JOBBER_MEMBER_VERSION) {
-            localStorage.removeItem(JOBBER_MEMBER_CACHE_KEY);
+            // Wipe the un-scoped key from earlier versions and any stray
+            // per-uid entries — fresh start so users that previously had
+            // the cache poisoned by another sign-in get a clean slate.
+            localStorage.removeItem("masterbotJobberMember");
+            for (const k of Object.keys(localStorage)) {
+                if (k.startsWith(JOBBER_MEMBER_CACHE_PREFIX)) localStorage.removeItem(k);
+            }
             localStorage.setItem(JOBBER_MEMBER_VERSION_KEY, JOBBER_MEMBER_VERSION);
+        }
+        function jobberMemberCacheKey() {
+            const uid = currentUser && currentUser.uid;
+            return uid ? (JOBBER_MEMBER_CACHE_PREFIX + uid) : null;
         }
 
         async function fetchMemberOptions(propertyId, clientId) {
@@ -1614,10 +1633,19 @@
         }
 
         async function fetchJobberMember() {
+            // The in-memory copy belongs to one Firebase user. If somebody
+            // else signs into the app in the same tab, drop it.
+            const uid = currentUser && currentUser.uid;
+            if (_jobberMember && _jobberMemberUid !== uid) {
+                _jobberMember = null;
+                _jobberMemberUid = null;
+            }
             if (_jobberMember) return _jobberMember;
-            const cached = localStorage.getItem(JOBBER_MEMBER_CACHE_KEY);
+            const key = jobberMemberCacheKey();
+            const cached = key ? localStorage.getItem(key) : null;
             if (cached) {
                 _jobberMember = cached;
+                _jobberMemberUid = uid;
                 return cached;
             }
             try {
@@ -1638,7 +1666,8 @@
                 const name = (nm && (nm.full || [nm.first, nm.last].filter(Boolean).join(" "))) || "";
                 if (name) {
                     _jobberMember = name;
-                    localStorage.setItem(JOBBER_MEMBER_CACHE_KEY, name);
+                    _jobberMemberUid = uid;
+                    if (key) localStorage.setItem(key, name);
                     return name;
                 }
             } catch (_) {}
