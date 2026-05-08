@@ -1338,16 +1338,24 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
             if (msg.action === "gate-get-creds-for-house") {
                 // Page reads creds from us (loaded from the Google sheet under
                 // the user's Google session) and sends them to /api/gate/add
-                // on Vercel. Vercel does the actual gateaccess.net dance from
-                // a clean Node fetch — bypasses the chrome-extension://
-                // origin issue we couldn't crack.
+                // on Vercel. We also ship the user's existing gateaccess.net
+                // cookies — if they're logged in in their browser the Vercel
+                // can reuse that session and skip its own HTTP login (which
+                // works but produces a session that gets redirected to
+                // /offline.aspx by some server-side fingerprint check).
                 const house = (msg.payload && msg.payload.house) || "";
                 if (!house) throw new Error("house required");
                 const creds = await gateCredsForHouse(house);
+                let cookies = [];
+                try {
+                    const all = await chrome.cookies.getAll({ domain: "gateaccess.net" });
+                    cookies = all.map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }));
+                } catch (_) { /* cookies permission missing */ }
                 sendResponse({ ok: true, data: {
                     communityCode: creds.communityCode,
                     username: creds.username,
                     password: creds.password,
+                    cookies,
                 } });
                 return;
             }

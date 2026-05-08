@@ -426,20 +426,38 @@ export async function gateAddOneGuest(jar, g) {
     return { key: newKey };
 }
 
-export async function gateAddGuests(creds, guests) {
+export async function gateAddGuests(creds, guests, prelaunchCookies) {
     const jar = new CookieJar();
-    await gateLogin(jar, creds);
 
-    // Mirror the real UI flow: after login, the browser lands on
-    // /overview.aspx (or whatever default page). Visiting it lets the
-    // server complete any session warm-up (DevExpress likes to set
-    // additional cookies on first authenticated page load) before we
-    // start hitting GuestsDevices. Skipping this seems to be why the
-    // server was redirecting our Add postback to /offline.aspx.
-    try {
-        const ov = await jarFetch(jar, GATE_BASE + "/overview.aspx", { method: "GET" });
-        await followRedirects(jar, ov, {});
-    } catch (_) { /* best-effort */ }
+    // If the caller shipped cookies from the user's already-logged-in
+    // browser session, prefer those — that session has whatever
+    // fingerprint marker our HTTP-login session is missing (the one that
+    // makes the server redirect us to /offline.aspx).
+    let needsLogin = true;
+    if (Array.isArray(prelaunchCookies) && prelaunchCookies.length > 0) {
+        for (const c of prelaunchCookies) {
+            if (c && c.name) jar.cookies.set(c.name, c.value || "");
+        }
+        // Probe: can we actually load the guest page with these cookies?
+        try {
+            await gateFetchGuestPage(jar);
+            needsLogin = false;
+        } catch (e) {
+            // Cookies stale or insufficient — fall through to HTTP login.
+            needsLogin = true;
+        }
+    }
+
+    if (needsLogin) {
+        await gateLogin(jar, creds);
+        // Mirror the real UI flow: after login, the browser lands on
+        // /overview.aspx. Visiting it lets the server complete any
+        // session warm-up before we start hitting GuestsDevices.
+        try {
+            const ov = await jarFetch(jar, GATE_BASE + "/overview.aspx", { method: "GET" });
+            await followRedirects(jar, ov, {});
+        } catch (_) { /* best-effort */ }
+    }
 
     const results = [];
     for (const g of guests) {

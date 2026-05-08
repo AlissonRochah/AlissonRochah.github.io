@@ -16,7 +16,7 @@ export default async function handler(req, res) {
         return;
     }
 
-    const { creds, guests } = req.body || {};
+    const { creds, guests, cookies } = req.body || {};
     if (!creds || !creds.communityCode || !creds.username || !creds.password) {
         res.status(400).json({ error: "missing creds {communityCode, username, password}" });
         return;
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        const results = await gateAddGuests(creds, guests);
+        const results = await gateAddGuests(creds, guests, Array.isArray(cookies) ? cookies : []);
         res.status(200).json({ results });
     } catch (err) {
         res.status(500).json({ error: String(err?.message || err) });

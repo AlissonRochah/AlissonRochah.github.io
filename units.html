@@ -437,13 +437,17 @@
                     return;
                 }
                 const idToken = await currentUser.getIdToken();
+                // Strip the cookies field out of `creds` so the body is a
+                // clean { creds, cookies, guests } shape — Vercel side reads
+                // them separately.
+                const { cookies: sessionCookies, ...credsOnly } = credsRes.data;
                 const proxyRes = await fetch(proxyUrl + "/api/gate/add", {
                     method: "POST",
                     headers: {
                         "Authorization": "Bearer " + idToken,
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ creds: credsRes.data, guests }),
+                    body: JSON.stringify({ creds: credsOnly, cookies: sessionCookies || [], guests }),
                 });
                 if (!proxyRes.ok) {
                     let msg = `proxy HTTP ${proxyRes.status}`;
