@@ -887,51 +887,60 @@ function gateBuildPostBody(inputs, overrides, callbackId, callbackParam, guest) 
 
 async function gateHttpAddOneGuest(g) {
     // Step 1 — fetch the grid page to seed __VIEWSTATE and the gridview
-    // state literal. We don't compare key COUNTS for verification (the
-    // grid is paginated to 20 rows so the count stays the same after an
-    // insert) — instead we compare the SET of keys before vs after.
+    // state literal. We compare the SET of row keys before/after (not the
+    // count — the grid is paginated to 20 so a successful insert pushes
+    // an old key off the page).
     const pageState = await gateHttpFetchGuestPage();
     if (pageState.needsLogin) {
         throw new Error("Session lost — re-fetching landed on login");
     }
     let inputs = pageState.inputs;
-    const keysBefore = new Set(gateGridLiteralKeys(pageState.stateLiteral));
+    let stateLiteral = pageState.stateLiteral;
+    const keysBefore = new Set(gateGridLiteralKeys(stateLiteral));
 
-    // Step 2 — emulate the Add button. ASPxButton1 fires a *full postback*
-    // (not a callback) and puts the GridView into "new edit row" state on
-    // the server. Without it, the UPDATEEDIT callback is silently dropped.
-    // ASPxButton1 is an <input type="submit">, so we trigger it the
-    // standard ASP.NET way: include the button's name=value pair.
-    const addBody = gateBuildPostBody(
-        inputs,
-        { __EVENTTARGET: "", __EVENTARGUMENT: "" },
-        null, null, null,
-    );
-    addBody.append("ctl00$ContentPlaceHolder1$ASPxButton1", "Add a New Guest/FastAccess Pass");
-    const addRes = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        redirect: "follow",
-        referrer: GATE_BASE + "/GuestsDevices.aspx",
-        referrerPolicy: "unsafe-url",
-        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-        body: addBody.toString(),
-    });
-    if (!addRes.ok) throw new Error("Add postback HTTP " + addRes.status);
-    const addHtml = await addRes.text();
-    if (/login\.aspx/i.test(addRes.url)) throw new Error("Add postback redirected to login");
-    inputs = gateParseHiddenInputs(addHtml);
-    if (!inputs.__VIEWSTATE) throw new Error("Add postback returned a page with no VIEWSTATE");
-    if (!/DXEFL_DXEditor3_I/.test(addHtml)) {
-        throw new Error("Add postback didn't open the edit form — button click didn't fire");
+    // Server may already be in edit mode from a prior partial submit; in that
+    // case the inline edit form is already rendered and the Add postback
+    // would be a no-op (or worse, leave the server in a weird state).
+    const alreadyInEditMode = /DXEFL_DXEditor3_I/.test(pageState.html);
+
+    if (!alreadyInEditMode) {
+        // Step 2 — emulate the Add button. ASPxButton1 fires a full postback
+        // (not a DevExpress callback) and puts the GridView into "new edit
+        // row" state on the server. We set both __EVENTTARGET (DevExpress'
+        // ASPxButton expects this) and the button's name=value pair (the
+        // standard ASP.NET WebForms submit mechanism) so either path the
+        // server uses to identify the click finds something.
+        const addBody = gateBuildPostBody(
+            inputs,
+            { __EVENTTARGET: "ctl00$ContentPlaceHolder1$ASPxButton1", __EVENTARGUMENT: "" },
+            null, null, null,
+        );
+        addBody.append("ctl00$ContentPlaceHolder1$ASPxButton1", "Add a New Guest/FastAccess Pass");
+        const addRes = await fetch(GATE_BASE + "/GuestsDevices.aspx", {
+            method: "POST",
+            credentials: "include",
+            cache: "no-store",
+            redirect: "follow",
+            referrer: GATE_BASE + "/GuestsDevices.aspx",
+            referrerPolicy: "unsafe-url",
+            headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+            body: addBody.toString(),
+        });
+        if (!addRes.ok) throw new Error("Add postback HTTP " + addRes.status);
+        const addHtml = await addRes.text();
+        if (/login\.aspx/i.test(addRes.url)) throw new Error("Add postback redirected to login");
+        const newInputs = gateParseHiddenInputs(addHtml);
+        if (!newInputs.__VIEWSTATE) throw new Error("Add postback returned a page with no VIEWSTATE");
+        if (!/DXEFL_DXEditor3_I/.test(addHtml)) {
+            throw new Error("Add postback didn't open the edit form — button click didn't fire");
+        }
+        inputs = newInputs;
+        stateLiteral = gateExtractGridStateLiteral(addHtml);
+        if (stateLiteral) {
+            inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] = gateGridLiteralToFormValue(stateLiteral);
+        }
     }
-    // Re-augment with the new gridview state from the post-Add page.
-    const stateLiteralAdd = gateExtractGridStateLiteral(addHtml);
-    if (stateLiteralAdd) {
-        inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] = gateGridLiteralToFormValue(stateLiteralAdd);
-    }
-    const keys = gateGridLiteralKeys(stateLiteralAdd);
+    const keys = gateGridLiteralKeys(stateLiteral);
 
     const sdShort = gateDateShort(g.startDate);
     const edShort = gateDateShort(g.endDate);
