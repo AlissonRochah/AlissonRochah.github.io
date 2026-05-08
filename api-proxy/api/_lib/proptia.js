@@ -271,17 +271,40 @@ export async function proptiaSubmitVisitor(jar, ctx, visitor) {
 
 // ------------- top level: add a list of visitors to one property -------------
 
+// Reduce a free-form address ("602 Jasmine Lane", "1601 Moon Valley Dr",
+// "453 Ocean Way #B") to "<number> <first-street-word>" — the canonical
+// MAPRO short code. We use this as a fallback when the full hint doesn't
+// match a chooser entry verbatim (Proptia abbreviates "Lane" → "Ln", etc).
+function shortHouseKey(s) {
+    const m = String(s || "").trim().match(/^(\d+)\s+([A-Za-z]+)/);
+    if (!m) return null;
+    return `${m[1]} ${m[2]}`;
+}
+
 export async function proptiaAddGuests({ slug, email, password, orgUUID, houseHint }, guests) {
     const jar = new CookieJar();
     await proptiaLogin(jar, slug, email, password);
     const properties = await proptiaListProperties(jar, orgUUID);
     if (properties.length === 0) throw new Error("no properties listed in chooser");
-    const target = properties.find((p) =>
-        p.label.toLowerCase().includes(String(houseHint || "").toLowerCase())
-    );
+
+    // Try in order:
+    //   1. Full hint (case-insensitive substring) — handles exact addresses.
+    //   2. "<number> <first-street-word>" — handles Lane/Ln/Lanes/Way/etc.
+    //      mismatches between MAPRO's short address and Proptia's label.
+    const wantFull = String(houseHint || "").toLowerCase();
+    const wantShort = (shortHouseKey(houseHint) || "").toLowerCase();
+    let target = wantFull
+        ? properties.find((p) => p.label.toLowerCase().includes(wantFull))
+        : null;
+    if (!target && wantShort) {
+        target = properties.find((p) => p.label.toLowerCase().includes(wantShort));
+    }
     if (!target) {
         const sample = properties.slice(0, 5).map((p) => p.label).join(" | ");
-        throw new Error(`no property matched "${houseHint}". First few: ${sample}`);
+        throw new Error(
+            `no property matched "${houseHint}" (also tried "${wantShort}"). ` +
+            `First few of ${properties.length}: ${sample}`
+        );
     }
     const picked = await proptiaPickProperty(jar, target.parentOrg, target.orgRole, target.property);
     const ctx = await proptiaGetAddVisitorContext(jar, picked.dashboardUrl, target.parentOrg, target.orgRole, target.property);
