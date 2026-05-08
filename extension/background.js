@@ -643,9 +643,55 @@ function gateParseHiddenInputs(html) {
         if (!/type\s*=\s*["']?hidden["']?/i.test(attrs)) continue;
         const nameMatch = /name\s*=\s*"([^"]*)"/i.exec(attrs) || /name\s*=\s*'([^']*)'/i.exec(attrs);
         const valueMatch = /value\s*=\s*"((?:[^"])*)"/i.exec(attrs) || /value\s*=\s*'([^']*)'/i.exec(attrs);
-        if (nameMatch) inputs[nameMatch[1]] = valueMatch ? valueMatch[1] : "";
+        if (nameMatch) {
+            // HTML attributes use &amp;-encoded entities. Decode once so the
+            // "logical" value matches what the browser would expose via .value
+            // — re-encoding is URLSearchParams' job at POST time.
+            inputs[nameMatch[1]] = valueMatch ? gateDecodeEntities(valueMatch[1]) : "";
+        }
     }
     return inputs;
+}
+
+// The gridview's row keys + callback state aren't rendered as a hidden input
+// in the static HTML — DevExpress writes the input from JS at runtime. We
+// have to read the stateObject directly from the inline script literal.
+// Anchored on the gridview's uniqueID so we don't pick up some other
+// control's stateObject (BinaryImage1 etc.).
+function gateExtractGridStateLiteral(html) {
+    const anchor = html.indexOf("'uniqueID':'ctl00$ContentPlaceHolder1$ASPxGridView1'");
+    if (anchor < 0) return null;
+    const idx = html.indexOf("'stateObject'", anchor);
+    if (idx < 0) return null;
+    let i = html.indexOf("{", idx);
+    if (i < 0) return null;
+    const start = i;
+    let depth = 0, inStr = false, esc = false;
+    for (; i < html.length; i++) {
+        const c = html[i];
+        if (esc) { esc = false; continue; }
+        if (c === "\\") { esc = true; continue; }
+        if (c === "'") { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (c === "{") depth++;
+        else if (c === "}") {
+            depth--;
+            if (depth === 0) return html.slice(start, i + 1);
+        }
+    }
+    return null;
+}
+
+// Convert the JS-literal stateObject (single quotes) into the form-post
+// value DevExpress expects: JSON with " replaced by &quot;.
+function gateGridLiteralToFormValue(literal) {
+    return literal.replace(/'/g, '"').replace(/"/g, "&quot;");
+}
+
+function gateGridLiteralKeys(literal) {
+    if (!literal) return [];
+    try { return (JSON.parse(literal.replace(/'/g, '"')).keys) || []; }
+    catch (_) { return []; }
 }
 
 function gateDecodeEntities(s) {
@@ -734,7 +780,14 @@ async function gateHttpFetchGuestPage() {
     if (!inputs.__VIEWSTATE) {
         return { needsLogin: true };
     }
-    return { needsLogin: false, html, inputs };
+    // Augment with the gridview state read from the inline JS literal —
+    // it isn't in the static HTML as a hidden input, but the form post
+    // expects the synthesized value.
+    const stateLiteral = gateExtractGridStateLiteral(html);
+    if (stateLiteral) {
+        inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] = gateGridLiteralToFormValue(stateLiteral);
+    }
+    return { needsLogin: false, html, inputs, stateLiteral };
 }
 
 async function gateHttpLogin(creds) {
@@ -768,12 +821,6 @@ async function gateHttpLogin(creds) {
     }
 }
 
-function gateExtractKeys(gridStateRaw) {
-    try {
-        return (JSON.parse(gateDecodeEntities(gridStateRaw || "") || "{}").keys) || [];
-    } catch (_) { return []; }
-}
-
 // Build the full body including all grid + form fields. Caller supplies the
 // hidden inputs (parsed from the HTML snapshot it's submitting against),
 // which fields to override (overrides), and which __CALLBACKID/__CALLBACKPARAM
@@ -787,10 +834,17 @@ function gateBuildPostBody(inputs, overrides, callbackId, callbackParam, guest) 
     const firstName = guest ? (guest.firstName || "") : "";
 
     const body = new URLSearchParams();
-    body.append("__EVENTTARGET", overrides.__EVENTTARGET || "");
-    body.append("__EVENTARGUMENT", overrides.__EVENTARGUMENT || "");
-    body.append("__VIEWSTATE", inputs.__VIEWSTATE || "");
-    body.append("__VIEWSTATEGENERATOR", inputs.__VIEWSTATEGENERATOR || "");
+    // Start by including every hidden input we found — this guarantees
+    // any framework-required tokens (__VIEWSTATEGENERATOR, __EVENTVALIDATION,
+    // ASPxAutoSync, etc.) ride along. We then use set() for __EVENTTARGET
+    // and __EVENTARGUMENT so they are overridden cleanly. The other
+    // non-hidden fields are appended below; servers tolerate duplicates.
+    for (const [k, v] of Object.entries(inputs)) {
+        if (k === "ctl00$ContentPlaceHolder1$ASPxGridView1") continue;
+        body.append(k, v);
+    }
+    body.set("__EVENTTARGET", overrides.__EVENTTARGET || "");
+    body.set("__EVENTARGUMENT", overrides.__EVENTARGUMENT || "");
     body.append("ctl00$ASPxBinaryImage1$State", gateJsonForPost({ uploadedFileName: "" }));
     body.append("ctl00$ASPxTabControl1", gateJsonForPost({ activeTabIndex: 5 }));
     body.append("ctl00$ContentPlaceHolder1$ASPxGridView1", inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "");
@@ -816,30 +870,29 @@ function gateBuildPostBody(inputs, overrides, callbackId, callbackParam, guest) 
     body.append("ctl00$ContentPlaceHolder1$HiddenField1", "");
     body.append("ctl00$ContentPlaceHolder1$HiddenField2", "");
     body.append("ctl00$ContentPlaceHolder1$HiddenField3", "");
-    body.append("DXScript", inputs.DXScript || "");
-    body.append("DXCss", inputs.DXCss || "");
+    // DXScript/DXCss/__EVENTVALIDATION already came in via the loop above.
     if (callbackId) body.append("__CALLBACKID", callbackId);
     if (callbackParam) body.append("__CALLBACKPARAM", callbackParam);
-    body.append("__EVENTVALIDATION", inputs.__EVENTVALIDATION || "");
     return body;
 }
 
 async function gateHttpAddOneGuest(g) {
-    // Step 1 — fetch the grid page to get the initial __VIEWSTATE.
-    let pageState = await gateHttpFetchGuestPage();
+    // Step 1 — fetch the grid page to seed __VIEWSTATE and the gridview
+    // state literal. We don't compare key COUNTS for verification (the
+    // grid is paginated to 20 rows so the count stays the same after an
+    // insert) — instead we compare the SET of keys before vs after.
+    const pageState = await gateHttpFetchGuestPage();
     if (pageState.needsLogin) {
         throw new Error("Session lost — re-fetching landed on login");
     }
     let inputs = pageState.inputs;
-    const gridStateRaw0 = inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "";
-    const keysBefore = gateExtractKeys(gridStateRaw0).length;
+    const keysBefore = new Set(gateGridLiteralKeys(pageState.stateLiteral));
 
     // Step 2 — emulate the Add button. ASPxButton1 fires a *full postback*
-    // (not a callback), which puts the GridView server-side into "new edit
-    // row" state. Skipping this step is why UPDATEEDIT alone is silently
-    // ignored — the server never enters edit mode. The button is an HTML
-    // <input type="submit">, so the canonical ASP.NET WebForms way to fire
-    // the click is to send the button's name=value pair in the body.
+    // (not a callback) and puts the GridView into "new edit row" state on
+    // the server. Without it, the UPDATEEDIT callback is silently dropped.
+    // ASPxButton1 is an <input type="submit">, so we trigger it the
+    // standard ASP.NET way: include the button's name=value pair.
     const addBody = gateBuildPostBody(
         inputs,
         { __EVENTTARGET: "", __EVENTARGUMENT: "" },
@@ -857,15 +910,16 @@ async function gateHttpAddOneGuest(g) {
     const addHtml = await addRes.text();
     if (/login\.aspx/i.test(addRes.url)) throw new Error("Add postback redirected to login");
     inputs = gateParseHiddenInputs(addHtml);
-    if (!inputs.__VIEWSTATE) throw new Error("Add postback returned a page with no VIEWSTATE — server may have rejected it");
-    // Sanity check: an inline edit form should have rendered, which means
-    // the DXEditor3 last-name input is now in the DOM. Without it, the Add
-    // didn't actually fire and UPDATEEDIT will be silently dropped again.
+    if (!inputs.__VIEWSTATE) throw new Error("Add postback returned a page with no VIEWSTATE");
     if (!/DXEFL_DXEditor3_I/.test(addHtml)) {
-        throw new Error("Add postback returned the page WITHOUT the inline edit form — button click didn't fire on the server");
+        throw new Error("Add postback didn't open the edit form — button click didn't fire");
     }
-    const gridStateRaw = inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "";
-    const keys = gateExtractKeys(gridStateRaw);
+    // Re-augment with the new gridview state from the post-Add page.
+    const stateLiteralAdd = gateExtractGridStateLiteral(addHtml);
+    if (stateLiteralAdd) {
+        inputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] = gateGridLiteralToFormValue(stateLiteralAdd);
+    }
+    const keys = gateGridLiteralKeys(stateLiteralAdd);
 
     const sdShort = gateDateShort(g.startDate);
     const edShort = gateDateShort(g.endDate);
@@ -893,25 +947,23 @@ async function gateHttpAddOneGuest(g) {
     });
     if (!r.ok) throw new Error("Update HTTP " + r.status);
     const respText = await r.text();
-    if (/Invalid value for state/i.test(respText)) throw new Error("Postback validation rejected the row");
     if (/login\.aspx/i.test(r.url)) throw new Error("Logged out mid-request");
+    // DevExpress callback errors are embedded as `'error':{'message':'...'}`
+    // somewhere in the response.
+    const errMatch = respText.match(/'error':\{[^}]*'message':'([^']+)'/);
+    if (errMatch) throw new Error("Server: " + errMatch[1]);
 
-    // Verify by re-fetching the page and counting keys in the grid state.
-    // Just searching for the last name in the HTML gave false positives
-    // (template strings, script blobs, etc).
+    // Verify by re-fetching and looking for a key not seen before.
     await new Promise((res) => setTimeout(res, 600));
     const verify = await fetch(GATE_BASE + "/GuestsDevices.aspx", { credentials: "include" });
     const verifyHtml = await verify.text();
-    const verifyInputs = gateParseHiddenInputs(verifyHtml);
-    const keysAfter = gateExtractKeys(verifyInputs["ctl00$ContentPlaceHolder1$ASPxGridView1"] || "").length;
-    if (keysAfter <= keysBefore) {
-        // The server returns 200 even when it silently rejects a row.
-        // Surface the first chunk of the response so the next failure is
-        // diagnosable instead of mysterious.
+    const verifyLiteral = gateExtractGridStateLiteral(verifyHtml);
+    const keysVerify = gateGridLiteralKeys(verifyLiteral);
+    const newKey = keysVerify.find((k) => !keysBefore.has(k));
+    if (!newKey) {
         const respPeek = respText.slice(0, 250).replace(/\s+/g, " ");
         throw new Error(
-            "Server accepted POST but row count is still " + keysAfter +
-            " (was " + keysBefore + "). Response head: " + respPeek
+            "Submitted but no new row appeared. Response head: " + respPeek
         );
     }
 }
