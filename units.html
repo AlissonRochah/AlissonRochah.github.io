@@ -503,12 +503,32 @@
                 results = (data && data.results) || [];
                 const ok = results.filter((r) => r.ok).length;
                 const fail = results.length - ok;
-                progress.innerHTML = results.map((r) => {
+                const lines = results.map((r) => {
                     const name = [r.firstName, r.lastName].filter(Boolean).join(" ") || "(no name)";
                     return r.ok
                         ? `<div class="gate-line gate-line-ok">✓ ${escapeHtml(name)}</div>`
                         : `<div class="gate-line gate-line-err">✗ ${escapeHtml(name)} — ${escapeHtml(r.error || "")}</div>`;
                 }).join("");
+                // Copy-message button — at least one guest was added.
+                let copyBtn = "";
+                if (ok > 0) {
+                    const yourName = (localStorage.getItem("yourName") || "").trim();
+                    const msg = `You are all set for the names.\n\nRegards,\n${yourName}`.trim();
+                    copyBtn = `<button type="button" class="btn btn-sm btn-outline" id="gate-copy-msg-btn" style="margin-top:10px;" data-msg="${escapeHtml(msg)}">Copy message</button>`;
+                }
+                progress.innerHTML = lines + copyBtn;
+                const btnEl = document.getElementById("gate-copy-msg-btn");
+                if (btnEl) {
+                    btnEl.addEventListener("click", async () => {
+                        try {
+                            await navigator.clipboard.writeText(btnEl.dataset.msg);
+                            btnEl.textContent = "Copied!";
+                            setTimeout(() => { btnEl.textContent = "Copy message"; }, 1500);
+                        } catch (e) {
+                            showToast("Couldn't copy: " + (e && e.message || e), "error");
+                        }
+                    });
+                }
                 progress.className = "gate-progress " + (fail === 0 ? "ok" : "warning");
                 showToast(fail === 0 ? `${ok} guest${ok!==1?"s":""} added to gate` : `${ok} ok, ${fail} failed`, fail === 0 ? "success" : "warning");
             } catch (e) {
