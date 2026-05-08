@@ -392,7 +392,8 @@ async function maproAddComment({ reservaId, casaId, comment }) {
 
 // Sheet ID from the URL: https://docs.google.com/spreadsheets/d/<ID>/edit
 const GATE_SHEET_ID = "15rnSnXSX9jOkxR0Gn9teNs3WUJYIHeWf_RzN1hzDBRg";
-const GATE_SHEET_TAB = "GATE ACCESS";
+// gid of the "Windsor Cay - Gate" tab inside the GATE ACCESS spreadsheet.
+const GATE_SHEET_GID = "701856462";
 
 const GATE_BASE = "https://gateaccess.net";
 const GATE_CREDS_CACHE_KEY = "gateCredsCache";
@@ -430,10 +431,10 @@ async function gateFetchSheetCsv() {
     if (!GATE_SHEET_ID || GATE_SHEET_ID.startsWith("REPLACE_")) {
         throw new Error("GATE_SHEET_ID is not set in extension/background.js");
     }
-    // gviz/tq lets us target a tab by name (export?format=csv only ever
-    // returns the first sheet). Like /export, this redirects to
-    // *.googleusercontent.com, so both hosts must be in host_permissions.
-    const url = `https://docs.google.com/spreadsheets/d/${GATE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(GATE_SHEET_TAB)}`;
+    // /export with explicit gid targets a specific tab (default returns the
+    // first sheet only). Redirects to *.googleusercontent.com, so both hosts
+    // must be in host_permissions.
+    const url = `https://docs.google.com/spreadsheets/d/${GATE_SHEET_ID}/export?format=csv&gid=${GATE_SHEET_GID}`;
     let res;
     try {
         res = await fetch(url, { credentials: "include" });
