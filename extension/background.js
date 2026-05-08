@@ -603,14 +603,9 @@ async function gateAddGuests({ house, guests }) {
 
     const creds = await gateCredsForHouse(house);
 
-    // active:true — Brave/Chrome heavily throttle hidden tabs; the
-    // DevExpress login form on gateaccess.net wouldn't initialise in a
-    // background tab and the runner would time out waiting for the
-    // community dropdown. Tab is closed in finally so the focus theft
-    // is brief.
     const tab = await chrome.tabs.create({
         url: GATE_BASE + "/login.aspx",
-        active: true,
+        active: false,
     });
     try {
         await gateWaitTabLoad(tab.id);
