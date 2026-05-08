@@ -892,22 +892,36 @@ async function gateHttpLogin(creds) {
         body: body.toString(),
     });
     if (!r2.ok) {
-        // Capture a slice of the body — ASP.NET error pages often have a
-        // usable hint inside even when status is opaque.
+        // Aggressive diagnostics: response headers + selected body markers.
+        // The Runtime Error YSOD body is opaque on remote, but sometimes the
+        // headers carry an X-AspNet-* or X-Powered-By hint, and occasionally
+        // the body has a stack trace fragment past the boilerplate.
+        const headersDump = [];
+        try {
+            for (const [k, v] of r2.headers.entries()) {
+                if (/^(content-type|content-length|server|x-|cache-control)/i.test(k)) {
+                    headersDump.push(`${k}=${v}`);
+                }
+            }
+        } catch (_) { /* unreadable */ }
+
         let peek = "";
         try {
             const t = await r2.text();
-            const titleMatch = t.match(/<title>([^<]+)<\/title>/i);
-            const title = titleMatch ? titleMatch[1].trim() : "";
-            // ASP.NET YSOD's actual exception is in the <pre> tags after the
-            // boilerplate header; surface that if we find it.
-            const exMatch = t.match(/<b>\s*Description:\s*<\/b>\s*([^<]+)/i)
-                         || t.match(/<pre[^>]*>([^<]{20,600})<\/pre>/i);
-            const ex = exMatch ? exMatch[1].trim().replace(/\s+/g, " ") : "";
-            peek = (title ? `[${title}] ` : "") + (ex ? `${ex} ` : "") + t.slice(0, 200).replace(/\s+/g, " ");
+            // Surface anything past the boilerplate <style>…</style>:
+            // RemoteOnly hides "Description" but sometimes leaves "Source File"
+            // / "Stack Trace" markers visible.
+            const afterStyle = t.slice(t.indexOf("</style>") + 8);
+            const interesting = afterStyle.match(/<\/h2>([\s\S]{0,1500})/i);
+            const interestingText = (interesting ? interesting[1] : afterStyle.slice(0, 1500))
+                .replace(/<[^>]+>/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+            peek = `body-len=${t.length} body=[${interestingText.slice(0, 600)}]`;
         } catch (_) { /* body unreadable */ }
         throw new Error(
-            `Login POST failed: HTTP ${r2.status} (cc="${creds.communityCode}", user="${creds.username}", get-url=${r1Url}). ${peek}`
+            `Login POST failed: HTTP ${r2.status} (cc="${creds.communityCode}", user="${creds.username}", get-url=${r1Url}, body-len=${body.toString().length}). ` +
+            `headers=[${headersDump.join("; ")}] ${peek}`
         );
     }
     if (/login\.aspx/i.test(r2.url)) {
