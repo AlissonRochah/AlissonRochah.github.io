@@ -1888,19 +1888,48 @@
             document.getElementById("gr-house-label").textContent = u.code || u.title || "(unknown)";
             document.getElementById("gr-house-code").textContent = u.code || "—";
             document.getElementById("gr-house-address").textContent = u._fullAddress || u.address || "—";
-            const areaTxt = info && info.area
-                ? `${info.area}${info.number ? " " + info.number : ""}`
-                : "(not detected)";
-            document.getElementById("gr-house-area").textContent = areaTxt;
+
+            // Track whether the current area selection still matches the
+            // auto-detected one — so the "auto-detected" hint hides as soon
+            // as the operator overrides it.
+            modal.dataset.areaAuto = info && info.area ? "1" : "";
+            grRefreshAreaUI();
 
             const titleInput = document.getElementById("gr-modal-title");
             const dateInput = document.getElementById("gr-modal-date");
+            const numInput = document.getElementById("gr-area-num");
             titleInput.value = "";
             dateInput.value = todayIso();
+            numInput.value = modal.dataset.areaNumber || "";
 
             grUpdatePreview();
             modal.classList.add("active");
             setTimeout(() => titleInput.focus(), 50);
+        };
+
+        function grRefreshAreaUI() {
+            const modal = document.getElementById("gr-modal");
+            const area = modal.dataset.area || "";
+            document.getElementById("gr-area-west").classList.toggle("btn-area-active", area === "West");
+            document.getElementById("gr-area-east").classList.toggle("btn-area-active", area === "East");
+            const hint = document.getElementById("gr-area-auto-hint");
+            hint.style.display = modal.dataset.areaAuto === "1" ? "" : "none";
+        }
+
+        window.grSetArea = function (area) {
+            const modal = document.getElementById("gr-modal");
+            modal.dataset.area = area;
+            modal.dataset.areaAuto = "";
+            grRefreshAreaUI();
+            grUpdatePreview();
+        };
+
+        window.grSetAreaNumber = function (value) {
+            const modal = document.getElementById("gr-modal");
+            modal.dataset.areaNumber = String(value || "").trim();
+            modal.dataset.areaAuto = "";
+            grRefreshAreaUI();
+            grUpdatePreview();
         };
 
         window.closeGuestReportModal = function () {
@@ -2430,8 +2459,16 @@
                 <div class="gr-info">
                     <div class="gr-info-row"><span class="gr-info-label">Unit</span><span id="gr-house-code" class="gr-info-value"></span></div>
                     <div class="gr-info-row"><span class="gr-info-label">Address</span><span id="gr-house-address" class="gr-info-value"></span></div>
-                    <div class="gr-info-row"><span class="gr-info-label">Area</span><span id="gr-house-area" class="gr-info-value"></span></div>
                 </div>
+
+                <label class="gr-field">
+                    <span>Area <span id="gr-area-auto-hint" class="gr-area-auto" style="display:none;">auto-detected</span></span>
+                    <div class="gr-area-picker">
+                        <button type="button" id="gr-area-west" class="btn-area" onclick="grSetArea('West')">West</button>
+                        <button type="button" id="gr-area-east" class="btn-area" onclick="grSetArea('East')">East</button>
+                        <span class="gr-area-num">#<input type="number" id="gr-area-num" min="1" max="20" oninput="grSetAreaNumber(this.value)" class="area-num-input"></span>
+                    </div>
+                </label>
 
                 <label class="gr-field">
                     <span>Title</span>
