@@ -68,6 +68,13 @@
             if (user) {
                 currentUserId = user.uid;
                 document.getElementById("user-email").innerText = user.email;
+                // Load yourName scoped to this Firebase user. The legacy
+                // global "yourName" key is wiped once below so a previous
+                // user's value can't leak into the next person's session.
+                const nameInput = document.getElementById("yourName");
+                if (nameInput) {
+                    nameInput.value = localStorage.getItem(YOUR_NAME_PREFIX + user.uid) || "";
+                }
                 if (tplInitialCache && tplInitialCache.userId === user.uid) {
                     loadCategories(user.uid);
                     loadSignature(user.uid);
@@ -80,6 +87,16 @@
                 window.location.href = "index.html";
             }
         });
+
+        // Per-uid yourName storage. Mirrors the keys used in units.html so
+        // both pages read/write the same place for a given Firebase user.
+        const YOUR_NAME_PREFIX = "yourName:";
+        const YOUR_NAME_VERSION_KEY = "yourNameV";
+        const YOUR_NAME_VERSION = "v2";
+        if (localStorage.getItem(YOUR_NAME_VERSION_KEY) !== YOUR_NAME_VERSION) {
+            localStorage.removeItem("yourName");
+            localStorage.setItem(YOUR_NAME_VERSION_KEY, YOUR_NAME_VERSION);
+        }
 
         async function loadSignature(userId) {
             try {
@@ -269,16 +286,12 @@
             }
         };
 
-        // Save/load name from localStorage
-        const savedName = localStorage.getItem("yourName");
-        if (savedName) {
-            window.addEventListener("DOMContentLoaded", () => {
-                document.getElementById("yourName").value = savedName;
-            });
-        }
-
+        // The yourName input is populated from localStorage inside
+        // onAuthStateChanged once we know which Firebase user is signed in.
         window.saveName = function () {
-            localStorage.setItem("yourName", document.getElementById("yourName").value.trim());
+            if (!currentUserId) return;
+            const v = document.getElementById("yourName").value.trim();
+            localStorage.setItem(YOUR_NAME_PREFIX + currentUserId, v);
         };
 
         function getGreetingText() {

@@ -524,7 +524,7 @@
                 // Copy-message button — at least one guest was added.
                 let copyBtn = "";
                 if (ok > 0) {
-                    const yourName = (localStorage.getItem("yourName") || "").trim();
+                    const yourName = yourNameForCurrentUser();
                     const msg = `You are all set for the names.\n\nRegards,\n${yourName}`.trim();
                     copyBtn = `<button type="button" class="btn btn-sm btn-outline" id="gate-copy-msg-btn" style="margin-top:10px;" data-msg="${escapeHtml(msg)}">Copy message</button>`;
                 }
@@ -986,8 +986,14 @@
         }
 
         function todayIso() {
+            // Local-time YYYY-MM-DD. toISOString() returns UTC, which flips
+            // to "tomorrow" once we cross midnight UTC — ~8pm Florida time —
+            // and would default BBQ / PH / Pool Heater dates to the wrong day.
             const d = new Date();
-            return d.toISOString().slice(0, 10);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            return `${yyyy}-${mm}-${dd}`;
         }
 
         function renderSvcAction(u, cj, idx) {
@@ -1587,6 +1593,24 @@
             return uid ? (JOBBER_MEMBER_CACHE_PREFIX + uid) : null;
         }
 
+        // yourName is what we use as the assignee on Jobber jobs / the
+        // signature on the gate "Copy message". Keyed by Firebase uid so
+        // a previous user's value never bleeds into another user's flow
+        // on the same browser. Old global "yourName" is wiped on first
+        // load below so we never accidentally fall back to it.
+        const YOUR_NAME_PREFIX = "yourName:";
+        const YOUR_NAME_VERSION_KEY = "yourNameV";
+        const YOUR_NAME_VERSION = "v2";
+        if (localStorage.getItem(YOUR_NAME_VERSION_KEY) !== YOUR_NAME_VERSION) {
+            localStorage.removeItem("yourName");
+            localStorage.setItem(YOUR_NAME_VERSION_KEY, YOUR_NAME_VERSION);
+        }
+        function yourNameForCurrentUser() {
+            const uid = currentUser && currentUser.uid;
+            if (!uid) return "";
+            return (localStorage.getItem(YOUR_NAME_PREFIX + uid) || "").trim();
+        }
+
         async function fetchMemberOptions(propertyId, clientId) {
             if (_memberOptions) return _memberOptions;
             try {
@@ -1616,20 +1640,35 @@
         }
 
         function matchMemberOption(candidate, options) {
+            // Map a free-form name (yourName / Jobber currentUser) onto one of
+            // the dropdown options. The hard rule: if a candidate is ambiguous
+            // (matches multiple options), refuse rather than guess. Picking
+            // the first match silently caused the Fernando→Fabio Azevedo bug:
+            // both share the surname, the previous fallback grabbed whichever
+            // came first in the list.
             if (!candidate || !Array.isArray(options) || !options.length) return null;
-            const norm = (s) => String(s || "").trim().toLowerCase();
+            // Collapse internal whitespace so "Fernando  Azevedo" (double
+            // space) still matches the canonical option.
+            const norm = (s) => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
             const c = norm(candidate);
             if (!c) return null;
+
             const exact = options.find((o) => norm(o) === c);
             if (exact) return exact;
-            const startsWith = options.find((o) => norm(o).startsWith(c) || c.startsWith(norm(o)));
-            if (startsWith) return startsWith;
+
+            const startsMatches = options.filter(
+                (o) => norm(o).startsWith(c) || c.startsWith(norm(o)),
+            );
+            if (startsMatches.length === 1) return startsMatches[0];
+            if (startsMatches.length > 1) return null;
+
             const tokens = c.split(/\s+/).filter(Boolean);
-            const containsAll = options.find((o) => {
+            const containsAll = options.filter((o) => {
                 const on = norm(o);
                 return tokens.every((t) => on.includes(t));
             });
-            return containsAll || null;
+            if (containsAll.length === 1) return containsAll[0];
+            return null;
         }
 
         async function fetchJobberMember() {
@@ -1675,10 +1714,15 @@
         }
 
         async function createJobberJob({ propertyId, title, startAt, assigneeName, assignedTo, clientId }) {
+            // yourName (typed by the operator on the messages page, scoped per
+            // Firebase uid) is the source of truth. fetchJobberMember is only a
+            // fallback because Jobber's account.currentUser depends on the
+            // browser's getjobber.com session, which can belong to a different
+            // person than whoever is signed into MasterBot.
+            const yourName = yourNameForCurrentUser();
             const memberFromJobber = await fetchJobberMember();
-            const yourName = (localStorage.getItem("yourName") || "").trim();
             const options = await fetchMemberOptions(propertyId, clientId);
-            const candidates = [memberFromJobber, yourName].filter(Boolean);
+            const candidates = [yourName, memberFromJobber].filter(Boolean);
             let memberName = "";
             for (const c of candidates) {
                 const match = matchMemberOption(c, options);
@@ -1772,15 +1816,15 @@
             u._extraJobs = u._extraJobs || [];
             const propertyId = u._jobber.match.propertyId;
             const clientId = u._jobber.match.clientId;
+            const yourName = yourNameForCurrentUser();
             const memberFromJobber = await fetchJobberMember();
-            const yourName = (localStorage.getItem("yourName") || "").trim();
             const options = await fetchMemberOptions(propertyId, clientId);
             let resolvedMember = "";
-            for (const c of [memberFromJobber, yourName].filter(Boolean)) {
+            for (const c of [yourName, memberFromJobber].filter(Boolean)) {
                 const m = matchMemberOption(c, options);
                 if (m) { resolvedMember = m; break; }
             }
-            if (!resolvedMember) resolvedMember = memberFromJobber || yourName || "";
+            if (!resolvedMember) resolvedMember = yourName || memberFromJobber || "";
             for (const j of jobs) {
                 try {
                     const created = await createJobberJob({
