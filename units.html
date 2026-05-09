@@ -1100,7 +1100,14 @@
                 const guest = (linked && linked._linkedGuest) || "guest";
                 const confSrc = ok.find((cj) => cj._linkedConf);
                 const conf = confSrc && confSrc._linkedConf;
-                const confHtml = conf ? ` <span class="link-conf">${escapeHtml(conf)}</span>` : "";
+                const channel = (confSrc && confSrc._linkedChannel) || "";
+                const isAirbnbLinked = /airbnb/i.test(channel);
+                let confHtml = "";
+                if (conf) {
+                    confHtml = isAirbnbLinked
+                        ? ` <a class="link-conf" href="https://www.airbnb.com/hosting/reservations/details/${encodeURIComponent(conf)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(conf)} ↗</a>`
+                        : ` <span class="link-conf">${escapeHtml(conf)}</span>`;
+                }
                 return `<div class="extras-link-row link-success">✓ Linked to ${escapeHtml(guest)}${confHtml}
                     <button class="btn-link-mapro" type="button" onclick="startLinkMapro('${keyAttr}')" title="Link again">+ Add note</button>
                 </div>`;
@@ -2181,10 +2188,12 @@
                 await maproAddComment(reservaId, u.idMAPRO, comment);
                 const guest = (stay && stay.guest) || "";
                 const conf = (stay && stay.confirmation) || "";
+                const channel = (stay && stay.channel) || "";
                 for (const cj of targets) {
                     cj._link = "linked";
                     cj._linkedGuest = guest;
                     cj._linkedConf = conf;
+                    cj._linkedChannel = channel;
                     cj._linkedReservaId = reservaId;
                 }
                 render();
