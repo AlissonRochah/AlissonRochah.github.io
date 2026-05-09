@@ -1002,3 +1002,110 @@
     font-size: 10px;
     color: var(--text-primary);
 }
+
+/* ========== Guest Report modal ========== */
+.gr-modal {
+    width: min(560px, calc(100vw - 32px));
+}
+.gr-info {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    display: grid;
+    gap: 6px;
+}
+.gr-info-row {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 13px;
+}
+.gr-info-label {
+    color: var(--text-muted);
+    width: 78px;
+    flex: 0 0 78px;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+.gr-info-value {
+    color: var(--text-primary);
+    font-weight: 500;
+    word-break: break-word;
+}
+.gr-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+.gr-field > span {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.gr-title-wrap {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+}
+.gr-title-wrap:focus-within {
+    border-color: var(--accent);
+}
+.gr-title-prefix {
+    padding: 8px 10px;
+    background: var(--bg);
+    color: var(--text-muted);
+    font-size: 13px;
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+}
+.gr-title-input {
+    border: none !important;
+    border-radius: 0 !important;
+    flex: 1;
+    background: transparent !important;
+    min-width: 0;
+}
+.gr-title-input:focus {
+    outline: none;
+    box-shadow: none;
+}
+.gr-preview {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-top: 6px;
+    display: grid;
+    gap: 6px;
+}
+.gr-preview-row {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 12px;
+}
+.gr-preview-label {
+    color: var(--text-muted);
+    width: 88px;
+    flex: 0 0 88px;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+.gr-preview-value {
+    color: var(--text-primary);
+    font-weight: 500;
+    word-break: break-word;
+}

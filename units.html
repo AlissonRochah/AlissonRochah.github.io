@@ -1221,7 +1221,7 @@
                     <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','PH')">+ PH on/off</button>
                     <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','BBQ')">+ BBQ clean</button>
                     <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','EXTRAS')">+ Deliver / Pickup extras</button>
-                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','GUEST_REPORT')">+ Guest Report</button>
+                    <button class="btn-extra" type="button" onclick="openGuestReportModal('${escapeHtml(u.key)}')">+ Guest Report</button>
                 </div>`;
             } else if (draft.type === "EXTRAS") {
                 const info = detectAreaInfo(u, j.match);
@@ -1374,40 +1374,6 @@
                     ${areaWarn}
                     <div class="extras-form-actions">
                         <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraBBQ('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : `Create${chosen ? ` (BBQ/PW-${chosen})` : ""}`}</button>
-                        <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
-                    </div>
-                </div>`;
-            } else if (draft.type === "GUEST_REPORT") {
-                const info = detectAreaInfo(u, j.match);
-                const detectedArea = info && info.area;
-                const detectedNumber = info && info.number;
-                const chosenArea = draft.area || detectedArea;
-                const chosenNumber = draft.areaNumber != null ? draft.areaNumber : detectedNumber;
-                const grDate = draft.date || todayIso();
-                const titleSuffix = draft.titleSuffix != null ? draft.titleSuffix : "";
-                const fullTitle = `Guest Report - ${titleSuffix}`.trim();
-                const assignees = chosenArea ? computeDeliverPickupAssignees(chosenArea, chosenNumber, grDate) : [];
-                const assigneeLabel = labelsFromTeamIds(assignees).join(" + ") || "(no team)";
-                const areaWarn = !chosenArea ? `<div class="extras-warn">⚠ Couldn't detect West/East — pick one</div>` : "";
-                const areaPicker = `<div class="extras-area-picker">
-                    <span class="extras-area-label">Area:</span>
-                    <button type="button" class="btn-area ${chosenArea === "West" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','West')">West</button>
-                    <button type="button" class="btn-area ${chosenArea === "East" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','East')">East</button>
-                    ${chosenArea ? `<span class="extras-area-num">#<input type="number" min="1" max="20" id="gr-num-${escapeHtml(u.key)}" value="${escapeHtml(String(chosenNumber || ""))}" oninput="setExtraAreaNumber('${escapeHtml(u.key)}', this.value)" class="area-num-input"></span>` : ""}
-                    ${detectedArea && !draft.area ? `<span class="extras-area-auto">auto-detected</span>` : ""}
-                </div>`;
-                const previewHtml = chosenArea && titleSuffix.trim() ? `<div class="extras-preview">
-                    <div><span class="created-meta-label">→</span> ${escapeHtml(fullTitle)} · ${escapeHtml(assigneeLabel)}</div>
-                </div>` : "";
-                const canSubmit = !!chosenArea && !!titleSuffix.trim() && !draft.submitting;
-                formHtml = `<div class="extras-form">
-                    <label>Title <input type="text" id="gr-title-${escapeHtml(u.key)}" value="${escapeHtml(titleSuffix)}" placeholder="e.g. AC not cooling, broken blinds" oninput="setExtraTitleSuffix('${escapeHtml(u.key)}', this.value)" class="extras-title-input"></label>
-                    <label>Date <input type="date" id="gr-date-${escapeHtml(u.key)}" value="${escapeHtml(grDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','date', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
-                    ${areaPicker}
-                    ${areaWarn}
-                    ${previewHtml}
-                    <div class="extras-form-actions">
-                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraGuestReport('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create"}</button>
                         <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
                     </div>
                 </div>`;
@@ -1853,7 +1819,9 @@
         }
 
         async function runCreateAndRecord(u, jobs) {
-            u._extraDraft.submitting = true;
+            // _extraDraft is set by the inline PH/BBQ/extras flows; the
+            // Guest Report modal calls this without a draft, so guard it.
+            if (u._extraDraft) u._extraDraft.submitting = true;
             render();
             u._extraJobs = u._extraJobs || [];
             const propertyId = u._jobber.match.propertyId;
@@ -1901,46 +1869,99 @@
             render();
         }
 
-        window.setExtraTitleSuffix = function (key, value) {
-            const u = filteredUnits.find((x) => x.key === key);
-            if (!u || !u._extraDraft) return;
-            const wasEmpty = !((u._extraDraft.titleSuffix || "").trim());
-            u._extraDraft.titleSuffix = String(value || "");
-            const isEmpty = !u._extraDraft.titleSuffix.trim();
-            // Only re-render when the create button needs to flip
-            // enabled/disabled, so typing doesn't lose input focus on every
-            // keystroke (render() rewrites innerHTML).
-            if (wasEmpty !== isEmpty) {
-                const id = `gr-title-${key}`;
-                const before = document.getElementById(id);
-                const pos = before ? before.selectionStart : null;
-                render();
-                const after = document.getElementById(id);
-                if (after) {
-                    after.focus();
-                    if (pos != null) after.setSelectionRange(pos, pos);
-                }
+        // ===== Guest Report modal =====
+        window.openGuestReportModal = function (key) {
+            const u = filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key);
+            if (!u) return;
+            if (!u._jobber || !u._jobber.match) {
+                showToast("This unit isn't linked to a Jobber property yet");
+                return;
             }
+            const modal = document.getElementById("gr-modal");
+            modal.dataset.unitKey = u.key;
+            const info = detectAreaInfo(u, u._jobber && u._jobber.match);
+            // Stash the auto-detected area so grUpdatePreview can read it
+            // without poking at the unit again.
+            modal.dataset.area = (info && info.area) || "";
+            modal.dataset.areaNumber = info && info.number != null ? String(info.number) : "";
+
+            document.getElementById("gr-house-label").textContent = u.code || u.title || "(unknown)";
+            document.getElementById("gr-house-code").textContent = u.code || "—";
+            document.getElementById("gr-house-address").textContent = u._fullAddress || u.address || "—";
+            const areaTxt = info && info.area
+                ? `${info.area}${info.number ? " " + info.number : ""}`
+                : "(not detected)";
+            document.getElementById("gr-house-area").textContent = areaTxt;
+
+            const titleInput = document.getElementById("gr-modal-title");
+            const dateInput = document.getElementById("gr-modal-date");
+            titleInput.value = "";
+            dateInput.value = todayIso();
+
+            grUpdatePreview();
+            modal.classList.add("active");
+            setTimeout(() => titleInput.focus(), 50);
         };
 
-        window.submitExtraGuestReport = function (key) {
-            const u = filteredUnits.find((x) => x.key === key);
-            if (!u || !u._extraDraft || u._extraDraft.submitting) return;
-            const date = readDateInput(`gr-date-${key}`) || u._extraDraft.date;
-            const titleEl = document.getElementById(`gr-title-${key}`);
-            const titleSuffix = (titleEl ? titleEl.value : (u._extraDraft.titleSuffix || "")).trim();
+        window.closeGuestReportModal = function () {
+            const modal = document.getElementById("gr-modal");
+            modal.classList.remove("active");
+            modal.dataset.unitKey = "";
+        };
+
+        window.grUpdatePreview = function () {
+            const modal = document.getElementById("gr-modal");
+            const area = modal.dataset.area || "";
+            const areaNumberRaw = modal.dataset.areaNumber || "";
+            const areaNumber = areaNumberRaw ? Number(areaNumberRaw) : null;
+            const titleSuffix = (document.getElementById("gr-modal-title").value || "").trim();
+            const date = document.getElementById("gr-modal-date").value || todayIso();
+
+            const fullTitle = titleSuffix ? `Guest Report - ${titleSuffix}` : "Guest Report - …";
+            document.getElementById("gr-preview-title").textContent = fullTitle;
+
+            const assignees = area ? computeDeliverPickupAssignees(area, areaNumber, date) : [];
+            const assigneeLabel = labelsFromTeamIds(assignees).join(" + ") || "(no team)";
+            document.getElementById("gr-preview-assignee").textContent = assigneeLabel;
+
+            const member = yourNameForCurrentUser() || "(set Your Name on the Messages page)";
+            document.getElementById("gr-preview-member").textContent = member;
+
+            const submitBtn = document.getElementById("gr-submit-btn");
+            const canSubmit = !!area && !!titleSuffix;
+            submitBtn.disabled = !canSubmit;
+        };
+
+        window.grSubmit = async function () {
+            const modal = document.getElementById("gr-modal");
+            const key = modal.dataset.unitKey;
+            const u = key ? (filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key)) : null;
+            if (!u) { showToast("Unit not found"); return; }
+            const titleSuffix = (document.getElementById("gr-modal-title").value || "").trim();
+            const date = document.getElementById("gr-modal-date").value || "";
+            const area = modal.dataset.area || "";
+            const areaNumberRaw = modal.dataset.areaNumber || "";
+            const areaNumber = areaNumberRaw ? Number(areaNumberRaw) : null;
+            if (!area) { showToast("Couldn't detect West/East for this unit"); return; }
             if (!titleSuffix) { showToast("Type the rest of the title"); return; }
             if (!date) { showToast("Pick a date"); return; }
-            const info = detectAreaInfo(u, u._jobber && u._jobber.match);
-            const area = u._extraDraft.area || (info && info.area);
-            const areaNumber = u._extraDraft.areaNumber != null ? u._extraDraft.areaNumber : (info && info.number);
-            if (!area) { showToast("Pick West or East"); return; }
+
             const assignees = computeDeliverPickupAssignees(area, areaNumber, date);
-            const label = labelsFromTeamIds(assignees).join(" + ") || `${area}`;
+            const label = labelsFromTeamIds(assignees).join(" + ") || area;
             const title = `Guest Report - ${titleSuffix}`;
-            runCreateAndRecord(u, [
-                { title, startAt: date, assigneeName: label, assignedTo: assignees },
-            ]);
+
+            const submitBtn = document.getElementById("gr-submit-btn");
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Creating…";
+            try {
+                await runCreateAndRecord(u, [
+                    { title, startAt: date, assigneeName: label, assignedTo: assignees },
+                ]);
+                closeGuestReportModal();
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Create";
+            }
         };
 
         window.submitExtraPH = function (key) {
@@ -2292,7 +2313,10 @@
         };
 
         document.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") closeDescription();
+            if (e.key === "Escape") {
+                closeDescription();
+                closeGuestReportModal();
+            }
         });
 
         document.addEventListener("keydown", function (e) {
@@ -2389,6 +2413,48 @@
             <div class="modal-footer">
                 <button onclick="closeGateModal()" class="btn btn-ghost">Cancel</button>
                 <button id="gate-send-btn" onclick="gateSendGuests()" class="btn btn-primary">Send to Gate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guest Report modal -->
+    <div id="gr-modal" class="modal-overlay" onclick="if(event.target===this)closeGuestReportModal()">
+        <div class="modal gr-modal">
+            <div class="modal-header">
+                <h2>Guest Report — <span id="gr-house-label" style="color: var(--text-muted); font-weight: 500;"></span></h2>
+                <button onclick="closeGuestReportModal()" class="btn-icon" title="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="gr-info">
+                    <div class="gr-info-row"><span class="gr-info-label">Unit</span><span id="gr-house-code" class="gr-info-value"></span></div>
+                    <div class="gr-info-row"><span class="gr-info-label">Address</span><span id="gr-house-address" class="gr-info-value"></span></div>
+                    <div class="gr-info-row"><span class="gr-info-label">Area</span><span id="gr-house-area" class="gr-info-value"></span></div>
+                </div>
+
+                <label class="gr-field">
+                    <span>Title</span>
+                    <div class="gr-title-wrap">
+                        <span class="gr-title-prefix">Guest Report -</span>
+                        <input type="text" id="gr-modal-title" class="gate-input gr-title-input" placeholder="e.g. AC not cooling, broken blinds" oninput="grUpdatePreview()">
+                    </div>
+                </label>
+
+                <label class="gr-field">
+                    <span>Date</span>
+                    <input type="date" id="gr-modal-date" class="gate-input" oninput="grUpdatePreview()" onclick="this.showPicker && this.showPicker()" onfocus="this.showPicker && this.showPicker()">
+                </label>
+
+                <div class="gr-preview">
+                    <div class="gr-preview-row"><span class="gr-preview-label">Title</span><span id="gr-preview-title" class="gr-preview-value">Guest Report - …</span></div>
+                    <div class="gr-preview-row"><span class="gr-preview-label">Assigned to</span><span id="gr-preview-assignee" class="gr-preview-value">—</span></div>
+                    <div class="gr-preview-row"><span class="gr-preview-label">Member</span><span id="gr-preview-member" class="gr-preview-value">—</span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeGuestReportModal()" class="btn btn-ghost">Cancel</button>
+                <button id="gr-submit-btn" onclick="grSubmit()" class="btn btn-primary">Create</button>
             </div>
         </div>
     </div>
