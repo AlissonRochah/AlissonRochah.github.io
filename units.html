@@ -1722,15 +1722,17 @@
         }
 
         async function createJobberJob({ propertyId, title, startAt, assigneeName, assignedTo, clientId }) {
-            // yourName (typed by the operator on the messages page, scoped per
-            // Firebase uid) is the source of truth. fetchJobberMember is only a
-            // fallback because Jobber's account.currentUser depends on the
-            // browser's getjobber.com session, which can belong to a different
-            // person than whoever is signed into MasterBot.
-            const yourName = yourNameForCurrentUser();
+            // Source of truth: Jobber's account.currentUser, which is whoever
+            // is signed into getjobber.com on this browser. yourName (typed
+            // on the messages page, scoped per Firebase uid) is only a
+            // fallback for when Jobber is unreachable or returns nothing.
+            // matchMemberOption refuses to guess on ambiguous matches, so a
+            // candidate like "Fernando Azevedo" lands on the exact dropdown
+            // entry instead of bleeding into "Fabio Azevedo".
             const memberFromJobber = await fetchJobberMember();
+            const yourName = yourNameForCurrentUser();
             const options = await fetchMemberOptions(propertyId, clientId);
-            const candidates = [yourName, memberFromJobber].filter(Boolean);
+            const candidates = [memberFromJobber, yourName].filter(Boolean);
             let memberName = "";
             for (const c of candidates) {
                 const match = matchMemberOption(c, options);
@@ -1826,15 +1828,15 @@
             u._extraJobs = u._extraJobs || [];
             const propertyId = u._jobber.match.propertyId;
             const clientId = u._jobber.match.clientId;
-            const yourName = yourNameForCurrentUser();
             const memberFromJobber = await fetchJobberMember();
+            const yourName = yourNameForCurrentUser();
             const options = await fetchMemberOptions(propertyId, clientId);
             let resolvedMember = "";
-            for (const c of [yourName, memberFromJobber].filter(Boolean)) {
+            for (const c of [memberFromJobber, yourName].filter(Boolean)) {
                 const m = matchMemberOption(c, options);
                 if (m) { resolvedMember = m; break; }
             }
-            if (!resolvedMember) resolvedMember = yourName || memberFromJobber || "";
+            if (!resolvedMember) resolvedMember = memberFromJobber || yourName || "";
             for (const j of jobs) {
                 try {
                     const created = await createJobberJob({
