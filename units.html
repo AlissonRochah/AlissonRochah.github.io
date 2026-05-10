@@ -1872,6 +1872,93 @@
         }
 
         // ===== Guest Report modal =====
+        const GR_TITLE_OPTIONS = [
+            "Wi-Fi not working",
+            "Fridge not working",
+            "PH not working",
+            "AC not cooling",
+            "AC not working",
+            "No hot water",
+            "TV not working",
+            "Stove not working",
+            "Oven not working",
+            "Microwave not working",
+            "Dishwasher not working",
+            "Washer not working",
+            "Dryer not working",
+            "Toilet clogged",
+        ];
+
+        function grRenderSuggestions(filter) {
+            const panel = document.getElementById("gr-suggestions");
+            const q = String(filter || "").trim().toLowerCase();
+            const matches = q
+                ? GR_TITLE_OPTIONS.filter((o) => o.toLowerCase().includes(q))
+                : GR_TITLE_OPTIONS.slice();
+            if (!matches.length) {
+                panel.innerHTML = `<div class="gr-suggestion-empty">No suggestions — type your own</div>`;
+                return;
+            }
+            panel.innerHTML = matches
+                .map((opt) => {
+                    const esc = String(opt).replace(/'/g, "&#39;");
+                    return `<button type="button" class="gr-suggestion" onclick="grPickSuggestion('${esc}')">${opt}</button>`;
+                })
+                .join("");
+        }
+
+        window.grOpenSuggestions = function () {
+            const input = document.getElementById("gr-modal-title");
+            grRenderSuggestions(input ? input.value : "");
+            document.getElementById("gr-suggestions").style.display = "";
+        };
+
+        window.grToggleSuggestions = function () {
+            const panel = document.getElementById("gr-suggestions");
+            if (panel.style.display === "none") {
+                grOpenSuggestions();
+                document.getElementById("gr-modal-title").focus();
+            } else {
+                grCloseSuggestions();
+            }
+        };
+
+        function grCloseSuggestions() {
+            const panel = document.getElementById("gr-suggestions");
+            if (panel) panel.style.display = "none";
+        }
+
+        window.grOnTitleInput = function () {
+            const input = document.getElementById("gr-modal-title");
+            grRenderSuggestions(input.value);
+            document.getElementById("gr-suggestions").style.display = "";
+            grUpdatePreview();
+        };
+
+        window.grPickSuggestion = function (value) {
+            const input = document.getElementById("gr-modal-title");
+            input.value = value;
+            grCloseSuggestions();
+            grUpdatePreview();
+            input.focus();
+        };
+
+        window.grTitleKeydown = function (e) {
+            if (e.key === "Escape") {
+                grCloseSuggestions();
+                e.stopPropagation();
+            }
+        };
+
+        // Close the suggestion panel when the user clicks outside the title
+        // field while the GR modal is open.
+        document.addEventListener("click", (e) => {
+            const modal = document.getElementById("gr-modal");
+            if (!modal || !modal.classList.contains("active")) return;
+            const field = modal.querySelector(".gr-title-field");
+            if (field && !field.contains(e.target)) grCloseSuggestions();
+        });
+
         window.openGuestReportModal = function (key) {
             const u = filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key);
             if (!u) return;
@@ -1904,6 +1991,7 @@
             dateInput.value = todayIso();
             numInput.value = modal.dataset.areaNumber || "";
 
+            grCloseSuggestions();
             grUpdatePreview();
             modal.classList.add("active");
             setTimeout(() => titleInput.focus(), 50);
@@ -1938,6 +2026,7 @@
             const modal = document.getElementById("gr-modal");
             modal.classList.remove("active");
             modal.dataset.unitKey = "";
+            grCloseSuggestions();
         };
 
         window.grUpdatePreview = function () {
@@ -2472,31 +2561,16 @@
                     </div>
                 </label>
 
-                <label class="gr-field">
+                <label class="gr-field gr-title-field">
                     <span>Title</span>
                     <div class="gr-title-wrap">
                         <span class="gr-title-prefix">Guest Report -</span>
-                        <input type="text" id="gr-modal-title" class="gate-input gr-title-input" placeholder="e.g. AC not cooling, broken blinds" list="gr-title-suggestions" oninput="grUpdatePreview()">
+                        <input type="text" id="gr-modal-title" class="gate-input gr-title-input" placeholder="e.g. AC not cooling, broken blinds" autocomplete="off" oninput="grOnTitleInput()" onfocus="grOpenSuggestions()" onkeydown="grTitleKeydown(event)">
+                        <button type="button" class="gr-title-chevron" onclick="grToggleSuggestions()" tabindex="-1" aria-label="Suggestions">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
                     </div>
-                    <datalist id="gr-title-suggestions">
-                        <option value="Wi-Fi not working"></option>
-                        <option value="Fridge not working"></option>
-                        <option value="PH not working"></option>
-                        <option value="AC not cooling"></option>
-                        <option value="AC not working"></option>
-                        <option value="Hot tub not working"></option>
-                        <option value="No hot water"></option>
-                        <option value="TV not working"></option>
-                        <option value="Stove not working"></option>
-                        <option value="Oven not working"></option>
-                        <option value="Microwave not working"></option>
-                        <option value="Dishwasher not working"></option>
-                        <option value="Washer not working"></option>
-                        <option value="Dryer not working"></option>
-                        <option value="Toilet clogged"></option>
-                        <option value="Door lock issue"></option>
-                        <option value="Leaking"></option>
-                    </datalist>
+                    <div id="gr-suggestions" class="gr-suggestions" style="display:none;"></div>
                 </label>
 
                 <label class="gr-field">
