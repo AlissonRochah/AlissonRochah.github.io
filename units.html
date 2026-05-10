@@ -924,7 +924,7 @@
                 : "";
 
             const actionsHtml = (descBtn || gateBtn) ? `<div class="unit-details-actions">${descBtn}${gateBtn}</div>` : "";
-            return `<div class="unit-details">${detailsRows}${actionsHtml}</div>${staysHtml(u)}${jobberExtrasHtml(u)}`;
+            return `<div class="unit-details">${detailsRows}${actionsHtml}</div>${jobberExtrasHtml(u)}${staysHtml(u)}`;
         }
 
         function fmtDate(s) {
