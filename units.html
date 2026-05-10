@@ -2476,8 +2476,27 @@
                     <span>Title</span>
                     <div class="gr-title-wrap">
                         <span class="gr-title-prefix">Guest Report -</span>
-                        <input type="text" id="gr-modal-title" class="gate-input gr-title-input" placeholder="e.g. AC not cooling, broken blinds" oninput="grUpdatePreview()">
+                        <input type="text" id="gr-modal-title" class="gate-input gr-title-input" placeholder="e.g. AC not cooling, broken blinds" list="gr-title-suggestions" oninput="grUpdatePreview()">
                     </div>
+                    <datalist id="gr-title-suggestions">
+                        <option value="Wi-Fi not working"></option>
+                        <option value="Fridge not working"></option>
+                        <option value="PH not working"></option>
+                        <option value="AC not cooling"></option>
+                        <option value="AC not working"></option>
+                        <option value="Hot tub not working"></option>
+                        <option value="No hot water"></option>
+                        <option value="TV not working"></option>
+                        <option value="Stove not working"></option>
+                        <option value="Oven not working"></option>
+                        <option value="Microwave not working"></option>
+                        <option value="Dishwasher not working"></option>
+                        <option value="Washer not working"></option>
+                        <option value="Dryer not working"></option>
+                        <option value="Toilet clogged"></option>
+                        <option value="Door lock issue"></option>
+                        <option value="Leaking"></option>
+                    </datalist>
                 </label>
 
                 <label class="gr-field">
