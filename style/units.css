@@ -1189,3 +1189,15 @@
     font-size: 12px;
     font-style: italic;
 }
+.extras-created-gr {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+}
+.extras-gr-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}

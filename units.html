@@ -1014,9 +1014,15 @@
             return `<button class="btn-link-mapro" type="button" onclick="addMaproService('${keyAttr}', ${idx})">+ Add to MAPRO</button>`;
         }
 
+        // Guest Report jobs never link to MAPRO — they live outside the
+        // BBQ/PH/Deliver-Pickup linking flow.
+        function isGuestReportJob(cj) {
+            return /^Guest Report - /i.test(String(cj && cj.title || ""));
+        }
+
         function linkSectionHtml(u) {
             if (!u._extraJobs || u._extraJobs.length === 0) return "";
-            const ok = u._extraJobs.filter((cj) => cj.status === "ok");
+            const ok = u._extraJobs.filter((cj) => cj.status === "ok" && !isGuestReportJob(cj));
             if (ok.length === 0) return "";
             const keyAttr = escapeHtml(u.key);
             if (ok.some((cj) => cj._link === "linking")) {
@@ -1163,57 +1169,68 @@
             const matchLabel = escapeHtml(j.match.label || j.match.propertyId);
             const draft = u._extraDraft;
             const created = u._extraJobs || [];
+            const linkableCreated = created.filter((cj) => !isGuestReportJob(cj));
+            const grCreated = created.filter((cj) => isGuestReportJob(cj));
 
-            const createdHtml = created.length === 0 ? "" : `<div class="extras-created">${
-                created.map((cj) => {
-                    const numericId = decodeJobberId(cj.id);
-                    const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
-                    const display = cj.jobNumber || numericId;
-                    const meta = [];
-                    if (cj.assigneeName) meta.push(`<span class="created-meta"><span class="created-meta-label">Assigned:</span> ${escapeHtml(cj.assigneeName)}</span>`);
-                    if (cj.member) meta.push(`<span class="created-meta"><span class="created-meta-label">Member:</span> ${escapeHtml(cj.member)}</span>`);
-                    const numberHtml = display
-                        ? `<span class="created-number copyable" data-copy="${escapeHtml(String(display))}" title="Click to copy">#${escapeHtml(String(display))}</span>`
-                        : "";
-                    const openBtn = url
-                        ? `<a class="created-open" href="${url}" target="_blank" rel="noopener" title="Open in Jobber">↗</a>`
-                        : "";
-                    const linkedTag = cj._link === "linked"
-                        ? `<span class="row-linked-tag" title="Linked to ${escapeHtml(cj._linkedGuest || "guest")}">linked</span>`
-                        : "";
-                    const idxAttr = created.indexOf(cj);
-                    const svcHtml = (cj._link === "linked" && (maproServiceForJob(cj, u._extraJobs) || cj._svc))
-                        ? renderSvcAction(u, cj, idxAttr)
-                        : "";
-                    // PH ON: mostra "(N nights)" se acharmos o partner PH OFF (mesmo
-                    // antes de linkar — usa a regra: nights = OFF_date - ON_date - 1)
-                    let phNightsTag = "";
-                    if (isPoolHeatJob(cj.title || "") && isOnJob(cj.title || "") && cj.startAt) {
-                        const offPartner = (u._extraJobs || []).find((j) =>
-                            j !== cj &&
-                            j.status === "ok" &&
-                            isPoolHeatJob(j.title || "") &&
-                            isOffJob(j.title || "") &&
-                            j.startAt
-                        );
-                        if (offPartner) {
-                            const ms = new Date(offPartner.startAt + "T00:00:00") - new Date(cj.startAt + "T00:00:00");
-                            const nights = Math.round(ms / 86400000) - 1;
-                            if (nights > 0) {
-                                phNightsTag = ` <span class="ph-nights-tag" title="${escapeHtml(cj.startAt)} → ${escapeHtml(offPartner.startAt)} (turn-on/off days don't count)">${nights} night${nights === 1 ? "" : "s"}</span>`;
-                            }
+            const renderCreatedRow = (cj) => {
+                const numericId = decodeJobberId(cj.id);
+                const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
+                const display = cj.jobNumber || numericId;
+                const meta = [];
+                if (cj.assigneeName) meta.push(`<span class="created-meta"><span class="created-meta-label">Assigned:</span> ${escapeHtml(cj.assigneeName)}</span>`);
+                if (cj.member) meta.push(`<span class="created-meta"><span class="created-meta-label">Member:</span> ${escapeHtml(cj.member)}</span>`);
+                const numberHtml = display
+                    ? `<span class="created-number copyable" data-copy="${escapeHtml(String(display))}" title="Click to copy">#${escapeHtml(String(display))}</span>`
+                    : "";
+                const openBtn = url
+                    ? `<a class="created-open" href="${url}" target="_blank" rel="noopener" title="Open in Jobber">↗</a>`
+                    : "";
+                const linkedTag = cj._link === "linked"
+                    ? `<span class="row-linked-tag" title="Linked to ${escapeHtml(cj._linkedGuest || "guest")}">linked</span>`
+                    : "";
+                const idxAttr = created.indexOf(cj);
+                const svcHtml = (cj._link === "linked" && (maproServiceForJob(cj, u._extraJobs) || cj._svc))
+                    ? renderSvcAction(u, cj, idxAttr)
+                    : "";
+                // PH ON: mostra "(N nights)" se acharmos o partner PH OFF (mesmo
+                // antes de linkar — usa a regra: nights = OFF_date - ON_date - 1)
+                let phNightsTag = "";
+                if (isPoolHeatJob(cj.title || "") && isOnJob(cj.title || "") && cj.startAt) {
+                    const offPartner = (u._extraJobs || []).find((p) =>
+                        p !== cj &&
+                        p.status === "ok" &&
+                        isPoolHeatJob(p.title || "") &&
+                        isOffJob(p.title || "") &&
+                        p.startAt
+                    );
+                    if (offPartner) {
+                        const ms = new Date(offPartner.startAt + "T00:00:00") - new Date(cj.startAt + "T00:00:00");
+                        const nights = Math.round(ms / 86400000) - 1;
+                        if (nights > 0) {
+                            phNightsTag = ` <span class="ph-nights-tag" title="${escapeHtml(cj.startAt)} → ${escapeHtml(offPartner.startAt)} (turn-on/off days don't count)">${nights} night${nights === 1 ? "" : "s"}</span>`;
                         }
                     }
-                    return `<div class="extras-created-row">
-                        <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
-                        <span class="created-title">${escapeHtml(cj.title)}${phNightsTag}</span>
-                        ${cj.status === "ok"
-                            ? `${numberHtml}${openBtn}${linkedTag}${svcHtml}${meta.length ? `<span class="created-meta-group">${meta.join("")}</span>` : ""}`
-                            : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`
-                        }
-                    </div>`;
-                }).join("")
+                }
+                return `<div class="extras-created-row">
+                    <span class="created-tag created-tag-${cj.status}">${cj.status === "ok" ? "✓" : "✗"}</span>
+                    <span class="created-title">${escapeHtml(cj.title)}${phNightsTag}</span>
+                    ${cj.status === "ok"
+                        ? `${numberHtml}${openBtn}${linkedTag}${svcHtml}${meta.length ? `<span class="created-meta-group">${meta.join("")}</span>` : ""}`
+                        : `<span class="created-error">${escapeHtml(cj.error || "")}</span>`
+                    }
+                </div>`;
+            };
+
+            const linkableHtml = linkableCreated.length === 0 ? "" : `<div class="extras-created">${
+                linkableCreated.map(renderCreatedRow).join("")
             }${linkSectionHtml(u)}</div>`;
+
+            const grHtml = grCreated.length === 0 ? "" : `<div class="extras-created extras-created-gr">
+                <div class="extras-gr-label">Guest Reports</div>
+                ${grCreated.map(renderCreatedRow).join("")}
+            </div>`;
+
+            const createdHtml = linkableHtml + grHtml;
 
             let formHtml = "";
             if (!draft) {
@@ -2311,7 +2328,7 @@
             if (!u.idMAPRO) { showToast("Unit has no MAPRO id"); return; }
             // Já garantimos no advanceLinkMapro que tem (ou foi confirmado vazio)
             const paymentLink = u._paymentLinkValue || "";
-            const targets = u._extraJobs.filter((cj) => cj.status === "ok" && cj._link !== "linked");
+            const targets = u._extraJobs.filter((cj) => cj.status === "ok" && cj._link !== "linked" && !isGuestReportJob(cj));
             if (targets.length === 0) { showToast("Nothing to link"); return; }
             const stays = u._linkStays || {};
             const stay = [stays.previous, stays.active, stays.next].find((s) => s && Number(s.id) === Number(reservaId));
