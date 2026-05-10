@@ -1235,164 +1235,10 @@
             let formHtml = "";
             if (!draft) {
                 formHtml = `<div class="extras-actions">
-                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','PH')">+ PH on/off</button>
-                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','BBQ')">+ BBQ clean</button>
-                    <button class="btn-extra" type="button" onclick="startExtra('${escapeHtml(u.key)}','EXTRAS')">+ Deliver / Pickup extras</button>
+                    <button class="btn-extra" type="button" onclick="openPHModal('${escapeHtml(u.key)}')">+ PH on/off</button>
+                    <button class="btn-extra" type="button" onclick="openBBQModal('${escapeHtml(u.key)}')">+ BBQ clean</button>
+                    <button class="btn-extra" type="button" onclick="openPnPModal('${escapeHtml(u.key)}')">+ Deliver / Pickup extras</button>
                     <button class="btn-extra" type="button" onclick="openGuestReportModal('${escapeHtml(u.key)}')">+ Guest Report</button>
-                </div>`;
-            } else if (draft.type === "EXTRAS") {
-                const info = detectAreaInfo(u, j.match);
-                const detectedArea = info && info.area;
-                const detectedNumber = info && info.number;
-                const chosenArea = draft.area || detectedArea;
-                const chosenNumber = draft.areaNumber != null ? draft.areaNumber : detectedNumber;
-                const deliverDate = draft.deliverDate || todayIso();
-                const pickupDate = draft.pickupDate || todayIso();
-                const items = DEFAULT_EXTRA_ITEMS.map((it) => ({
-                    ...it,
-                    count: (draft.items && Number(draft.items[it.key])) || 0,
-                }));
-                const customItems = draft.customItems || [];
-                const totalCount = items.reduce((a, b) => a + b.count, 0)
-                    + customItems.reduce((a, c) => a + (Number(c.count) || 0), 0);
-                const deliverTitle = buildExtrasTitle("Deliver", items, customItems);
-                const pickupTitle = buildExtrasTitle("Pickup", items, customItems);
-                const deliverAssignees = chosenArea ? computeDeliverPickupAssignees(chosenArea, chosenNumber, deliverDate) : [];
-                const pickupAssignees = chosenArea ? computeDeliverPickupAssignees(chosenArea, chosenNumber, pickupDate) : [];
-                const areaWarn = !chosenArea ? `<div class="extras-warn">⚠ Couldn't detect West/East — pick one</div>` : "";
-                const areaPicker = `<div class="extras-area-picker">
-                    <span class="extras-area-label">Area:</span>
-                    <button type="button" class="btn-area ${chosenArea === "West" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','West')">West</button>
-                    <button type="button" class="btn-area ${chosenArea === "East" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','East')">East</button>
-                    ${chosenArea ? `<span class="extras-area-num">#<input type="number" min="1" max="20" id="ext-num-${escapeHtml(u.key)}" value="${escapeHtml(String(chosenNumber || ""))}" oninput="setExtraAreaNumber('${escapeHtml(u.key)}', this.value)" class="area-num-input"></span>` : ""}
-                    ${detectedArea && !draft.area ? `<span class="extras-area-auto">auto-detected</span>` : ""}
-                </div>`;
-                const itemRows = items.map((it) => `
-                    <div class="extras-item-row">
-                        <span class="extras-item-label">${escapeHtml(it.label)}</span>
-                        <input type="number" min="0" max="99" value="${it.count}" oninput="setExtraItem('${escapeHtml(u.key)}','${escapeHtml(it.key)}', this.value)" class="area-num-input">
-                    </div>
-                `).join("");
-                const customRows = customItems.map((c, idx) => `
-                    <div class="extras-item-row">
-                        <input type="text" placeholder="item name" value="${escapeHtml(c.label || "")}" oninput="setExtraCustomItem('${escapeHtml(u.key)}', ${idx}, 'label', this.value)" class="extras-item-name">
-                        <input type="number" min="0" max="99" value="${Number(c.count) || 0}" oninput="setExtraCustomItem('${escapeHtml(u.key)}', ${idx}, 'count', this.value)" class="area-num-input">
-                        <button type="button" class="btn-link" onclick="removeExtraCustomItem('${escapeHtml(u.key)}', ${idx})">remove</button>
-                    </div>
-                `).join("");
-                const previewHtml = chosenArea && totalCount > 0 ? `<div class="extras-preview">
-                    <div><span class="created-meta-label">Deliver →</span> ${escapeHtml(deliverTitle)} · ${escapeHtml(labelsFromTeamIds(deliverAssignees).join(" + ") || "(no team)")}</div>
-                    <div><span class="created-meta-label">Pickup →</span> ${escapeHtml(pickupTitle)} · ${escapeHtml(labelsFromTeamIds(pickupAssignees).join(" + ") || "(no team)")}</div>
-                </div>` : "";
-                const canSubmit = !!chosenArea && totalCount > 0 && !draft.submitting;
-                formHtml = `<div class="extras-form">
-                    <label>Deliver date <input type="date" id="ext-deliver-${escapeHtml(u.key)}" value="${escapeHtml(deliverDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','deliverDate', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
-                    <label>Pickup date <input type="date" id="ext-pickup-${escapeHtml(u.key)}" value="${escapeHtml(pickupDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','pickupDate', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
-                    ${areaPicker}
-                    ${areaWarn}
-                    <div class="extras-items">
-                        ${itemRows}
-                        ${customRows}
-                        <button type="button" class="btn-link" onclick="addExtraCustomItem('${escapeHtml(u.key)}')">+ Add item</button>
-                    </div>
-                    ${previewHtml}
-                    <div class="extras-form-actions">
-                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraDeliverPickup('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : "Create both"}</button>
-                        <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
-                    </div>
-                </div>`;
-            } else if (draft.type === "PH") {
-                const info = detectAreaInfo(u, j.match);
-                const detectedArea = info && info.area;
-                const detectedNumber = info && info.number;
-                const chosenArea = draft.area || detectedArea;
-                const chosenNumber = draft.areaNumber != null ? draft.areaNumber : detectedNumber;
-                const areaWarn = !chosenArea ? `<div class="extras-warn">⚠ Couldn't detect West/East — pick one</div>` : "";
-                const areaPicker = `<div class="extras-area-picker">
-                    <span class="extras-area-label">Area:</span>
-                    <button type="button" class="btn-area ${chosenArea === "West" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','West')">West</button>
-                    <button type="button" class="btn-area ${chosenArea === "East" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','East')">East</button>
-                    ${chosenArea ? `<span class="extras-area-num">#<input type="number" min="1" max="20" id="ph-num-${escapeHtml(u.key)}" value="${escapeHtml(String(chosenNumber || ""))}" oninput="setExtraAreaNumber('${escapeHtml(u.key)}', this.value)" class="area-num-input"></span>` : ""}
-                    ${detectedArea && !draft.area ? `<span class="extras-area-auto">auto-detected</span>` : ""}
-                </div>`;
-                const onDate = draft.onDate || todayIso();
-                const offDate = draft.offDate || todayIso();
-                const onAssignees = chosenArea ? computePHOnAssignees(chosenArea, chosenNumber, onDate) : [];
-                const offAssignees = chosenArea ? computePHOffAssignees(chosenArea) : [];
-                const onLabels = labelsFromTeamIds(onAssignees);
-                const offLabels = labelsFromTeamIds(offAssignees);
-                const conflicts = findPHConflicts(draft.existingPHJobs, onDate, offDate);
-                const conflictsHtml = draft.loadingExisting
-                    ? `<div class="extras-preview-muted">Checking existing PH jobs…</div>`
-                    : (conflicts.length
-                        ? `<div class="extras-conflicts">
-                                <div class="extras-conflicts-title">⚠ ${conflicts.length} existing PH job${conflicts.length > 1 ? "s" : ""} between these dates:</div>
-                                ${conflicts.map((c) => {
-                                    const numericId = decodeJobberId(c.id);
-                                    const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
-                                    return `<div class="extras-conflict-row">
-                                        <span>${escapeHtml(c.title)} on ${escapeHtml(c.startDate)}</span>
-                                        ${url ? `<a class="created-open" href="${url}" target="_blank" rel="noopener">#${escapeHtml(String(c.jobNumber || numericId))} ↗</a>` : ""}
-                                    </div>`;
-                                }).join("")}
-                            </div>`
-                        : "");
-                // Quantas nights de pool heat? (ON+1 até OFF-0 = OFF - ON - 1)
-                let phNightsHtml = "";
-                if (onDate && offDate) {
-                    const ms = new Date(offDate + "T00:00:00") - new Date(onDate + "T00:00:00");
-                    const nights = Math.round(ms / 86400000) - 1;
-                    if (nights > 0) {
-                        phNightsHtml = `<div class="ph-nights-preview"><span class="ph-nights-tag">${nights} night${nights === 1 ? "" : "s"}</span> heated (${escapeHtml(onDate)} → ${escapeHtml(offDate)}, turn-on/off days don't count)</div>`;
-                    } else if (nights === 0) {
-                        phNightsHtml = `<div class="extras-warn">⚠ ON and OFF are consecutive — 0 nights heated</div>`;
-                    } else {
-                        phNightsHtml = `<div class="extras-warn">⚠ OFF date must be after ON date</div>`;
-                    }
-                }
-                const previewHtml = chosenArea ? `<div class="extras-preview">
-                    ${phNightsHtml}
-                    <div><span class="created-meta-label">PH ON →</span> ${escapeHtml(onLabels.join(" + ") || "(no team)")}</div>
-                    <div><span class="created-meta-label">PH OFF →</span> ${escapeHtml(offLabels.join(" + ") || "(no team)")}</div>
-                </div>` : phNightsHtml;
-                const canSubmit = !!chosenArea && !draft.submitting && !draft.loadingExisting;
-                const createLabel = draft.submitting ? "Creating…" : (conflicts.length ? "Create anyway" : "Create");
-                formHtml = `<div class="extras-form">
-                    <label>PH ON date <input type="date" id="ph-on-${escapeHtml(u.key)}" value="${escapeHtml(onDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','onDate', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
-                    <label>PH OFF date <input type="date" id="ph-off-${escapeHtml(u.key)}" value="${escapeHtml(offDate)}" oninput="setExtraDate('${escapeHtml(u.key)}','offDate', this.value)" onclick="try{this.showPicker()}catch(_){}"></label>
-                    ${areaPicker}
-                    ${areaWarn}
-                    ${conflictsHtml}
-                    ${previewHtml}
-                    <div class="extras-form-actions">
-                        <button class="btn-extra ${conflicts.length ? "btn-extra-warn" : "btn-extra-primary"}" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraPH('${escapeHtml(u.key)}')">${createLabel}</button>
-                        <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
-                    </div>
-                </div>`;
-            } else if (draft.type === "BBQ") {
-                const detected = detectAreaSuffix(u, j.match);
-                const chosen = draft.area || detected;
-                const areaWarn = !chosen ? `<div class="extras-warn">⚠ Couldn't detect West/East — pick one</div>` : "";
-                const areaPicker = `<div class="extras-area-picker">
-                    <span class="extras-area-label">Area:</span>
-                    <button type="button" class="btn-area ${chosen === "West" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','West')">West</button>
-                    <button type="button" class="btn-area ${chosen === "East" ? "btn-area-active" : ""}" onclick="setExtraArea('${escapeHtml(u.key)}','East')">East</button>
-                    ${detected && !draft.area ? `<span class="extras-area-auto">auto-detected</span>` : ""}
-                </div>`;
-                const canSubmit = !!chosen && !draft.submitting;
-                const bbqDate = draft.date || todayIso();
-                const bbqWarnHtml = bbqDateWarning(u, bbqDate);
-                formHtml = `<div class="extras-form">
-                    <label>BBQ date <input type="date" id="bbq-${escapeHtml(u.key)}" value="${escapeHtml(bbqDate)}"
-                        onchange="bbqDateChanged('${escapeHtml(u.key)}')"
-                        onclick="try{this.showPicker()}catch(_){}"></label>
-                    ${bbqWarnHtml}
-                    ${areaPicker}
-                    ${areaWarn}
-                    <div class="extras-form-actions">
-                        <button class="btn-extra btn-extra-primary" type="button" ${canSubmit ? "" : "disabled"} onclick="submitExtraBBQ('${escapeHtml(u.key)}')">${draft.submitting ? "Creating…" : `Create${chosen ? ` (BBQ/PW-${chosen})` : ""}`}</button>
-                        <button class="btn-extra-cancel" type="button" onclick="cancelExtra('${escapeHtml(u.key)}')">Cancel</button>
-                    </div>
                 </div>`;
             }
 
@@ -1887,6 +1733,359 @@
             u._extraDraft = null;
             render();
         }
+
+        // ===== Shared modal helpers =====
+        function modalFillHouseInfo(prefix, u) {
+            document.getElementById(`${prefix}-house-label`).textContent = u.code || u.title || "(unknown)";
+            document.getElementById(`${prefix}-house-code`).textContent = u.code || "—";
+            document.getElementById(`${prefix}-house-address`).textContent = u._fullAddress || u.address || "—";
+        }
+        function modalRefreshArea(prefix) {
+            const modal = document.getElementById(`${prefix}-modal`);
+            const area = modal.dataset.area || "";
+            document.getElementById(`${prefix}-area-west`).classList.toggle("btn-area-active", area === "West");
+            document.getElementById(`${prefix}-area-east`).classList.toggle("btn-area-active", area === "East");
+            const hint = document.getElementById(`${prefix}-area-auto-hint`);
+            if (hint) hint.style.display = modal.dataset.areaAuto === "1" ? "" : "none";
+            const numInput = document.getElementById(`${prefix}-area-num`);
+            if (numInput && document.activeElement !== numInput) {
+                numInput.value = modal.dataset.areaNumber || "";
+            }
+        }
+        function modalUnitFromKey(key) {
+            return key ? (filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key)) : null;
+        }
+
+        // ===== BBQ modal =====
+        window.openBBQModal = function (key) {
+            const u = modalUnitFromKey(key);
+            if (!u) return;
+            if (!u._jobber || !u._jobber.match) { showToast("This unit isn't linked to a Jobber property yet"); return; }
+            const modal = document.getElementById("bbq-modal");
+            modal.dataset.unitKey = u.key;
+            const detected = detectAreaSuffix(u, u._jobber.match);
+            modal.dataset.area = detected || "";
+            modal.dataset.areaAuto = detected ? "1" : "";
+
+            modalFillHouseInfo("bbq", u);
+            document.getElementById("bbq-modal-date").value = todayIso();
+            modalRefreshArea("bbq");
+            // Pre-load MAPRO services so bbqDateWarning can flag a duplicate.
+            ensureMaproServicesForStays(u).then(() => bbqUpdatePreview()).catch(() => {});
+            bbqUpdatePreview();
+            modal.classList.add("active");
+        };
+        window.closeBBQModal = function () {
+            const modal = document.getElementById("bbq-modal");
+            modal.classList.remove("active");
+            modal.dataset.unitKey = "";
+        };
+        window.bbqSetArea = function (area) {
+            const modal = document.getElementById("bbq-modal");
+            modal.dataset.area = area;
+            modal.dataset.areaAuto = "";
+            modalRefreshArea("bbq");
+            bbqUpdatePreview();
+        };
+        window.bbqUpdatePreview = function () {
+            const modal = document.getElementById("bbq-modal");
+            const u = modalUnitFromKey(modal.dataset.unitKey);
+            const area = modal.dataset.area || "";
+            const date = document.getElementById("bbq-modal-date").value || todayIso();
+            const title = `BBQ/PW-${area || "?"}`;
+            document.getElementById("bbq-preview-title").textContent = title;
+            const teamId = area ? JOBBER_BBQ_TEAM_IDS[area] : null;
+            const assignee = teamId ? labelsFromTeamIds([teamId]).join(" + ") : "(no team)";
+            document.getElementById("bbq-preview-assignee").textContent = assignee;
+            document.getElementById("bbq-preview-member").textContent = yourNameForCurrentUser() || "(set Your Name on the Messages page)";
+            document.getElementById("bbq-warn").innerHTML = u ? bbqDateWarning(u, date) : "";
+            document.getElementById("bbq-submit-btn").disabled = !area;
+        };
+        window.bbqSubmit = async function () {
+            const modal = document.getElementById("bbq-modal");
+            const u = modalUnitFromKey(modal.dataset.unitKey);
+            if (!u) return;
+            const date = document.getElementById("bbq-modal-date").value || "";
+            const area = modal.dataset.area || "";
+            if (!area) { showToast("Pick West or East"); return; }
+            if (!date) { showToast("Pick a date"); return; }
+            const teamId = JOBBER_BBQ_TEAM_IDS[area];
+            const assignees = teamId ? [teamId] : [];
+            const title = `BBQ/PW-${area}`;
+            const btn = document.getElementById("bbq-submit-btn");
+            btn.disabled = true;
+            btn.textContent = "Creating…";
+            try {
+                await runCreateAndRecord(u, [
+                    { title, startAt: date, assigneeName: labelsFromTeamIds(assignees).join(" + ") || area, assignedTo: assignees },
+                ]);
+                closeBBQModal();
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Create";
+            }
+        };
+
+        // ===== PnP (Deliver / Pickup extras) modal =====
+        window.openPnPModal = function (key) {
+            const u = modalUnitFromKey(key);
+            if (!u) return;
+            if (!u._jobber || !u._jobber.match) { showToast("This unit isn't linked to a Jobber property yet"); return; }
+            const modal = document.getElementById("pnp-modal");
+            modal.dataset.unitKey = u.key;
+            const info = detectAreaInfo(u, u._jobber.match);
+            modal.dataset.area = (info && info.area) || "";
+            modal.dataset.areaNumber = info && info.number != null ? String(info.number) : "";
+            modal.dataset.areaAuto = info && info.area ? "1" : "";
+            modal.pnpItems = DEFAULT_EXTRA_ITEMS.map((it) => ({ ...it, count: 0 }));
+            modal.pnpCustom = [];
+
+            modalFillHouseInfo("pnp", u);
+            document.getElementById("pnp-modal-deliver").value = todayIso();
+            document.getElementById("pnp-modal-pickup").value = todayIso();
+            modalRefreshArea("pnp");
+            pnpRenderItems();
+            pnpUpdatePreview();
+            modal.classList.add("active");
+        };
+        window.closePnPModal = function () {
+            document.getElementById("pnp-modal").classList.remove("active");
+        };
+        window.pnpSetArea = function (area) {
+            const modal = document.getElementById("pnp-modal");
+            modal.dataset.area = area;
+            modal.dataset.areaAuto = "";
+            modalRefreshArea("pnp");
+            pnpUpdatePreview();
+        };
+        window.pnpSetAreaNumber = function (value) {
+            const modal = document.getElementById("pnp-modal");
+            modal.dataset.areaNumber = String(value || "").trim();
+            modal.dataset.areaAuto = "";
+            modalRefreshArea("pnp");
+            pnpUpdatePreview();
+        };
+        function pnpRenderItems() {
+            const modal = document.getElementById("pnp-modal");
+            const items = modal.pnpItems || [];
+            const customs = modal.pnpCustom || [];
+            const container = document.getElementById("pnp-items");
+            const defaultRows = items.map((it, idx) => `
+                <div class="pnp-item-row">
+                    <span class="pnp-item-label">${escapeHtml(it.label)}</span>
+                    <input type="number" min="0" max="99" value="${it.count}" data-idx="${idx}" data-kind="default" oninput="pnpItemInput(this)" class="area-num-input">
+                </div>`).join("");
+            const customRows = customs.map((c, idx) => `
+                <div class="pnp-item-row">
+                    <input type="text" placeholder="item name" value="${escapeHtml(c.label || "")}" data-idx="${idx}" data-field="label" oninput="pnpCustomInput(this)" class="pnp-item-name">
+                    <input type="number" min="0" max="99" value="${Number(c.count) || 0}" data-idx="${idx}" data-field="count" oninput="pnpCustomInput(this)" class="area-num-input">
+                    <button type="button" class="btn-link" onclick="pnpRemoveCustom(${idx})">remove</button>
+                </div>`).join("");
+            container.innerHTML = defaultRows + customRows;
+        }
+        window.pnpItemInput = function (el) {
+            const modal = document.getElementById("pnp-modal");
+            const idx = Number(el.dataset.idx);
+            modal.pnpItems[idx].count = Math.max(0, Number(el.value) || 0);
+            pnpUpdatePreview();
+        };
+        window.pnpCustomInput = function (el) {
+            const modal = document.getElementById("pnp-modal");
+            const idx = Number(el.dataset.idx);
+            const field = el.dataset.field;
+            const item = modal.pnpCustom[idx];
+            if (!item) return;
+            item[field] = field === "count" ? Math.max(0, Number(el.value) || 0) : el.value;
+            pnpUpdatePreview();
+        };
+        window.pnpAddCustom = function () {
+            const modal = document.getElementById("pnp-modal");
+            modal.pnpCustom.push({ label: "", count: 1 });
+            pnpRenderItems();
+            pnpUpdatePreview();
+        };
+        window.pnpRemoveCustom = function (idx) {
+            const modal = document.getElementById("pnp-modal");
+            modal.pnpCustom.splice(idx, 1);
+            pnpRenderItems();
+            pnpUpdatePreview();
+        };
+        window.pnpUpdatePreview = function () {
+            const modal = document.getElementById("pnp-modal");
+            const area = modal.dataset.area || "";
+            const areaNumber = modal.dataset.areaNumber ? Number(modal.dataset.areaNumber) : null;
+            const deliverDate = document.getElementById("pnp-modal-deliver").value || todayIso();
+            const pickupDate = document.getElementById("pnp-modal-pickup").value || todayIso();
+            const items = modal.pnpItems || [];
+            const customs = (modal.pnpCustom || []).filter((c) => (c.label || "").trim() && Number(c.count) > 0);
+            const total = items.reduce((a, b) => a + b.count, 0) + customs.reduce((a, c) => a + Number(c.count), 0);
+            const deliverTitle = buildExtrasTitle("Deliver", items, customs);
+            const pickupTitle = buildExtrasTitle("Pickup", items, customs);
+            const deliverTeam = area ? labelsFromTeamIds(computeDeliverPickupAssignees(area, areaNumber, deliverDate)).join(" + ") : "";
+            const pickupTeam = area ? labelsFromTeamIds(computeDeliverPickupAssignees(area, areaNumber, pickupDate)).join(" + ") : "";
+            document.getElementById("pnp-preview-deliver").textContent = `${deliverTitle} · ${deliverTeam || "(no team)"}`;
+            document.getElementById("pnp-preview-pickup").textContent = `${pickupTitle} · ${pickupTeam || "(no team)"}`;
+            document.getElementById("pnp-preview-member").textContent = yourNameForCurrentUser() || "(set Your Name on the Messages page)";
+            document.getElementById("pnp-submit-btn").disabled = !area || total === 0;
+        };
+        window.pnpSubmit = async function () {
+            const modal = document.getElementById("pnp-modal");
+            const u = modalUnitFromKey(modal.dataset.unitKey);
+            if (!u) return;
+            const area = modal.dataset.area || "";
+            const areaNumber = modal.dataset.areaNumber ? Number(modal.dataset.areaNumber) : null;
+            const deliverDate = document.getElementById("pnp-modal-deliver").value || "";
+            const pickupDate = document.getElementById("pnp-modal-pickup").value || "";
+            if (!area) { showToast("Pick West or East"); return; }
+            if (!deliverDate || !pickupDate) { showToast("Pick both dates"); return; }
+            const items = modal.pnpItems || [];
+            const customs = (modal.pnpCustom || []).filter((c) => (c.label || "").trim() && Number(c.count) > 0);
+            const deliverTitle = buildExtrasTitle("Deliver", items, customs);
+            const pickupTitle = buildExtrasTitle("Pickup", items, customs);
+            const deliverAssignees = computeDeliverPickupAssignees(area, areaNumber, deliverDate);
+            const pickupAssignees = computeDeliverPickupAssignees(area, areaNumber, pickupDate);
+            const btn = document.getElementById("pnp-submit-btn");
+            btn.disabled = true;
+            btn.textContent = "Creating…";
+            try {
+                await runCreateAndRecord(u, [
+                    { title: deliverTitle, startAt: deliverDate, assigneeName: labelsFromTeamIds(deliverAssignees).join(" + ") || area, assignedTo: deliverAssignees },
+                    { title: pickupTitle, startAt: pickupDate, assigneeName: labelsFromTeamIds(pickupAssignees).join(" + ") || area, assignedTo: pickupAssignees },
+                ]);
+                closePnPModal();
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Create both";
+            }
+        };
+
+        // ===== PH modal =====
+        window.openPHModal = async function (key) {
+            const u = modalUnitFromKey(key);
+            if (!u) return;
+            if (!u._jobber || !u._jobber.match) { showToast("This unit isn't linked to a Jobber property yet"); return; }
+            const modal = document.getElementById("ph-modal");
+            modal.dataset.unitKey = u.key;
+            const info = detectAreaInfo(u, u._jobber.match);
+            modal.dataset.area = (info && info.area) || "";
+            modal.dataset.areaNumber = info && info.number != null ? String(info.number) : "";
+            modal.dataset.areaAuto = info && info.area ? "1" : "";
+            modal.phExistingJobs = null;
+
+            modalFillHouseInfo("ph", u);
+            document.getElementById("ph-modal-on").value = todayIso();
+            document.getElementById("ph-modal-off").value = todayIso();
+            modalRefreshArea("ph");
+            document.getElementById("ph-conflicts").innerHTML = `<div class="extras-preview-muted">Checking existing PH jobs…</div>`;
+            phUpdatePreview();
+            modal.classList.add("active");
+            try {
+                const jobs = await fetchPropertyPHJobs(u._jobber.match.clientId, u._jobber.match.propertyId);
+                modal.phExistingJobs = jobs;
+                phUpdatePreview();
+            } catch (e) {
+                console.error("[MB] fetchPropertyPHJobs failed:", e);
+                modal.phExistingJobs = [];
+                phUpdatePreview();
+            }
+        };
+        window.closePHModal = function () {
+            document.getElementById("ph-modal").classList.remove("active");
+        };
+        window.phSetArea = function (area) {
+            const modal = document.getElementById("ph-modal");
+            modal.dataset.area = area;
+            modal.dataset.areaAuto = "";
+            modalRefreshArea("ph");
+            phUpdatePreview();
+        };
+        window.phSetAreaNumber = function (value) {
+            const modal = document.getElementById("ph-modal");
+            modal.dataset.areaNumber = String(value || "").trim();
+            modal.dataset.areaAuto = "";
+            modalRefreshArea("ph");
+            phUpdatePreview();
+        };
+        window.phUpdatePreview = function () {
+            const modal = document.getElementById("ph-modal");
+            const area = modal.dataset.area || "";
+            const areaNumber = modal.dataset.areaNumber ? Number(modal.dataset.areaNumber) : null;
+            const onDate = document.getElementById("ph-modal-on").value || todayIso();
+            const offDate = document.getElementById("ph-modal-off").value || todayIso();
+            const onAssignees = area ? computePHOnAssignees(area, areaNumber, onDate) : [];
+            const offAssignees = area ? computePHOffAssignees(area) : [];
+            document.getElementById("ph-preview-on").textContent = labelsFromTeamIds(onAssignees).join(" + ") || "(no team)";
+            document.getElementById("ph-preview-off").textContent = labelsFromTeamIds(offAssignees).join(" + ") || "(no team)";
+            document.getElementById("ph-preview-member").textContent = yourNameForCurrentUser() || "(set Your Name on the Messages page)";
+            // Nights count
+            let nightsHtml = "";
+            if (onDate && offDate) {
+                const ms = new Date(offDate + "T00:00:00") - new Date(onDate + "T00:00:00");
+                const nights = Math.round(ms / 86400000) - 1;
+                if (nights > 0) {
+                    nightsHtml = `<span class="ph-nights-tag">${nights} night${nights === 1 ? "" : "s"}</span> heated`;
+                } else if (nights === 0) {
+                    nightsHtml = `<span class="extras-warn-inline">ON and OFF are consecutive — 0 nights heated</span>`;
+                } else {
+                    nightsHtml = `<span class="extras-warn-inline">OFF date must be after ON date</span>`;
+                }
+            }
+            document.getElementById("ph-nights").innerHTML = nightsHtml;
+            // Conflicts
+            if (modal.phExistingJobs == null) {
+                document.getElementById("ph-conflicts").innerHTML = `<div class="extras-preview-muted">Checking existing PH jobs…</div>`;
+            } else {
+                const conflicts = findPHConflicts(modal.phExistingJobs, onDate, offDate);
+                if (conflicts.length) {
+                    document.getElementById("ph-conflicts").innerHTML = `<div class="extras-conflicts">
+                        <div class="extras-conflicts-title">⚠ ${conflicts.length} existing PH job${conflicts.length > 1 ? "s" : ""} between these dates:</div>
+                        ${conflicts.map((c) => {
+                            const numericId = decodeJobberId(c.id);
+                            const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
+                            return `<div class="extras-conflict-row">
+                                <span>${escapeHtml(c.title)} on ${escapeHtml(c.startDate)}</span>
+                                ${url ? `<a class="created-open" href="${url}" target="_blank" rel="noopener">#${escapeHtml(String(c.jobNumber || numericId))} ↗</a>` : ""}
+                            </div>`;
+                        }).join("")}
+                    </div>`;
+                } else {
+                    document.getElementById("ph-conflicts").innerHTML = "";
+                }
+                const btn = document.getElementById("ph-submit-btn");
+                btn.textContent = conflicts.length ? "Create anyway" : "Create";
+                btn.classList.toggle("btn-extra-warn", conflicts.length > 0);
+            }
+            document.getElementById("ph-submit-btn").disabled = !area || modal.phExistingJobs == null;
+        };
+        window.phSubmit = async function () {
+            const modal = document.getElementById("ph-modal");
+            const u = modalUnitFromKey(modal.dataset.unitKey);
+            if (!u) return;
+            const area = modal.dataset.area || "";
+            const areaNumber = modal.dataset.areaNumber ? Number(modal.dataset.areaNumber) : null;
+            const onDate = document.getElementById("ph-modal-on").value || "";
+            const offDate = document.getElementById("ph-modal-off").value || "";
+            if (!area) { showToast("Pick West or East"); return; }
+            if (!onDate || !offDate) { showToast("Pick both dates"); return; }
+            const onAssignees = computePHOnAssignees(area, areaNumber, onDate);
+            const offAssignees = computePHOffAssignees(area);
+            const onLabel = labelsFromTeamIds(onAssignees).join(" + ") || `PH ${area}`;
+            const offLabel = labelsFromTeamIds(offAssignees).join(" + ") || `PH ${area}`;
+            const btn = document.getElementById("ph-submit-btn");
+            const origLabel = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = "Creating…";
+            try {
+                await runCreateAndRecord(u, [
+                    { title: "PH ON", startAt: onDate, assigneeName: onLabel, assignedTo: onAssignees },
+                    { title: "PH OFF", startAt: offDate, assigneeName: offLabel, assignedTo: offAssignees },
+                ]);
+                closePHModal();
+            } finally {
+                btn.disabled = false;
+                btn.textContent = origLabel;
+            }
+        };
 
         // ===== Guest Report modal =====
         const GR_TITLE_OPTIONS = [
@@ -2453,6 +2652,9 @@
             if (e.key === "Escape") {
                 closeDescription();
                 closeGuestReportModal();
+                closeBBQModal();
+                closePnPModal();
+                closePHModal();
             }
         });
 
@@ -2550,6 +2752,152 @@
             <div class="modal-footer">
                 <button onclick="closeGateModal()" class="btn btn-ghost">Cancel</button>
                 <button id="gate-send-btn" onclick="gateSendGuests()" class="btn btn-primary">Send to Gate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BBQ modal -->
+    <div id="bbq-modal" class="modal-overlay" onclick="if(event.target===this)closeBBQModal()">
+        <div class="modal gr-modal">
+            <div class="modal-header">
+                <h2>BBQ Clean — <span id="bbq-house-label" style="color: var(--text-muted); font-weight: 500;"></span></h2>
+                <button onclick="closeBBQModal()" class="btn-icon" title="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="gr-info">
+                    <div class="gr-info-row"><span class="gr-info-label">Unit</span><span id="bbq-house-code" class="gr-info-value"></span></div>
+                    <div class="gr-info-row"><span class="gr-info-label">Address</span><span id="bbq-house-address" class="gr-info-value"></span></div>
+                </div>
+
+                <label class="gr-field">
+                    <span>Area <span id="bbq-area-auto-hint" class="gr-area-auto" style="display:none;">auto-detected</span></span>
+                    <div class="gr-area-picker">
+                        <button type="button" id="bbq-area-west" class="btn-area" onclick="bbqSetArea('West')">West</button>
+                        <button type="button" id="bbq-area-east" class="btn-area" onclick="bbqSetArea('East')">East</button>
+                    </div>
+                </label>
+
+                <label class="gr-field">
+                    <span>BBQ date</span>
+                    <input type="date" id="bbq-modal-date" class="gate-input" oninput="bbqUpdatePreview()" onclick="this.showPicker && this.showPicker()">
+                </label>
+
+                <div id="bbq-warn"></div>
+
+                <div class="gr-preview">
+                    <div class="gr-preview-row"><span class="gr-preview-label">Title</span><span id="bbq-preview-title" class="gr-preview-value">—</span></div>
+                    <div class="gr-preview-row"><span class="gr-preview-label">Assigned to</span><span id="bbq-preview-assignee" class="gr-preview-value">—</span></div>
+                    <div class="gr-preview-row"><span class="gr-preview-label">Member</span><span id="bbq-preview-member" class="gr-preview-value">—</span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeBBQModal()" class="btn btn-ghost">Cancel</button>
+                <button id="bbq-submit-btn" onclick="bbqSubmit()" class="btn btn-primary">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PnP (Deliver / Pickup extras) modal -->
+    <div id="pnp-modal" class="modal-overlay" onclick="if(event.target===this)closePnPModal()">
+        <div class="modal gr-modal">
+            <div class="modal-header">
+                <h2>Deliver / Pickup — <span id="pnp-house-label" style="color: var(--text-muted); font-weight: 500;"></span></h2>
+                <button onclick="closePnPModal()" class="btn-icon" title="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="gr-info">
+                    <div class="gr-info-row"><span class="gr-info-label">Unit</span><span id="pnp-house-code" class="gr-info-value"></span></div>
+                    <div class="gr-info-row"><span class="gr-info-label">Address</span><span id="pnp-house-address" class="gr-info-value"></span></div>
+                </div>
+
+                <label class="gr-field">
+                    <span>Area <span id="pnp-area-auto-hint" class="gr-area-auto" style="display:none;">auto-detected</span></span>
+                    <div class="gr-area-picker">
+                        <button type="button" id="pnp-area-west" class="btn-area" onclick="pnpSetArea('West')">West</button>
+                        <button type="button" id="pnp-area-east" class="btn-area" onclick="pnpSetArea('East')">East</button>
+                        <span class="gr-area-num">#<input type="number" id="pnp-area-num" min="1" max="20" oninput="pnpSetAreaNumber(this.value)" class="area-num-input"></span>
+                    </div>
+                </label>
+
+                <label class="gr-field">
+                    <span>Deliver date</span>
+                    <input type="date" id="pnp-modal-deliver" class="gate-input" oninput="pnpUpdatePreview()" onclick="this.showPicker && this.showPicker()">
+                </label>
+
+                <label class="gr-field">
+                    <span>Pickup date</span>
+                    <input type="date" id="pnp-modal-pickup" class="gate-input" oninput="pnpUpdatePreview()" onclick="this.showPicker && this.showPicker()">
+                </label>
+
+                <label class="gr-field">
+                    <span>Items</span>
+                    <div id="pnp-items"></div>
+                    <button type="button" class="btn-link" onclick="pnpAddCustom()" style="align-self:flex-start; margin-top:4px;">+ Add item</button>
+                </label>
+
+                <div class="gr-preview">
+                    <div class="gr-preview-row"><span class="gr-preview-label">Deliver</span><span id="pnp-preview-deliver" class="gr-preview-value">—</span></div>
+                    <div class="gr-preview-row"><span class="gr-preview-label">Pickup</span><span id="pnp-preview-pickup" class="gr-preview-value">—</span></div>
+                    <div class="gr-preview-row"><span class="gr-preview-label">Member</span><span id="pnp-preview-member" class="gr-preview-value">—</span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closePnPModal()" class="btn btn-ghost">Cancel</button>
+                <button id="pnp-submit-btn" onclick="pnpSubmit()" class="btn btn-primary">Create both</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PH (Pool Heater on/off) modal -->
+    <div id="ph-modal" class="modal-overlay" onclick="if(event.target===this)closePHModal()">
+        <div class="modal gr-modal">
+            <div class="modal-header">
+                <h2>Pool Heater — <span id="ph-house-label" style="color: var(--text-muted); font-weight: 500;"></span></h2>
+                <button onclick="closePHModal()" class="btn-icon" title="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="gr-info">
+                    <div class="gr-info-row"><span class="gr-info-label">Unit</span><span id="ph-house-code" class="gr-info-value"></span></div>
+                    <div class="gr-info-row"><span class="gr-info-label">Address</span><span id="ph-house-address" class="gr-info-value"></span></div>
+                </div>
+
+                <label class="gr-field">
+                    <span>Area <span id="ph-area-auto-hint" class="gr-area-auto" style="display:none;">auto-detected</span></span>
+                    <div class="gr-area-picker">
+                        <button type="button" id="ph-area-west" class="btn-area" onclick="phSetArea('West')">West</button>
+                        <button type="button" id="ph-area-east" class="btn-area" onclick="phSetArea('East')">East</button>
+                        <span class="gr-area-num">#<input type="number" id="ph-area-num" min="1" max="20" oninput="phSetAreaNumber(this.value)" class="area-num-input"></span>
+                    </div>
+                </label>
+
+                <label class="gr-field">
+                    <span>PH ON date</span>
+                    <input type="date" id="ph-modal-on" class="gate-input" oninput="phUpdatePreview()" onclick="this.showPicker && this.showPicker()">
+                </label>
+
+                <label class="gr-field">
+                    <span>PH OFF date</span>
+                    <input type="date" id="ph-modal-off" class="gate-input" oninput="phUpdatePreview()" onclick="this.showPicker && this.showPicker()">
+                </label>
+
+                <div id="ph-nights" style="margin: 4px 0 8px;"></div>
+                <div id="ph-conflicts"></div>
+
+                <div class="gr-preview">
+                    <div class="gr-preview-row"><span class="gr-preview-label">PH ON →</span><span id="ph-preview-on" class="gr-preview-value">—</span></div>
+                    <div class="gr-preview-row"><span class="gr-preview-label">PH OFF →</span><span id="ph-preview-off" class="gr-preview-value">—</span></div>
+                    <div class="gr-preview-row"><span class="gr-preview-label">Member</span><span id="ph-preview-member" class="gr-preview-value">—</span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closePHModal()" class="btn btn-ghost">Cancel</button>
+                <button id="ph-submit-btn" onclick="phSubmit()" class="btn btn-primary">Create</button>
             </div>
         </div>
     </div>
