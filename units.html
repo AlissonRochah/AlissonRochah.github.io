@@ -1398,6 +1398,57 @@
             return existing.filter((j) => j.startDate >= lo && j.startDate <= hi && j.jobStatus !== "archived");
         }
 
+        async function fetchPropertyBBQJobs(clientId, propertyId) {
+            if (!clientId || !propertyId) return [];
+            try {
+                const data = await jobberQuery(
+                    "MasterBotPropertyJobs",
+                    `query MasterBotPropertyJobs($clientId: EncodedId!, $propertyIds: [EncodedId!], $first: Int) {
+                        client(id: $clientId) {
+                            id
+                            requestedWorkObjects(
+                                first: $first
+                                filter: { types: [JOB], propertyIds: $propertyIds, status: ALL }
+                            ) {
+                                edges {
+                                    node {
+                                        __typename
+                                        ... on Job {
+                                            id
+                                            jobNumber
+                                            jobStatus
+                                            startAt
+                                            title
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }`,
+                    { clientId, propertyIds: [propertyId], first: 50 }
+                );
+                const edges = (data && data.client && data.client.requestedWorkObjects && data.client.requestedWorkObjects.edges) || [];
+                return edges
+                    .map((e) => e.node)
+                    .filter((n) => n && n.__typename === "Job" && /\bbbq\b/i.test(n.title || ""))
+                    .map((n) => ({
+                        id: n.id,
+                        jobNumber: n.jobNumber,
+                        title: n.title,
+                        jobStatus: n.jobStatus,
+                        startAt: n.startAt,
+                        startDate: (n.startAt || "").slice(0, 10),
+                    }));
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function findBBQConflicts(existing, date) {
+            if (!date || !existing || !existing.length) return [];
+            return existing.filter((j) => j.startDate === date && j.jobStatus !== "archived");
+        }
+
         function decodeJobberId(encoded) {
             try { return atob(String(encoded || "")).replace(/^\D+/, ""); }
             catch (_) { return ""; }
@@ -1762,7 +1813,7 @@
         }
 
         // ===== BBQ modal =====
-        window.openBBQModal = function (key) {
+        window.openBBQModal = async function (key) {
             const u = modalUnitFromKey(key);
             if (!u) return;
             if (!u._jobber || !u._jobber.match) { showToast("This unit isn't linked to a Jobber property yet"); return; }
@@ -1771,14 +1822,25 @@
             const detected = detectAreaSuffix(u, u._jobber.match);
             modal.dataset.area = detected || "";
             modal.dataset.areaAuto = detected ? "1" : "";
+            modal.bbqExistingJobs = null;
 
             modalFillHouseInfo("bbq", u);
             document.getElementById("bbq-modal-date").value = todayIso();
             modalRefreshArea("bbq");
+            document.getElementById("bbq-conflicts").innerHTML = `<div class="extras-preview-muted">Checking existing BBQ jobs…</div>`;
             // Pre-load MAPRO services so bbqDateWarning can flag a duplicate.
             ensureMaproServicesForStays(u).then(() => bbqUpdatePreview()).catch(() => {});
             bbqUpdatePreview();
             modal.classList.add("active");
+            try {
+                const jobs = await fetchPropertyBBQJobs(u._jobber.match.clientId, u._jobber.match.propertyId);
+                modal.bbqExistingJobs = jobs;
+                bbqUpdatePreview();
+            } catch (e) {
+                console.error("[MB] fetchPropertyBBQJobs failed:", e);
+                modal.bbqExistingJobs = [];
+                bbqUpdatePreview();
+            }
         };
         window.closeBBQModal = function () {
             const modal = document.getElementById("bbq-modal");
@@ -1803,7 +1865,33 @@
             document.getElementById("bbq-preview-assignee").textContent = assignee;
             document.getElementById("bbq-preview-member").textContent = yourNameForCurrentUser() || "(set Your Name on the Messages page)";
             document.getElementById("bbq-warn").innerHTML = u ? bbqDateWarning(u, date) : "";
-            document.getElementById("bbq-submit-btn").disabled = !area;
+
+            // Conflict check vs existing BBQ jobs on the same property.
+            const conflictsEl = document.getElementById("bbq-conflicts");
+            if (modal.bbqExistingJobs == null) {
+                conflictsEl.innerHTML = `<div class="extras-preview-muted">Checking existing BBQ jobs…</div>`;
+            } else {
+                const conflicts = findBBQConflicts(modal.bbqExistingJobs, date);
+                if (conflicts.length) {
+                    conflictsEl.innerHTML = `<div class="extras-conflicts">
+                        <div class="extras-conflicts-title">⚠ ${conflicts.length} existing BBQ job${conflicts.length > 1 ? "s" : ""} on ${escapeHtml(date)}:</div>
+                        ${conflicts.map((c) => {
+                            const numericId = decodeJobberId(c.id);
+                            const url = numericId ? `https://secure.getjobber.com/jobs/${encodeURIComponent(numericId)}` : "";
+                            return `<div class="extras-conflict-row">
+                                <span>${escapeHtml(c.title)}</span>
+                                ${url ? `<a class="created-open" href="${url}" target="_blank" rel="noopener">#${escapeHtml(String(c.jobNumber || numericId))} ↗</a>` : ""}
+                            </div>`;
+                        }).join("")}
+                    </div>`;
+                } else {
+                    conflictsEl.innerHTML = "";
+                }
+                const btn = document.getElementById("bbq-submit-btn");
+                btn.textContent = conflicts.length ? "Create anyway" : "Create";
+                btn.classList.toggle("btn-extra-warn", conflicts.length > 0);
+            }
+            document.getElementById("bbq-submit-btn").disabled = !area || modal.bbqExistingJobs == null;
         };
         window.bbqSubmit = async function () {
             const modal = document.getElementById("bbq-modal");
@@ -2788,6 +2876,7 @@
                 </label>
 
                 <div id="bbq-warn"></div>
+                <div id="bbq-conflicts"></div>
 
                 <div class="gr-preview">
                     <div class="gr-preview-row"><span class="gr-preview-label">Title</span><span id="bbq-preview-title" class="gr-preview-value">—</span></div>
