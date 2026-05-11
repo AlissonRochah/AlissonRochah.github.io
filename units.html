@@ -1797,10 +1797,9 @@
             const u = modalUnitFromKey(modal.dataset.unitKey);
             const area = modal.dataset.area || "";
             const date = document.getElementById("bbq-modal-date").value || todayIso();
-            const title = `BBQ/PW-${area || "?"}`;
-            document.getElementById("bbq-preview-title").textContent = title;
+            document.getElementById("bbq-preview-title").textContent = "BBQ Clean";
             const teamId = area ? JOBBER_BBQ_TEAM_IDS[area] : null;
-            const assignee = teamId ? labelsFromTeamIds([teamId]).join(" + ") : "(no team)";
+            const assignee = teamId ? `BBQ/PW-${area}` : "(no team)";
             document.getElementById("bbq-preview-assignee").textContent = assignee;
             document.getElementById("bbq-preview-member").textContent = yourNameForCurrentUser() || "(set Your Name on the Messages page)";
             document.getElementById("bbq-warn").innerHTML = u ? bbqDateWarning(u, date) : "";
@@ -1816,13 +1815,12 @@
             if (!date) { showToast("Pick a date"); return; }
             const teamId = JOBBER_BBQ_TEAM_IDS[area];
             const assignees = teamId ? [teamId] : [];
-            const title = `BBQ/PW-${area}`;
             const btn = document.getElementById("bbq-submit-btn");
             btn.disabled = true;
             btn.textContent = "Creating…";
             try {
                 await runCreateAndRecord(u, [
-                    { title, startAt: date, assigneeName: labelsFromTeamIds(assignees).join(" + ") || area, assignedTo: assignees },
+                    { title: "BBQ Clean", startAt: date, assigneeName: `BBQ/PW-${area}`, assignedTo: assignees },
                 ]);
                 closeBBQModal();
             } finally {
