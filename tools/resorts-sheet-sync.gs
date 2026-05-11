@@ -73,15 +73,23 @@ const AMENITY_COLUMNS = [
     "fee",
 ];
 
-// Set of resorts that count as "out-resorts" — adjust if more are added.
-const OUT_RESORTS = new Set([
-    "Bridgewater Crossings",
-    "Chatham Park",
-    "Formosa Garden",
-    "Indian Ridge",
-    "Serenity",
-    "West Haven",
+// Tabs whose name does NOT look like a real resort brochure — they're
+// templates, junk drawers, or system tabs. Anything in here is skipped.
+const NON_RESORT_TABS = new Set([
+    "Gates",          // index of gate systems, not a single resort
 ]);
+
+// Heuristic: any tab whose slug matches one of these regexes is junk.
+const NON_RESORT_PATTERNS = [
+    /^sheet\d+$/i,            // Sheet127, Sheet129 etc.
+    /^miami-?\d+-?\d+$/i,     // miami-60-3807
+    /^copy-of-/i,             // duplicates left over from editing
+];
+
+// Tabs whose NAME starts with these prefixes count as "out-resort".
+// Slugify lower-cases and dashifies — both "OUT - Foo" and "OUT-Foo"
+// become "out-foo".
+const OUT_RESORT_PREFIX_RE = /^out[-\s]/i;
 
 function rebuildResortMaster() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -93,11 +101,20 @@ function rebuildResortMaster() {
     for (const tab of tabs) {
         const name = tab.getName();
         if (SKIP_TAB_NAMES.has(name)) continue;
+        if (NON_RESORT_TABS.has(name)) continue;
         if (name.startsWith("_") || name.startsWith(".")) continue;
+        const id = slugify(name);
+        if (NON_RESORT_PATTERNS.some((re) => re.test(id))) continue;
 
         const data = tab.getDataRange().getValues();
         const parsed = parseResortTab(name, data);
         if (!parsed) continue;
+        // Final guard: a "real" resort brochure has at least one of the
+        // canonical sections. Without any, it's almost certainly junk.
+        const sections = locateSections(data);
+        const hasAnySection = ["GATE", "CONTACTS", "COMMUNITY AMENITIES", "POOL", "TRASH", "PARKING"]
+            .some((s) => sections[s] != null);
+        if (!hasAnySection) continue;
 
         masterRows.push(parsed.row);
         for (const a of parsed.amenities) amenityRows.push(a);
@@ -116,10 +133,13 @@ function parseResortTab(tabName, rows) {
     const sections = locateSections(rows);
 
     const id = slugify(tabName);
+    const isOut = OUT_RESORT_PREFIX_RE.test(tabName) || /^out-/.test(id);
+    // Strip "OUT - " from the display name so the master tab is clean.
+    const displayName = tabName.replace(OUT_RESORT_PREFIX_RE, "").trim() || tabName;
     const row = {
         id,
-        name: tabName,
-        type: OUT_RESORTS.has(tabName) ? "out-resort" : "primary",
+        name: displayName,
+        type: isOut ? "out-resort" : "primary",
     };
 
     // GATE section: typically two rows below the header — first row is
@@ -169,34 +189,17 @@ function parseResortTab(tabName, rows) {
             row.clubhouse_email = extractFirstEmail(blob);
         }
 
-        // Look at every cell in the section for extra context — GM,
-        // guardhouse, towing, etc. Read rows + 2..rows + 8 (cap).
-        for (let r = sections.CONTACTS + 1; r < Math.min(rows.length, sections.CONTACTS + 10); r++) {
+        // Scan every cell of the CONTACTS section (which usually only
+        // has 2–4 rows of data) for GM / guardhouse / towing / HOA hints.
+        // We split each cell into lines because Sheets cells often hold
+        // multi-line blobs like "Orlando Franco\nGeneral Manager\n…".
+        const contactsEnd = nextSectionAfter(sections.CONTACTS, sections, rows.length);
+        for (let r = sections.CONTACTS + 1; r < contactsEnd; r++) {
             const line = rows[r] || [];
             for (let c = 0; c < line.length; c++) {
                 const cell = stringify(line[c]);
                 if (!cell) continue;
-                const lower = cell.toLowerCase();
-                if (!row.gm_email) {
-                    const m = cell.match(/(GeneralManager@[^\s]+|generalmanager@[^\s]+)/i);
-                    if (m) row.gm_email = m[1];
-                }
-                if (!row.gm_name) {
-                    const m = cell.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*$/m);
-                    if (m && lower.includes("general manager")) row.gm_name = m[1];
-                }
-                if (!row.guardhouse_phone && /guardhouse|guard house/i.test(cell)) {
-                    row.guardhouse_phone = extractFirstPhone(cell);
-                }
-                if (!row.towing_phone && /tow/i.test(cell)) {
-                    row.towing_phone = extractFirstPhone(cell);
-                }
-                if (!row.hoa_phone && /hoa|customer care/i.test(cell)) {
-                    row.hoa_phone = extractFirstPhone(cell);
-                }
-                if (!row.non_emergency_phone && /non.?emergency|polk county/i.test(cell)) {
-                    row.non_emergency_phone = extractFirstPhone(cell);
-                }
+                scanContactsCell(cell, row);
             }
         }
     }
@@ -212,12 +215,13 @@ function parseResortTab(tabName, rows) {
         const courtIdx = findColIndex(headerRow, ["court"]);
         const feeIdx = findColIndex(headerRow, ["fee", "amenity fee", "amenitie fee"]);
 
-        for (let r = startRow + 1; r < rows.length; r++) {
+        const amenEnd = nextSectionAfter(sections["COMMUNITY AMENITIES"], sections, rows.length);
+        for (let r = startRow + 1; r < amenEnd; r++) {
             const line = rows[r] || [];
-            const looksLikeSectionHeader = /^[A-Z][A-Z\s/]+$/.test(stringify(line[1]));
-            if (looksLikeSectionHeader && stringify(line[1]).length > 2) break;
             const name = locIdx >= 0 ? stringify(line[locIdx]) : "";
             if (!name) continue;
+            // Skip leftover header-like rows ("Location", "Hours" again).
+            if (/^(location|hours|access)$/i.test(name)) continue;
             amenities.push({
                 resort_id: id,
                 amenity_name: name,
@@ -254,16 +258,14 @@ function parseResortTab(tabName, rows) {
         row.trash_notes = stringify(valueRow[3]);
     }
 
-    // PARKING section — first non-empty cell after the header.
+    // PARKING section — collect everything up to the next known section.
     if (sections.PARKING != null) {
-        const blob = collectBlob(rows, sections.PARKING + 1, sections.PARKING + 6);
-        row.parking_rules = blob;
+        row.parking_rules = collectBlobBounded(rows, sections.PARKING, sections);
     }
 
     // PACKAGES section.
     if (sections.PACKAGES != null) {
-        const blob = collectBlob(rows, sections.PACKAGES + 1, sections.PACKAGES + 6);
-        row.packages_policy = blob;
+        row.packages_policy = collectBlobBounded(rows, sections.PACKAGES, sections);
     }
 
     // PETS section.
@@ -332,6 +334,56 @@ function slugify(name) {
         .replace(/^-+|-+$/g, "");
 }
 
+// Walk through a multi-line cell looking for labelled phones / emails /
+// the General Manager block. Each detected piece is written to `row`
+// only if that field hasn't been set yet.
+function scanContactsCell(cell, row) {
+    const lines = String(cell).split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const lower = line.toLowerCase();
+
+        // Email — first email anywhere wins if no clubhouse_email yet.
+        const email = extractFirstEmail(line);
+        if (email) {
+            if (!row.gm_email && /generalmanager|^gm@/i.test(email)) row.gm_email = email;
+            if (!row.clubhouse_email && /frontdesk|info|reservations|reception/i.test(email)) {
+                row.clubhouse_email = email;
+            } else if (!row.clubhouse_email && !row.gm_email) {
+                row.clubhouse_email = email;
+            }
+        }
+
+        // "General Manager" line — GM name is usually the line above it.
+        if (!row.gm_name && /general manager/i.test(line)) {
+            for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+                const prev = lines[j].trim();
+                if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}$/.test(prev)) {
+                    row.gm_name = prev;
+                    break;
+                }
+            }
+        }
+
+        // Phones with a contextual label win their slot.
+        const phone = extractFirstPhone(line);
+        if (phone) {
+            if (!row.guardhouse_phone && /guard\s*house|gate\s*house|guardhouse/i.test(lower)) {
+                row.guardhouse_phone = phone;
+            } else if (!row.towing_phone && /tow/i.test(lower)) {
+                row.towing_phone = phone;
+            } else if (!row.hoa_phone && /\bhoa\b|customer\s*care/i.test(lower)) {
+                row.hoa_phone = phone;
+            } else if (!row.non_emergency_phone && /non.?emergency|sheriff|police/i.test(lower)) {
+                row.non_emergency_phone = phone;
+            } else if (!row.gm_phone && /general manager|gm[\s:]/i.test(lower)) {
+                row.gm_phone = phone;
+            }
+        }
+    }
+}
+
 function extractFirstPhone(s) {
     const m = stringify(s).match(/(\+?\d[\d\s().-]{7,})/);
     return m ? m[1].replace(/\s+/g, " ").trim() : "";
@@ -342,23 +394,36 @@ function extractFirstEmail(s) {
     return m ? m[0] : "";
 }
 
-function collectBlob(rows, fromRow, toRow) {
+// Collect text inside a section. `headerRowIndex` is the row of the
+// section's title; data starts on the next row. We stop at whichever
+// other known section header comes next so adjacent sections don't
+// bleed in.
+function collectBlobBounded(rows, headerRowIndex, sections) {
+    const nextSectionRow = nextSectionAfter(headerRowIndex, sections, rows.length);
     const parts = [];
-    const cap = Math.min(rows.length, toRow);
-    for (let r = fromRow; r < cap; r++) {
+    for (let r = headerRowIndex + 1; r < nextSectionRow; r++) {
         const line = rows[r] || [];
-        for (let c = 0; c < line.length; c++) {
+        for (let c = 1; c < line.length; c++) {
             const cell = stringify(line[c]);
-            // Stop at the next ALL-CAPS section header.
-            if (/^[A-Z][A-Z\s/]+$/.test(cell) && cell.length > 2 && cell.length < 30) {
-                return parts.join(" | ").trim();
+            if (!cell) continue;
+            // Drop the column-label row right under the section header
+            // (things like "Cars Allowed?", "Parking Spot", "Days").
+            if (r === headerRowIndex + 1 && cell.length < 40 && /\?$|^[A-Z][a-z]+(\s[A-Z][a-z]+)*$/.test(cell)) {
+                continue;
             }
-            if (cell && cell.length > 3 && !/^[A-Z][A-Z\s/]+$/.test(cell)) {
-                parts.push(cell);
-            }
+            parts.push(cell);
         }
     }
     return parts.join(" | ").trim();
+}
+
+function nextSectionAfter(headerRowIndex, sections, totalRows) {
+    let nearest = totalRows;
+    for (const k of Object.keys(sections)) {
+        const r = sections[k];
+        if (r > headerRowIndex && r < nearest) nearest = r;
+    }
+    return nearest;
 }
 
 function writeTable(ss, tabName, columns, rows) {
