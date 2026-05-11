@@ -75,11 +75,9 @@
                 if (nameInput) {
                     nameInput.value = localStorage.getItem(YOUR_NAME_PREFIX + user.uid) || "";
                 }
-                if (tplInitialCache && tplInitialCache.userId === user.uid) {
-                    loadCategories(user.uid);
-                    loadSignature(user.uid);
-                    return;
-                }
+                // Cache is for instant first paint, never the source of
+                // truth — always re-fetch from Firestore so edits made on
+                // the templates page show up here.
                 await loadCategories(user.uid);
                 await loadTemplates(user.uid);
                 await loadSignature(user.uid);
