@@ -1283,7 +1283,12 @@
             "EAST 4": "MjEwNDU1NA==",
             "EAST 5": "MjcxNjkzNA==",
         };
-        const JOBBER_TEAM_NAMES = Object.fromEntries(Object.entries(JOBBER_TEAM_IDS).map(([name, id]) => [id, name]));
+        const JOBBER_TEAM_NAMES = Object.fromEntries([
+            ...Object.entries(JOBBER_TEAM_IDS).map(([name, id]) => [id, name]),
+            // BBQ pipes through its own id map; merge so labelsFromTeamIds
+            // returns "BBQ/PW West" / "BBQ/PW East" instead of the raw id.
+            ...Object.entries(JOBBER_BBQ_TEAM_IDS).map(([area, id]) => [id, `BBQ/PW ${area}`]),
+        ]);
 
         function computePHOnAssignees(area, areaNumber, dateIso) {
             const upper = area.toUpperCase();
