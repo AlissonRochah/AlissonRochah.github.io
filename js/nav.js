@@ -32,6 +32,12 @@ function yourNameForUid(uid) {
     return (localStorage.getItem(YOUR_NAME_PREFIX + uid) || "").trim();
 }
 
+// Module-scoped so the timer + audio context survive between fullscreen
+// changes and can be cleared cleanly when the operator closes the break.
+let breakAlarmTimer = null;
+let breakAlarmCtx = null;
+let breakAlarmStopAt = 0;
+
 function ensureBreakOverlay() {
     if (document.getElementById("break-overlay")) return;
     const el = document.createElement("div");
@@ -45,19 +51,75 @@ function ensureBreakOverlay() {
         <div class="break-overlay-stickers" id="break-overlay-stickers"></div>
         <div class="break-overlay-content">
             <div class="break-overlay-name" id="break-overlay-name">—</div>
-            <div class="break-overlay-status">BREAK IN PROGRESS</div>
+            <div class="break-overlay-status" id="break-overlay-status">BREAK IN PROGRESS</div>
             <div class="break-overlay-time" id="break-overlay-time">—</div>
         </div>
     `;
     document.body.appendChild(el);
-    // Esc exits fullscreen natively; once that happens, hide the overlay
-    // too so the operator lands back on the page they were on.
     document.addEventListener("fullscreenchange", () => {
         if (!document.fullscreenElement) {
             const ov = document.getElementById("break-overlay");
             if (ov) ov.hidden = true;
+            cancelBreakAlarm();
+            resetBreakStatusUI();
         }
     });
+}
+
+function cancelBreakAlarm() {
+    if (breakAlarmTimer) {
+        clearTimeout(breakAlarmTimer);
+        breakAlarmTimer = null;
+    }
+    breakAlarmStopAt = 0;
+}
+
+function resetBreakStatusUI() {
+    const status = document.getElementById("break-overlay-status");
+    const time = document.getElementById("break-overlay-time");
+    if (status) {
+        status.textContent = "BREAK IN PROGRESS";
+        status.classList.remove("break-overlay-status-over");
+    }
+    if (time) time.classList.remove("break-overlay-time-over");
+}
+
+function fireBreakAlarm() {
+    const status = document.getElementById("break-overlay-status");
+    const time = document.getElementById("break-overlay-time");
+    if (status) {
+        status.textContent = "TIME'S UP";
+        status.classList.add("break-overlay-status-over");
+    }
+    if (time) time.classList.add("break-overlay-time-over");
+    // Three 880 Hz beeps every 1.2 seconds for ~12 seconds, then stop.
+    if (!breakAlarmCtx) return;
+    breakAlarmStopAt = Date.now() + 12000;
+    const ctx = breakAlarmCtx;
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+
+    let step = 0;
+    function ring() {
+        if (Date.now() >= breakAlarmStopAt) return;
+        for (let i = 0; i < 3; i++) {
+            const start = ctx.currentTime + i * 0.18;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = "sine";
+            osc.frequency.value = 880;
+            gain.gain.setValueAtTime(0, start);
+            gain.gain.linearRampToValueAtTime(0.4, start + 0.02);
+            gain.gain.setValueAtTime(0.4, start + 0.1);
+            gain.gain.linearRampToValueAtTime(0, start + 0.14);
+            osc.start(start);
+            osc.stop(start + 0.16);
+        }
+        step++;
+        setTimeout(ring, 1200);
+    }
+    ring();
 }
 
 async function loadStickersForUid(uid) {
@@ -101,6 +163,8 @@ function fmtHourAmPm(d) {
 
 function openBreak() {
     ensureBreakOverlay();
+    resetBreakStatusUI();
+    cancelBreakAlarm();
     const uid = auth.currentUser && auth.currentUser.uid;
     const name = yourNameForUid(uid) || (auth.currentUser && auth.currentUser.email) || "—";
     const now = new Date();
@@ -109,13 +173,18 @@ function openBreak() {
     document.getElementById("break-overlay-time").textContent = `${fmtHourAmPm(now)} - ${fmtHourAmPm(end)}`;
     const overlay = document.getElementById("break-overlay");
     overlay.hidden = false;
-    // Fetch this user's stickers and drop a random 5 into the 5 corner
-    // slots. Runs after the overlay is already visible so fullscreen
-    // isn't blocked by the await.
     loadStickersForUid(uid).then(renderBreakStickers).catch(() => {});
-    // The click that called this function counts as a user gesture in
-    // this very document, so requestFullscreen on documentElement here
-    // works reliably — no popup window needed.
+    // Spin up the AudioContext now — the user click is still a fresh
+    // gesture, so the alarm can play 45 minutes later without re-prompt.
+    if (!breakAlarmCtx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) breakAlarmCtx = new Ctx();
+    }
+    if (breakAlarmCtx && breakAlarmCtx.state === "suspended") {
+        breakAlarmCtx.resume().catch(() => {});
+    }
+    breakAlarmTimer = setTimeout(fireBreakAlarm, BREAK_MINUTES * 60 * 1000);
+    // Fullscreen — the click is a same-doc gesture so the request lands.
     const docEl = document.documentElement;
     const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen;
     if (req) req.call(docEl).catch(() => {});

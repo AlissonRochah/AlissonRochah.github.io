@@ -713,6 +713,15 @@ html.light .badge-danger {
     font-variant-numeric: tabular-nums;
     line-height: 1.2;
 }
+.break-overlay-status-over,
+.break-overlay-time-over {
+    color: #ff3b3b;
+    animation: breakPulseRed 1s ease-in-out infinite;
+}
+@keyframes breakPulseRed {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
 
 /* Sticker overlay: 5 fixed slots around the name, floating gently. */
 .break-overlay-stickers {
