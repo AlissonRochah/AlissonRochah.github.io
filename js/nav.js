@@ -32,11 +32,9 @@ function yourNameForUid(uid) {
     return (localStorage.getItem(YOUR_NAME_PREFIX + uid) || "").trim();
 }
 
-// Module-scoped so the timer + audio context survive between fullscreen
-// changes and can be cleared cleanly when the operator closes the break.
+// Module-scoped so the timer survives between fullscreen changes and
+// can be cleared cleanly when the operator closes the break.
 let breakAlarmTimer = null;
-let breakAlarmCtx = null;
-let breakAlarmStopAt = 0;
 
 function ensureBreakOverlay() {
     if (document.getElementById("break-overlay")) return;
@@ -71,7 +69,6 @@ function cancelBreakAlarm() {
         clearTimeout(breakAlarmTimer);
         breakAlarmTimer = null;
     }
-    breakAlarmStopAt = 0;
 }
 
 function resetBreakStatusUI() {
@@ -92,34 +89,6 @@ function fireBreakAlarm() {
         status.classList.add("break-overlay-status-over");
     }
     if (time) time.classList.add("break-overlay-time-over");
-    // Three 880 Hz beeps every 1.2 seconds for ~12 seconds, then stop.
-    if (!breakAlarmCtx) return;
-    breakAlarmStopAt = Date.now() + 12000;
-    const ctx = breakAlarmCtx;
-    if (ctx.state === "suspended") ctx.resume().catch(() => {});
-
-    let step = 0;
-    function ring() {
-        if (Date.now() >= breakAlarmStopAt) return;
-        for (let i = 0; i < 3; i++) {
-            const start = ctx.currentTime + i * 0.18;
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.type = "sine";
-            osc.frequency.value = 880;
-            gain.gain.setValueAtTime(0, start);
-            gain.gain.linearRampToValueAtTime(0.4, start + 0.02);
-            gain.gain.setValueAtTime(0.4, start + 0.1);
-            gain.gain.linearRampToValueAtTime(0, start + 0.14);
-            osc.start(start);
-            osc.stop(start + 0.16);
-        }
-        step++;
-        setTimeout(ring, 1200);
-    }
-    ring();
 }
 
 async function loadStickersForUid(uid) {
@@ -176,15 +145,6 @@ function openBreak() {
     const overlay = document.getElementById("break-overlay");
     overlay.hidden = false;
     loadStickersForUid(uid).then(renderBreakStickers).catch(() => {});
-    // Spin up the AudioContext now — the user click is still a fresh
-    // gesture, so the alarm can play 45 minutes later without re-prompt.
-    if (!breakAlarmCtx) {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (Ctx) breakAlarmCtx = new Ctx();
-    }
-    if (breakAlarmCtx && breakAlarmCtx.state === "suspended") {
-        breakAlarmCtx.resume().catch(() => {});
-    }
     breakAlarmTimer = setTimeout(fireBreakAlarm, BREAK_MINUTES * 60 * 1000);
     // Fullscreen — the click is a same-doc gesture so the request lands.
     const docEl = document.documentElement;
