@@ -23,7 +23,7 @@
         import { showToast } from "./js/toast.js";
         import { renderHeader } from "./js/nav.js";
         import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-        import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+        import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
         renderHeader("settings");
 
@@ -55,9 +55,11 @@
 
         let stickers = []; // [{ id, dataUrl, mime, size }]
         const MAX_STICKERS = 5;
-        // Firestore document size cap is 1 MB. With 5 slots we can afford
-        // ~180 KB per sticker (base64 inflates ~33%, so ~135 KB binary).
-        const MAX_STICKER_BYTES = 180 * 1024;
+        // Each sticker lives in its own Firestore doc under
+        // breakStickers/<uid>/items/<id>, so it gets the full 1 MB cap to
+        // itself. Leave headroom for base64 + metadata and accept up to
+        // ~800 KB binary (≈ a chunky GIF).
+        const MAX_STICKER_BYTES = 800 * 1024;
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -70,12 +72,22 @@
         });
 
         async function loadStickers(uid) {
+            stickers = [];
             try {
-                const snap = await getDoc(doc(db, "breakStickers", uid));
-                stickers = snap.exists() ? (snap.data().stickers || []) : [];
-            } catch (_) {
-                stickers = [];
-            }
+                const snap = await getDocs(collection(db, "breakStickers", uid, "items"));
+                snap.forEach((d) => {
+                    const data = d.data() || {};
+                    stickers.push({
+                        id: d.id,
+                        dataUrl: data.dataUrl,
+                        mime: data.mime,
+                        size: data.size,
+                    });
+                });
+                // Stable order by id (ids are time-prefixed) so the grid
+                // doesn't reshuffle between renders.
+                stickers.sort((a, b) => a.id.localeCompare(b.id));
+            } catch (_) { /* empty */ }
             renderStickersGrid();
         }
 
@@ -130,9 +142,14 @@
                     }
                     const dataUrl = await fileToDataUrl(file);
                     const id = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+                    // One doc per sticker so each gets its own 1 MB quota.
+                    await setDoc(doc(db, "breakStickers", uid, "items", id), {
+                        dataUrl,
+                        mime: file.type,
+                        size: file.size,
+                    });
                     stickers.push({ id, dataUrl, mime: file.type, size: file.size });
                 }
-                await setDoc(doc(db, "breakStickers", uid), { stickers });
                 const saved = candidates.length - skipped;
                 if (saved) showToast(`${saved} sticker(s) saved`);
                 if (skipped) {
@@ -150,10 +167,12 @@
 
         window.deleteSticker = async function (idx) {
             if (!auth.currentUser) return;
-            if (!stickers[idx]) return;
+            const sticker = stickers[idx];
+            if (!sticker) return;
+            const uid = auth.currentUser.uid;
             stickers.splice(idx, 1);
             try {
-                await setDoc(doc(db, "breakStickers", auth.currentUser.uid), { stickers });
+                await deleteDoc(doc(db, "breakStickers", uid, "items", sticker.id));
             } catch (e) {
                 console.error("Sticker delete failed:", e);
             }

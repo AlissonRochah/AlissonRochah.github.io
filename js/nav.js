@@ -5,7 +5,7 @@
 
 import { auth, db } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-import { doc as fsDoc, getDoc as fsGetDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
+import { collection as fsCollection, getDocs as fsGetDocs } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
 const PAGES = [
     { key: "templates", label: "Templates", href: "template.html" },
@@ -125,11 +125,13 @@ function fireBreakAlarm() {
 async function loadStickersForUid(uid) {
     if (!uid) return [];
     try {
-        const snap = await fsGetDoc(fsDoc(db, "breakStickers", uid));
-        if (!snap.exists()) return [];
-        return (snap.data().stickers || [])
-            .map((s) => s.dataUrl || s.url)  // dataUrl is the new field, url is legacy
-            .filter(Boolean);
+        const snap = await fsGetDocs(fsCollection(db, "breakStickers", uid, "items"));
+        const out = [];
+        snap.forEach((d) => {
+            const url = (d.data() || {}).dataUrl;
+            if (url) out.push(url);
+        });
+        return out;
     } catch (_) { return []; }
 }
 
