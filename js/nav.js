@@ -31,53 +31,19 @@ function yourNameForUid(uid) {
     return (localStorage.getItem(YOUR_NAME_PREFIX + uid) || "").trim();
 }
 
-function ensureBreakOverlay() {
-    if (document.getElementById("break-overlay")) return;
-    const el = document.createElement("div");
-    el.id = "break-overlay";
-    el.className = "break-overlay";
-    el.hidden = true;
-    el.innerHTML = `
-        <div class="break-content">
-            <div class="break-emoji">☕</div>
-            <div class="break-title">BREAK TIME</div>
-            <div class="break-name" id="break-name">—</div>
-            <div class="break-time" id="break-time">—</div>
-        </div>
-        <button class="break-close" id="break-close" aria-label="Close">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-    `;
-    document.body.appendChild(el);
-    el.querySelector("#break-close").addEventListener("click", closeBreak);
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && !el.hidden) closeBreak();
-    });
-}
-
 function openBreak() {
-    ensureBreakOverlay();
     const uid = auth.currentUser && auth.currentUser.uid;
     const name = yourNameForUid(uid) || (auth.currentUser && auth.currentUser.email) || "—";
-    const now = new Date();
-    const end = new Date(now.getTime() + BREAK_MINUTES * 60 * 1000);
-    document.getElementById("break-name").textContent = name;
-    document.getElementById("break-time").textContent = `${fmtHHMM(now)} — ${fmtHHMM(end)}`;
-    const overlay = document.getElementById("break-overlay");
-    overlay.hidden = false;
-    // Try the Fullscreen API; if blocked (rare), the fixed-position
-    // overlay still covers the viewport so the effect is the same.
-    const docEl = document.documentElement;
-    if (docEl.requestFullscreen) {
-        docEl.requestFullscreen().catch(() => {});
-    }
-}
-
-function closeBreak() {
-    const overlay = document.getElementById("break-overlay");
-    if (overlay) overlay.hidden = true;
-    if (document.fullscreenElement && document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
+    const url = `break.html?name=${encodeURIComponent(name)}&min=${BREAK_MINUTES}`;
+    // Open a fresh window sized to the full screen. The popup auto-
+    // requests Fullscreen API on load (user gesture propagates from
+    // this click), so the operator lands directly on the break screen.
+    const w = screen.availWidth || screen.width;
+    const h = screen.availHeight || screen.height;
+    const features = `popup=yes,width=${w},height=${h},left=0,top=0`;
+    const popup = window.open(url, "masterbotBreak", features);
+    if (!popup) {
+        alert("Popup blocked — allow popups on this site to use Break Time.");
     }
 }
 
