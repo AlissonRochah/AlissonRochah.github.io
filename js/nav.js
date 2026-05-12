@@ -35,16 +35,29 @@ function openBreak() {
     const uid = auth.currentUser && auth.currentUser.uid;
     const name = yourNameForUid(uid) || (auth.currentUser && auth.currentUser.email) || "—";
     const url = `break.html?name=${encodeURIComponent(name)}&min=${BREAK_MINUTES}`;
-    // Open a fresh window sized to the full screen. The popup auto-
-    // requests Fullscreen API on load (user gesture propagates from
-    // this click), so the operator lands directly on the break screen.
+    // Open a fresh window sized to the full screen. The popup also
+    // self-requests Fullscreen on load, but we also fire one from this
+    // opener side — the click's user activation is freshest here, so
+    // some browsers honour the request more reliably this way.
     const w = screen.availWidth || screen.width;
     const h = screen.availHeight || screen.height;
     const features = `popup=yes,width=${w},height=${h},left=0,top=0`;
     const popup = window.open(url, "masterbotBreak", features);
     if (!popup) {
         alert("Popup blocked — allow popups on this site to use Break Time.");
+        return;
     }
+    // The popup is same-origin, so once it loads we can call
+    // requestFullscreen on its document element from here. This piggy-
+    // backs on the click's user activation rather than relying on the
+    // popup's own (which may be considered indirect).
+    popup.addEventListener("load", () => {
+        try {
+            const el = popup.document.documentElement;
+            const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+            if (req) req.call(el).catch(() => {});
+        } catch (_) { /* cross-origin or popup closed */ }
+    });
 }
 
 function currentTheme() {

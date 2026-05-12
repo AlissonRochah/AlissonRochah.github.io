@@ -62,46 +62,6 @@
             font-variant-numeric: tabular-nums;
             letter-spacing: 0.04em;
         }
-        .break-logo {
-            position: fixed;
-            bottom: 36px;
-            left: 0;
-            right: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            z-index: 2;
-        }
-        .break-logo-icon {
-            width: clamp(36px, 4vw, 60px);
-            height: auto;
-            /* The logo file has a black background; screen-blending it
-               drops the black and keeps the white house glyph visible
-               over the animated backdrop. */
-            mix-blend-mode: screen;
-        }
-        .break-logo-text {
-            text-align: left;
-            line-height: 1;
-        }
-        .break-logo-master {
-            font-size: clamp(20px, 2.2vw, 32px);
-            font-weight: 800;
-            letter-spacing: 0.04em;
-        }
-        .break-logo-master sup {
-            font-size: 0.4em;
-            font-weight: 600;
-            vertical-align: super;
-            margin-left: 2px;
-        }
-        .break-logo-sub {
-            font-size: clamp(11px, 1.2vw, 16px);
-            letter-spacing: 0.18em;
-            font-weight: 500;
-            margin-top: 2px;
-        }
         .break-close {
             position: fixed;
             top: 22px;
@@ -145,13 +105,6 @@
             <div class="break-name" id="name">—</div>
             <div class="break-status">BREAK IN PROGRESS</div>
             <div class="break-time" id="time">—</div>
-        </div>
-        <div class="break-logo">
-            <img class="break-logo-icon" src="img/MasterLogo.jpg" alt="Master Vacation Homes">
-            <div class="break-logo-text">
-                <div class="break-logo-master">MASTER<sup>®</sup></div>
-                <div class="break-logo-sub">VACATION HOMES</div>
-            </div>
         </div>
         <div class="break-hint">Esc to close</div>
         <button class="break-close" id="close" aria-label="Close">
