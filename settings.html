@@ -54,10 +54,10 @@
         ];
 
         let stickers = []; // [{ id, dataUrl, mime, size }]
-        const MAX_STICKERS = 10;
-        // Firestore document size cap is 1 MB. Reserve ~80 KB per sticker
-        // (base64 inflates ~33%, so a 80 KB data URL ≈ 60 KB binary file).
-        const MAX_STICKER_BYTES = 80 * 1024;
+        const MAX_STICKERS = 5;
+        // Firestore document size cap is 1 MB. With 5 slots we can afford
+        // ~180 KB per sticker (base64 inflates ~33%, so ~135 KB binary).
+        const MAX_STICKER_BYTES = 180 * 1024;
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -85,7 +85,7 @@
             const uploadBtn = document.getElementById("upload-stickers-btn");
             if (!grid) return;
             if (stickers.length === 0) {
-                grid.innerHTML = `<div class="stickers-empty">No stickers yet — upload up to ${MAX_STICKERS} PNG / GIF / WEBP files (≤ ~80 KB each).</div>`;
+                grid.innerHTML = `<div class="stickers-empty">No stickers yet — upload up to ${MAX_STICKERS} PNG / GIF / WEBP files (≤ ~${Math.round(MAX_STICKER_BYTES / 1024)} KB each).</div>`;
             } else {
                 grid.innerHTML = stickers.map((s, i) => `
                     <div class="sticker-tile">
@@ -788,7 +788,7 @@ Your Name</pre>
             <div class="section-header">
                 <div class="section-info">
                     <h2>Break Stickers</h2>
-                    <p>Upload up to 10 PNG / GIF / WEBP stickers (transparent background works best). Each time someone starts a break, 5 are picked at random and placed in the 5 corners around the name.</p>
+                    <p>Upload up to 5 PNG / GIF / WEBP stickers (transparent background works best). Each break shows all of them distributed across the 5 slots around the name — three across the top, two in the bottom corners.</p>
                 </div>
             </div>
             <div id="stickers-grid" class="stickers-grid"></div>
