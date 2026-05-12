@@ -732,9 +732,11 @@ html.light .badge-danger {
 }
 .break-sticker {
     position: absolute;
-    width: clamp(120px, 16vw, 260px);
+    /* Mostly fixed — only grows on really small screens / shrinks on
+       really big ones; never below 260px or above 320px. */
+    width: clamp(260px, 17vw, 320px);
     height: auto;
-    max-height: 28vh;
+    max-height: 32vh;
     object-fit: contain;
     pointer-events: none;
     will-change: transform;
