@@ -18,7 +18,7 @@ const SUN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" str
 const MOON_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
 const COFFEE_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>';
 
-const BREAK_MINUTES = 45;
+const BREAK_MINUTES = 10 / 60; // TEMP TEST: 10 seconds. Revert to 45 for production.
 const YOUR_NAME_PREFIX = "yourName:";
 
 function fmtHHMM(date) {
