@@ -654,3 +654,84 @@ html.light .badge-danger {
     padding: 10px 14px;
   }
 }
+
+/* ============================================================ */
+/* Break Time fullscreen overlay (triggered from the header)    */
+/* ============================================================ */
+.break-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #111;
+    /* Drop img/break-bg.jpg (or .png) into the img/ folder to swap the
+       backdrop. Falls back to a coffee-colored gradient if missing. */
+    background-image:
+        linear-gradient(135deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.55)),
+        url("../img/break-bg.jpg"),
+        linear-gradient(135deg, #2d1810, #5e3a1f 60%, #8b6240);
+    background-size: cover, cover, cover;
+    background-position: center, center, center;
+    background-repeat: no-repeat;
+    color: #fff;
+    text-align: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    user-select: none;
+}
+.break-overlay[hidden] {
+    display: none;
+}
+.break-content {
+    padding: 32px;
+    max-width: 90vw;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.break-emoji {
+    font-size: clamp(96px, 18vw, 220px);
+    line-height: 1;
+    margin-bottom: 24px;
+}
+.break-title {
+    font-size: clamp(36px, 6vw, 72px);
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    margin-bottom: 28px;
+    text-transform: uppercase;
+}
+.break-name {
+    font-size: clamp(56px, 9vw, 140px);
+    font-weight: 900;
+    line-height: 1;
+    margin-bottom: 24px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.break-time {
+    font-size: clamp(28px, 4.5vw, 56px);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    opacity: 0.95;
+    font-variant-numeric: tabular-nums;
+}
+.break-close {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.15s;
+}
+.break-close:hover {
+    background: rgba(0, 0, 0, 0.7);
+    transform: scale(1.05);
+}
