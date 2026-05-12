@@ -144,7 +144,15 @@ function openBreak() {
     document.getElementById("break-overlay-time").textContent = `${fmtHourAmPm(now)} - ${fmtHourAmPm(end)}`;
     const overlay = document.getElementById("break-overlay");
     overlay.hidden = false;
-    loadStickersForUid(uid).then(renderBreakStickers).catch(() => {});
+    // Stickers only render between 4 PM and 11:59 PM local time. Outside
+    // that window the overlay stays clean.
+    const hour = new Date().getHours();
+    if (hour >= 16) {
+        loadStickersForUid(uid).then(renderBreakStickers).catch(() => {});
+    } else {
+        const host = document.getElementById("break-overlay-stickers");
+        if (host) host.innerHTML = "";
+    }
     breakAlarmTimer = setTimeout(fireBreakAlarm, BREAK_MINUTES * 60 * 1000);
     // Fullscreen — the click is a same-doc gesture so the request lands.
     const docEl = document.documentElement;
