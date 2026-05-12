@@ -65,7 +65,9 @@ async function loadStickersForUid(uid) {
     try {
         const snap = await fsGetDoc(fsDoc(db, "breakStickers", uid));
         if (!snap.exists()) return [];
-        return (snap.data().stickers || []).map((s) => s.url).filter(Boolean);
+        return (snap.data().stickers || [])
+            .map((s) => s.dataUrl || s.url)  // dataUrl is the new field, url is legacy
+            .filter(Boolean);
     } catch (_) { return []; }
 }
 

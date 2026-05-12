@@ -24,7 +24,6 @@
         import { renderHeader } from "./js/nav.js";
         import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
         import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
-        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-storage.js";
 
         renderHeader("settings");
 
@@ -54,9 +53,11 @@
             "Have a great stay!"
         ];
 
-        const storage = getStorage();
-        let stickers = []; // [{ id, url, path }]
+        let stickers = []; // [{ id, dataUrl, mime, size }]
         const MAX_STICKERS = 10;
+        // Firestore document size cap is 1 MB. Reserve ~80 KB per sticker
+        // (base64 inflates ~33%, so a 80 KB data URL ≈ 60 KB binary file).
+        const MAX_STICKER_BYTES = 80 * 1024;
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -84,11 +85,11 @@
             const uploadBtn = document.getElementById("upload-stickers-btn");
             if (!grid) return;
             if (stickers.length === 0) {
-                grid.innerHTML = `<div class="stickers-empty">No stickers yet — upload up to ${MAX_STICKERS} PNG / GIF / WEBP files.</div>`;
+                grid.innerHTML = `<div class="stickers-empty">No stickers yet — upload up to ${MAX_STICKERS} PNG / GIF / WEBP files (≤ ~80 KB each).</div>`;
             } else {
                 grid.innerHTML = stickers.map((s, i) => `
                     <div class="sticker-tile">
-                        <img src="${s.url}" alt="">
+                        <img src="${s.dataUrl}" alt="">
                         <button type="button" class="sticker-delete" onclick="deleteSticker(${i})" aria-label="Delete sticker">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
@@ -99,33 +100,47 @@
             uploadBtn.disabled = stickers.length >= MAX_STICKERS;
         }
 
+        function fileToDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(file);
+            });
+        }
+
         window.uploadStickers = async function (files) {
             if (!auth.currentUser || !files || !files.length) return;
             const uid = auth.currentUser.uid;
             const remaining = MAX_STICKERS - stickers.length;
-            const toUpload = Array.from(files).slice(0, remaining);
-            if (toUpload.length === 0) {
+            const candidates = Array.from(files).slice(0, remaining);
+            if (candidates.length === 0) {
                 showToast(`Max ${MAX_STICKERS} stickers. Delete one first.`, "error");
                 return;
             }
             const uploadBtn = document.getElementById("upload-stickers-btn");
             uploadBtn.disabled = true;
-            uploadBtn.textContent = "Uploading…";
+            uploadBtn.textContent = "Saving…";
+            let skipped = 0;
             try {
-                for (const file of toUpload) {
+                for (const file of candidates) {
+                    if (file.size > MAX_STICKER_BYTES) {
+                        skipped++;
+                        continue;
+                    }
+                    const dataUrl = await fileToDataUrl(file);
                     const id = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-                    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-                    const path = `stickers/${uid}/${id}.${ext}`;
-                    const ref = storageRef(storage, path);
-                    await uploadBytes(ref, file);
-                    const url = await getDownloadURL(ref);
-                    stickers.push({ id, url, path });
+                    stickers.push({ id, dataUrl, mime: file.type, size: file.size });
                 }
                 await setDoc(doc(db, "breakStickers", uid), { stickers });
-                showToast(`${toUpload.length} sticker(s) uploaded`);
+                const saved = candidates.length - skipped;
+                if (saved) showToast(`${saved} sticker(s) saved`);
+                if (skipped) {
+                    showToast(`${skipped} file(s) skipped — over ${Math.round(MAX_STICKER_BYTES / 1024)} KB`, "error");
+                }
             } catch (e) {
-                console.error("Sticker upload failed:", e);
-                showToast("Upload failed: " + (e.message || e), "error");
+                console.error("Sticker save failed:", e);
+                showToast("Save failed: " + (e.message || e), "error");
             } finally {
                 document.getElementById("sticker-upload").value = "";
                 uploadBtn.textContent = "Upload stickers";
@@ -135,11 +150,7 @@
 
         window.deleteSticker = async function (idx) {
             if (!auth.currentUser) return;
-            const sticker = stickers[idx];
-            if (!sticker) return;
-            try {
-                await deleteObject(storageRef(storage, sticker.path));
-            } catch (_) { /* file already gone is fine */ }
+            if (!stickers[idx]) return;
             stickers.splice(idx, 1);
             try {
                 await setDoc(doc(db, "breakStickers", auth.currentUser.uid), { stickers });
