@@ -696,7 +696,7 @@ html.light .badge-danger {
     line-height: 0.95;
     text-transform: uppercase;
     letter-spacing: 0.01em;
-    margin-bottom: 40px;
+    margin-bottom: 8vh;
 }
 .break-overlay-status {
     font-size: clamp(36px, 4.5vw, 72px);
@@ -704,6 +704,7 @@ html.light .badge-danger {
     letter-spacing: 0.08em;
     text-transform: uppercase;
     line-height: 1.25;
+    margin-bottom: 3vh;
 }
 .break-overlay-time {
     font-size: clamp(52px, 6.5vw, 112px);
@@ -711,5 +712,4 @@ html.light .badge-danger {
     letter-spacing: 0.06em;
     font-variant-numeric: tabular-nums;
     line-height: 1.2;
-    margin-top: 14px;
 }
