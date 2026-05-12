@@ -31,33 +31,57 @@ function yourNameForUid(uid) {
     return (localStorage.getItem(YOUR_NAME_PREFIX + uid) || "").trim();
 }
 
+function ensureBreakOverlay() {
+    if (document.getElementById("break-overlay")) return;
+    const el = document.createElement("div");
+    el.id = "break-overlay";
+    el.className = "break-overlay";
+    el.hidden = true;
+    el.innerHTML = `
+        <video class="break-overlay-video" autoplay loop muted playsinline preload="auto">
+            <source src="img/break-bg.mp4" type="video/mp4">
+        </video>
+        <div class="break-overlay-content">
+            <div class="break-overlay-name" id="break-overlay-name">—</div>
+            <div class="break-overlay-status">BREAK IN PROGRESS</div>
+            <div class="break-overlay-time" id="break-overlay-time">—</div>
+        </div>
+    `;
+    document.body.appendChild(el);
+    // Esc exits fullscreen natively; once that happens, hide the overlay
+    // too so the operator lands back on the page they were on.
+    document.addEventListener("fullscreenchange", () => {
+        if (!document.fullscreenElement) {
+            const ov = document.getElementById("break-overlay");
+            if (ov) ov.hidden = true;
+        }
+    });
+}
+
+function fmtHourAmPm(d) {
+    let h = d.getHours();
+    const m = String(d.getMinutes()).padStart(2, "0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${m} ${ampm}`;
+}
+
 function openBreak() {
+    ensureBreakOverlay();
     const uid = auth.currentUser && auth.currentUser.uid;
     const name = yourNameForUid(uid) || (auth.currentUser && auth.currentUser.email) || "—";
-    const url = `break.html?name=${encodeURIComponent(name)}&min=${BREAK_MINUTES}`;
-    // Open a fresh window sized to the full screen. The popup also
-    // self-requests Fullscreen on load, but we also fire one from this
-    // opener side — the click's user activation is freshest here, so
-    // some browsers honour the request more reliably this way.
-    const w = screen.availWidth || screen.width;
-    const h = screen.availHeight || screen.height;
-    const features = `popup=yes,width=${w},height=${h},left=0,top=0`;
-    const popup = window.open(url, "masterbotBreak", features);
-    if (!popup) {
-        alert("Popup blocked — allow popups on this site to use Break Time.");
-        return;
-    }
-    // The popup is same-origin, so once it loads we can call
-    // requestFullscreen on its document element from here. This piggy-
-    // backs on the click's user activation rather than relying on the
-    // popup's own (which may be considered indirect).
-    popup.addEventListener("load", () => {
-        try {
-            const el = popup.document.documentElement;
-            const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
-            if (req) req.call(el).catch(() => {});
-        } catch (_) { /* cross-origin or popup closed */ }
-    });
+    const now = new Date();
+    const end = new Date(now.getTime() + BREAK_MINUTES * 60 * 1000);
+    document.getElementById("break-overlay-name").textContent = name;
+    document.getElementById("break-overlay-time").textContent = `${fmtHourAmPm(now)} - ${fmtHourAmPm(end)}`;
+    const overlay = document.getElementById("break-overlay");
+    overlay.hidden = false;
+    // The click that called this function counts as a user gesture in
+    // this very document, so requestFullscreen on documentElement here
+    // works reliably — no popup window needed.
+    const docEl = document.documentElement;
+    const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen;
+    if (req) req.call(docEl).catch(() => {});
 }
 
 function currentTheme() {
