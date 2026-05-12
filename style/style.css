@@ -706,10 +706,10 @@ html.light .badge-danger {
     line-height: 1.25;
 }
 .break-overlay-time {
-    font-size: clamp(36px, 4.5vw, 72px);
+    font-size: clamp(52px, 6.5vw, 112px);
     font-weight: 500;
     letter-spacing: 0.06em;
     font-variant-numeric: tabular-nums;
-    line-height: 1.25;
-    margin-top: 10px;
+    line-height: 1.2;
+    margin-top: 14px;
 }
