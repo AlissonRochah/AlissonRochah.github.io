@@ -20,7 +20,8 @@
 
     const CACHE_KEY = "airbnbSlashCache";
     const ROOT_ID = "masterbot-slash-root";
-    const MAX_ITEMS = 8;
+    // No upper bound — the dropdown panel scrolls vertically already.
+    const MAX_ITEMS = Infinity;
 
     let cache = null;          // { templates, slugByName, yourName, signatureText }
     let active = null;         // { input, trigger: { start, end }, query }
@@ -262,7 +263,17 @@
         const items = filteredTemplates(active.query);
         const chosen = items[idx];
         if (!chosen) return;
-        insertReplacement(active.input, active.trigger, buildInsertText(chosen.t));
+        const text = buildInsertText(chosen.t);
+        console.log("[MasterBot] picking template:", {
+            name: chosen.t.name,
+            descriptionLength: (chosen.t.description || "").length,
+            descriptionPreview: (chosen.t.description || "").slice(0, 60),
+            signatureFromCache: cache && cache.signature,
+            yourNameFromCache: cache && cache.yourName,
+            insertTextLength: text.length,
+            insertTextPreview: text.slice(0, 120),
+        });
+        insertReplacement(active.input, active.trigger, text);
         hideDropdown();
     }
 
