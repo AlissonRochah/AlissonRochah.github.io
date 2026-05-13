@@ -50,15 +50,20 @@
             }
         });
 
-        // Load categories from settings
+        // Load categories from settings. Stored shape is { name, slug }
+        // per entry now; legacy plain strings are upgraded inline.
         async function loadCategories(userId) {
             try {
                 const settingsRef = doc(db, "settings", userId);
                 const snap = await getDoc(settingsRef);
                 if (snap.exists()) {
                     const data = snap.data();
-                    if (data.categories) {
-                        userCategories = data.categories;
+                    if (Array.isArray(data.categories)) {
+                        userCategories = data.categories.map((c) =>
+                            typeof c === "string"
+                                ? { name: c, slug: "" }
+                                : { name: c && c.name || "", slug: c && c.slug || "" }
+                        ).filter((c) => c.name);
                     }
                 }
             } catch (e) {
@@ -70,10 +75,10 @@
         function populateCategorySelect() {
             const select = document.getElementById("template-category");
             select.innerHTML = '<option value="">No category</option>';
-            userCategories.forEach(cat => {
+            userCategories.forEach((cat) => {
                 const opt = document.createElement("option");
-                opt.value = cat;
-                opt.textContent = cat;
+                opt.value = cat.name;
+                opt.textContent = cat.slug ? `${cat.slug} - ${cat.name}` : cat.name;
                 select.appendChild(opt);
             });
         }
@@ -165,10 +170,16 @@
 
         function renderCategoryChips() {
             const host = document.getElementById("category-chips");
+            const slugByName = {};
+            userCategories.forEach((c) => { if (c.slug) slugByName[c.name] = c.slug; });
             const usedCats = [...new Set(allTemplates.map(t => t.category).filter(Boolean))].sort();
             const chips = [
                 `<button class="filter-chip ${currentFilter === "all" ? "active" : ""}" onclick="setFilter('all')">All</button>`,
-                ...usedCats.map(c => `<button class="filter-chip ${currentFilter === c ? "active" : ""}" onclick="setFilter('${c.replace(/'/g, "\\'")}')">${c}</button>`)
+                ...usedCats.map((c) => {
+                    const slug = slugByName[c];
+                    const label = slug ? `${slug} - ${c}` : c;
+                    return `<button class="filter-chip ${currentFilter === c ? "active" : ""}" onclick="setFilter('${c.replace(/'/g, "\\'")}')">${label}</button>`;
+                }),
             ];
             host.innerHTML = chips.join("");
         }

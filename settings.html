@@ -378,6 +378,24 @@
         };
 
         // ========== CATEGORIES ==========
+        // Stored shape: [{ name, slug }]. Legacy entries are plain strings;
+        // normalizeCategories() upgrades them on load so the rest of the
+        // code can assume the object form.
+
+        let editingCategoryIndex = -1;
+
+        function normalizeCategories(raw) {
+            if (!Array.isArray(raw)) return [];
+            const out = [];
+            for (const c of raw) {
+                if (typeof c === "string") {
+                    if (c.trim()) out.push({ name: c.trim(), slug: "" });
+                } else if (c && typeof c === "object" && c.name) {
+                    out.push({ name: String(c.name).trim(), slug: String(c.slug || "").trim() });
+                }
+            }
+            return out;
+        }
 
         function renderCategories() {
             const list = document.getElementById("category-list");
@@ -391,33 +409,102 @@
             categories.forEach((cat, index) => {
                 const item = document.createElement("div");
                 item.className = "category-item";
-                item.innerHTML = `
-                    <span class="category-name">${cat}</span>
-                    <button onclick="removeCategory(${index})" class="btn-icon btn-delete" title="Remove">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                `;
-                list.appendChild(item);
+                if (index === editingCategoryIndex) {
+                    item.innerHTML = `
+                        <input type="text" class="category-edit-name" value="${escapeHtml(cat.name)}" placeholder="Name">
+                        <input type="text" class="category-edit-slug" value="${escapeHtml(cat.slug)}" placeholder="Slug" maxlength="8" style="text-transform:uppercase;">
+                        <button onclick="saveCategoryEdit(${index})" class="btn-icon btn-save" title="Save">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </button>
+                        <button onclick="cancelCategoryEdit()" class="btn-icon btn-delete" title="Cancel">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    `;
+                    list.appendChild(item);
+                    // Wire Enter/Esc on the inputs
+                    item.querySelectorAll("input").forEach((inp) => {
+                        inp.addEventListener("keydown", (e) => {
+                            if (e.key === "Enter") saveCategoryEdit(index);
+                            else if (e.key === "Escape") cancelCategoryEdit();
+                        });
+                    });
+                    setTimeout(() => item.querySelector(".category-edit-name").focus(), 0);
+                } else {
+                    const slugTag = cat.slug ? `<span class="category-slug">${escapeHtml(cat.slug)}</span>` : "";
+                    item.innerHTML = `
+                        <span class="category-name">${escapeHtml(cat.name)}</span>
+                        ${slugTag}
+                        <button onclick="editCategory(${index})" class="btn-icon" title="Edit">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                        </button>
+                        <button onclick="removeCategory(${index})" class="btn-icon btn-delete" title="Remove">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    `;
+                    list.appendChild(item);
+                }
             });
         }
 
+        function escapeHtml(s) {
+            return String(s == null ? "" : s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
         window.addCategory = function () {
-            const input = document.getElementById("new-category");
-            const name = input.value.trim();
+            const nameInput = document.getElementById("new-category");
+            const slugInput = document.getElementById("new-category-slug");
+            const name = nameInput.value.trim();
+            const slug = (slugInput.value || "").trim().toUpperCase();
             if (!name) return;
 
-            if (categories.includes(name)) {
+            if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
                 showToast("Category already exists.", "error");
                 return;
             }
 
-            categories.push(name);
-            input.value = "";
+            categories.push({ name, slug });
+            nameInput.value = "";
+            slugInput.value = "";
+            renderCategories();
+        };
+
+        window.editCategory = function (index) {
+            editingCategoryIndex = index;
+            renderCategories();
+        };
+
+        window.cancelCategoryEdit = function () {
+            editingCategoryIndex = -1;
+            renderCategories();
+        };
+
+        window.saveCategoryEdit = function (index) {
+            const list = document.getElementById("category-list");
+            const row = list.querySelectorAll(".category-item")[index];
+            if (!row) return;
+            const name = row.querySelector(".category-edit-name").value.trim();
+            const slug = (row.querySelector(".category-edit-slug").value || "").trim().toUpperCase();
+            if (!name) {
+                showToast("Name can't be empty.", "error");
+                return;
+            }
+            if (categories.some((c, i) => i !== index && c.name.toLowerCase() === name.toLowerCase())) {
+                showToast("Another category already uses that name.", "error");
+                return;
+            }
+            categories[index] = { name, slug };
+            editingCategoryIndex = -1;
             renderCategories();
         };
 
         window.removeCategory = function (index) {
             categories.splice(index, 1);
+            if (editingCategoryIndex === index) editingCategoryIndex = -1;
             renderCategories();
         };
 
@@ -467,9 +554,9 @@
                         randomSignatures = data.randomSignatures;
                     }
 
-                    // Categories
-                    if (data.categories && Array.isArray(data.categories)) {
-                        categories = data.categories;
+                    // Categories — normalize legacy string entries.
+                    if (data.categories) {
+                        categories = normalizeCategories(data.categories);
                     }
 
                     // Admin-only tab
@@ -698,7 +785,8 @@
             </div>
             <div class="category-config">
                 <div class="category-add">
-                    <input type="text" id="new-category" placeholder="e.g. Check-in, Maintenance, General..." onkeypress="handleCategoryKeypress(event)">
+                    <input type="text" id="new-category" placeholder="Category name (e.g. Alterations)" onkeypress="handleCategoryKeypress(event)">
+                    <input type="text" id="new-category-slug" placeholder="Slug (e.g. ALT)" maxlength="8" style="text-transform:uppercase; max-width:140px;" onkeypress="handleCategoryKeypress(event)">
                     <button onclick="addCategory()" class="btn btn-primary btn-sm">Add</button>
                 </div>
                 <div id="category-list" class="category-list"></div>

@@ -378,6 +378,44 @@ html.light .chip:hover {
 .category-name {
   font-size: 0.85rem;
   color: var(--text-primary);
+  flex: 1;
+}
+
+.category-slug {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-right: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.category-edit-name,
+.category-edit-slug {
+  background: var(--bg-input, transparent);
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-sm, 6px);
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+.category-edit-name { flex: 1; min-width: 0; }
+.category-edit-slug {
+  width: 110px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.category-edit-name:focus,
+.category-edit-slug:focus {
+  outline: none;
+  border-color: var(--accent, #6aa9ff);
 }
 
 .empty-categories {
