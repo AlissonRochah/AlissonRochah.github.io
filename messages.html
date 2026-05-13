@@ -30,6 +30,11 @@
         let userGreeting = { text: "Hello", mode: "fixed", randomList: [] };
         let allTemplates = [];
         let favorites = [];
+        // Category name → slug. Filled by loadCategories; consulted by
+        // renderCheckboxes to prefix each template label. Declared up
+        // here so the cache-warm path (which calls renderCheckboxes
+        // before auth resolves) doesn't hit a TDZ.
+        let categorySlugByName = {};
         let currentUserId = null;
 
         const TPL_CACHE_KEY = "masterbotTemplatesCache";
@@ -114,10 +119,6 @@
                 console.error("Error loading signature:", e);
             }
         }
-
-        // Map of category name → slug, populated by loadCategories and
-        // read by renderCheckboxes to prefix each template's label.
-        let categorySlugByName = {};
 
         async function loadCategories(userId) {
             try {
