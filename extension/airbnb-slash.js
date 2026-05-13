@@ -133,6 +133,21 @@
                 .mb-list {
                     max-height: 260px;
                     overflow-y: auto;
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+                }
+                .mb-list::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .mb-list::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .mb-list::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 3px;
+                }
+                .mb-list::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.35);
                 }
                 .mb-item {
                     display: block;
@@ -181,18 +196,32 @@
     function showDropdownAt(input) {
         ensureDropdown();
         dropdown.style.display = "block";
-        // Anchor above the input by default; flip below if not enough room.
-        const rect = input.getBoundingClientRect();
+        // Park the popup off-screen briefly so the browser computes its
+        // real height with the new content before we measure & anchor.
         const pop = shadow.querySelector(".mb-pop");
-        const popHeight = 260;
+        pop.style.visibility = "hidden";
+        pop.style.top = "-9999px";
+        pop.style.left = "0px";
+    }
+
+    function positionDropdown(input) {
+        const pop = shadow.querySelector(".mb-pop");
+        const rect = input.getBoundingClientRect();
+        const popRect = pop.getBoundingClientRect();
+        const popHeight = popRect.height || 100;
+        const popWidth = popRect.width || 320;
         const margin = 8;
+        // Prefer above the input; flip below if there isn't room.
         let top = rect.top - popHeight - margin;
-        if (top < 8) top = rect.bottom + margin;
+        if (top < 8) top = Math.min(window.innerHeight - popHeight - 8, rect.bottom + margin);
+        if (top < 8) top = 8;
         let left = rect.left;
-        const viewportWidth = window.innerWidth;
-        if (left + 320 > viewportWidth) left = Math.max(8, viewportWidth - 320 - 8);
+        if (left + popWidth > window.innerWidth - 8) {
+            left = Math.max(8, window.innerWidth - popWidth - 8);
+        }
         pop.style.top = top + "px";
         pop.style.left = left + "px";
+        pop.style.visibility = "visible";
     }
 
     function filteredTemplates(query) {
@@ -338,6 +367,9 @@
         highlighted = 0;
         showDropdownAt(input);
         renderItems(active.query);
+        // Position after render so we anchor based on the popup's real
+        // height (varies a lot between 1 result and the full pool).
+        positionDropdown(input);
     }
 
     document.addEventListener("input", (e) => {
