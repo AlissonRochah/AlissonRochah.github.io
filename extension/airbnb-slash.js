@@ -239,21 +239,16 @@
             .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
-    function pickSignatureText() {
-        const sig = cache && cache.signature;
-        if (!sig || !sig.enabled) return "";
-        if (sig.mode === "random" && Array.isArray(sig.randomList) && sig.randomList.length > 0) {
-            return sig.randomList[Math.floor(Math.random() * sig.randomList.length)];
-        }
-        return sig.text || "";
-    }
+    // Signature is hardcoded here on purpose — the MasterBot settings
+    // page can store a random pool, but the slash-command on Airbnb
+    // always emits the same consistent closing.
+    const HARDCODED_SIGNATURE = "Regards,";
 
     function buildInsertText(template) {
         const desc = String(template.description || "").replace(/\\n/g, "\n");
-        const sig = pickSignatureText();
         const name = (cache && cache.yourName) ? String(cache.yourName) : "";
         let out = desc + "\n\n";
-        if (sig) out += sig + "\n";
+        out += HARDCODED_SIGNATURE + "\n";
         if (name) out += name;
         return out.trim();
     }
