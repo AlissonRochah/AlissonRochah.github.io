@@ -86,10 +86,44 @@
                 await loadCategories(user.uid);
                 await loadTemplates(user.uid);
                 await loadSignature(user.uid);
+                pushTemplatesToExtension(user.uid);
             } else {
                 window.location.href = "index.html";
             }
         });
+
+        // Ship the current templates + slug map + signature + yourName
+        // to the MasterBot Bridge extension so the slash-command on
+        // Airbnb message inputs has fresh data to work with.
+        const MASTERBOT_EXT_ID = "dmaenamjjgeclplnofeoiipddinihhhl";
+        function pushTemplatesToExtension(uid) {
+            if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) return;
+            const sig = userSignature.enabled
+                ? { enabled: true, mode: userSignature.mode, text: userSignature.text, randomList: userSignature.randomList }
+                : { enabled: false };
+            const slugByName = {};
+            for (const [name, slug] of Object.entries(categorySlugByName)) {
+                if (slug) slugByName[name] = slug;
+            }
+            const payload = {
+                templates: allTemplates.map((t) => ({
+                    id: t.id,
+                    name: t.name,
+                    description: t.description,
+                    category: t.category || "",
+                })),
+                slugByName,
+                yourName: (localStorage.getItem(YOUR_NAME_PREFIX + uid) || "").trim(),
+                signature: sig,
+            };
+            try {
+                chrome.runtime.sendMessage(MASTERBOT_EXT_ID, { action: "push-templates", payload }, () => {
+                    // Swallow lastError so the page doesn't log noise when
+                    // the extension isn't installed yet.
+                    void chrome.runtime.lastError;
+                });
+            } catch (_) { /* extension not installed — fine */ }
+        }
 
         // Per-uid yourName storage. Mirrors the keys used in units.html so
         // both pages read/write the same place for a given Firebase user.

@@ -1428,6 +1428,23 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
                 } });
                 return;
             }
+            if (msg.action === "push-templates") {
+                // MasterBot site pushes the operator's templates so the
+                // airbnb-slash content script can show them offline. We
+                // just stash the latest snapshot in storage.
+                const payload = msg.payload || {};
+                await chrome.storage.local.set({
+                    airbnbSlashCache: {
+                        templates: Array.isArray(payload.templates) ? payload.templates : [],
+                        slugByName: payload.slugByName && typeof payload.slugByName === "object" ? payload.slugByName : {},
+                        yourName: typeof payload.yourName === "string" ? payload.yourName : "",
+                        signatureText: typeof payload.signatureText === "string" ? payload.signatureText : "",
+                        ts: Date.now(),
+                    },
+                });
+                sendResponse({ ok: true });
+                return;
+            }
             if (msg.action === "gate-get-creds-for-house") {
                 // Returns creds for any resort — the page picks the right
                 // integration based on the row's resort field. For Champions
