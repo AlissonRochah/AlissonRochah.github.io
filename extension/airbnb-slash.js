@@ -32,11 +32,18 @@
 
     chrome.storage.local.get([CACHE_KEY], (res) => {
         cache = (res && res[CACHE_KEY]) || null;
+        const n = cache && Array.isArray(cache.templates) ? cache.templates.length : 0;
+        console.log(`[MasterBot] slash command loaded — ${n} template(s) cached. Trigger: type "/" in any input.`);
+        if (!n) {
+            console.log("[MasterBot] No templates cached yet. Open https://alissonrochah.github.io/messages.html in another tab while signed in to seed the cache.");
+        }
     });
 
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area !== "local" || !changes[CACHE_KEY]) return;
         cache = changes[CACHE_KEY].newValue || null;
+        const n = cache && Array.isArray(cache.templates) ? cache.templates.length : 0;
+        console.log(`[MasterBot] template cache refreshed — ${n} template(s).`);
     });
 
     // ----- Editable detection -----
@@ -333,6 +340,17 @@
         update(el);
     }, true);
 
+    // Sanity tracer — toggle this off once everything works. Logs the
+    // first time the operator focuses an editable element so we can
+    // confirm the script is alive on whatever page they're testing.
+    let tracedFocus = false;
+    document.addEventListener("focusin", (e) => {
+        if (tracedFocus) return;
+        if (!isEditable(e.target)) return;
+        tracedFocus = true;
+        console.log("[MasterBot] focused an editable:", e.target.tagName, e.target);
+    }, true);
+
     document.addEventListener("click", (e) => {
         if (!dropdown || dropdown.style.display === "none") return;
         // Click outside the dropdown closes it.
@@ -369,13 +387,11 @@
         }
     }, true);
 
-    // Beat Airbnb's own "/" handlers (if any) at the capture phase.
-    document.addEventListener("keydown", (e) => {
-        if (e.key !== "/") return;
-        const el = e.target;
-        if (!isEditable(el)) return;
-        // We don't preventDefault — the user still needs "/" to land in
-        // the field. We just stop other listeners from acting on it.
-        e.stopImmediatePropagation();
-    }, true);
+    // Note: we intentionally do NOT call stopImmediatePropagation on the
+    // bare "/" keystroke. React-controlled editors (Airbnb uses one)
+    // often process keystrokes in their own handlers to insert the
+    // character — blocking those would prevent "/" from appearing in
+    // the field and our `input` handler would never see the trigger.
+    // We only intercept arrow/enter/esc once the dropdown is already
+    // open (above).
 })();
