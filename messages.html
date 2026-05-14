@@ -111,6 +111,7 @@
                     name: t.name,
                     description: t.description,
                     category: t.category || "",
+                    alias: (t.alias || "").toLowerCase(),
                 })),
                 slugByName,
                 yourName: (localStorage.getItem(YOUR_NAME_PREFIX + uid) || "").trim(),
@@ -206,6 +207,7 @@
                         name: data.name,
                         description: (data.description || "").replace(/\\n/g, "\n"),
                         category: data.category || "",
+                        alias: (data.alias || "").toLowerCase(),
                         order: data.order ?? 999999,
                     });
                 });

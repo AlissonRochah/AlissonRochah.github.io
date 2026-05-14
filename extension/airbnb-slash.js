@@ -174,6 +174,15 @@
                     font-size: 11px;
                     margin-right: 8px;
                 }
+                .mb-alias {
+                    color: #6aa9ff;
+                    background: rgba(106, 169, 255, 0.12);
+                    border-radius: 4px;
+                    padding: 1px 6px;
+                    margin-left: 8px;
+                    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                    font-size: 11px;
+                }
                 .mb-empty {
                     padding: 14px 12px;
                     font-size: 12px;
@@ -231,9 +240,29 @@
         const scored = [];
         for (const t of cache.templates) {
             const slug = (t.category && slugByName[t.category]) || "";
+            const alias = String(t.alias || "").toLowerCase();
             const hay = `${slug} ${t.category || ""} ${t.name || ""}`.toLowerCase();
-            if (!q || hay.includes(q)) scored.push({ t, slug });
+            // Score: lower number = higher in the list.
+            //   0  exact alias match
+            //   1  alias starts with the query
+            //   2  alias contains the query
+            //   3  text match (slug / category / name)
+            //   skip if nothing matches
+            let score = -1;
+            if (!q) {
+                score = 3;
+            } else if (alias && alias === q) {
+                score = 0;
+            } else if (alias && alias.startsWith(q)) {
+                score = 1;
+            } else if (alias && alias.includes(q)) {
+                score = 2;
+            } else if (hay.includes(q)) {
+                score = 3;
+            }
+            if (score >= 0) scored.push({ t, slug, score });
         }
+        scored.sort((a, b) => a.score - b.score);
         return scored.slice(0, MAX_ITEMS);
     }
 
@@ -252,7 +281,8 @@
         head.textContent = `MasterBot · ${items.length} match${items.length === 1 ? "" : "es"}`;
         list.innerHTML = items.map((it, i) => {
             const slugHtml = it.slug ? `<span class="mb-slug">${escapeHtml(it.slug)}</span>` : "";
-            return `<button type="button" class="mb-item ${i === highlighted ? "active" : ""}" data-idx="${i}">${slugHtml}${escapeHtml(it.t.name)}</button>`;
+            const aliasHtml = it.t.alias ? `<span class="mb-alias">/${escapeHtml(it.t.alias)}</span>` : "";
+            return `<button type="button" class="mb-item ${i === highlighted ? "active" : ""}" data-idx="${i}">${slugHtml}${escapeHtml(it.t.name)}${aliasHtml}</button>`;
         }).join("");
         list.querySelectorAll(".mb-item").forEach((el) => {
             el.addEventListener("mousedown", (ev) => {

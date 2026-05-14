@@ -321,6 +321,25 @@ html.light .category-badge {
   color: var(--accent);
 }
 
+.alias-badge {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(106, 169, 255, 0.2);
+  border: 1px solid rgba(106, 169, 255, 0.4);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+html.light .alias-badge {
+  color: #2563eb;
+  background: rgba(106, 169, 255, 0.15);
+}
+
 .ai-badge {
   color: var(--success);
   background: var(--success-soft);
