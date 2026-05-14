@@ -567,20 +567,26 @@ async function gateCredsForResort(resort) {
     const rows = await gateLoadRows();
     const want = String(resort || "").toLowerCase().trim();
     if (!want) throw new Error("resort required");
-    // First row whose resort is similar wins. We accept either direction
-    // so "Windsor Island" matches "Windsor Island Resort" and vice-versa.
-    for (const row of rows) {
+    // Match by resort, then prefer the "ALL HOMES" master row. Some
+    // resorts (Windsor Island) keep the all-properties Proptia login as
+    // an ALL HOMES row plus extra per-house rows for individual resident
+    // accounts. Picking the first match indiscriminately can land on a
+    // resident account that only owns one or two houses, which then
+    // can't find the requested property in the chooser.
+    const matches = rows.filter((row) => {
         const have = String(row.resort || "").toLowerCase().trim();
-        if (!have) continue;
-        if (have === want || have.includes(want) || want.includes(have)) {
-            return row;
-        }
+        if (!have) return false;
+        return have === want || have.includes(want) || want.includes(have);
+    });
+    if (matches.length === 0) {
+        const sample = rows.map((r) => r.resort).filter(Boolean).slice(0, 8).join(" | ");
+        throw new Error(
+            `No gate credentials in the sheet for resort "${resort}". ` +
+            `Resorts in sheet (${rows.length} rows): ${sample}`
+        );
     }
-    const sample = rows.map((r) => r.resort).filter(Boolean).slice(0, 8).join(" | ");
-    throw new Error(
-        `No gate credentials in the sheet for resort "${resort}". ` +
-        `Resorts in sheet (${rows.length} rows): ${sample}`
-    );
+    const master = matches.find((r) => /^all\s+homes?$/i.test(String(r.house || "").trim()));
+    return master || matches[0];
 }
 
 async function gateCredsForHouse(house) {
