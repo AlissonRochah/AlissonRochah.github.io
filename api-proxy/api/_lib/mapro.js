@@ -29,6 +29,48 @@ async function maproFetchHtml(path) {
     return await res.text();
 }
 
+async function maproFetchJson(path) {
+    const cookie = await getMaproCookie();
+    if (!cookie) throw new MaproNotLoggedIn();
+    const res = await fetch(MAPRO_BASE + path, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+            "Cookie": cookie,
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": "Mozilla/5.0 (compatible; MasterBotProxy/0.1)",
+        },
+    });
+    if (res.status === 401 || res.status === 302 || res.status === 0) {
+        throw new MaproNotLoggedIn();
+    }
+    if (!res.ok) throw new Error(`MAPRO ${res.status}`);
+    return await res.json();
+}
+
+async function maproPostForm(path, body) {
+    const cookie = await getMaproCookie();
+    if (!cookie) throw new MaproNotLoggedIn();
+    const res = await fetch(MAPRO_BASE + path, {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+            "Cookie": cookie,
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": "Mozilla/5.0 (compatible; MasterBotProxy/0.1)",
+        },
+        body,
+    });
+    if (res.status === 401 || res.status === 302 || res.status === 0) {
+        throw new MaproNotLoggedIn();
+    }
+    if (!res.ok) throw new Error(`MAPRO ${res.status}`);
+    return await res.json();
+}
+
 function extractLocalDataArray(html) {
     const m = html.match(/localData\s*=\s*\[/);
     if (!m) throw new Error("localData not found in MAPRO response");
@@ -217,6 +259,52 @@ async function shapeStay(r) {
         doorCode: extras.doorCode,
         confirmation: extras.confirmation,
     };
+}
+
+// Find a booking by Airbnb confirmation code (HM…). The DataTables-style
+// endpoint accepts a `filter=["field","operator","value"]` triple — we ask
+// it to find rows whose codReference contains the code. Returns the first
+// matching bookingID (or null).
+export async function findBookingByConfirmationCode(code) {
+    const filter = JSON.stringify(["codReference", "contains", code]);
+    const path =
+        `/booking/check-reservation?gridAjax&skip=0&take=20` +
+        `&requireTotalCount=false&filter=${encodeURIComponent(filter)}`;
+    const json = await maproFetchJson(path);
+    const items = Array.isArray(json?.items) ? json.items : [];
+    // codReference is per-row — match exactly when possible, else accept
+    // the first row (substring match would only return rows where the
+    // code is contained anyway).
+    const want = String(code || "").trim().toUpperCase();
+    const exact = items.find((r) => String(r.codReference || "").trim().toUpperCase() === want);
+    const hit = exact || items[0] || null;
+    if (!hit) return null;
+    return {
+        bookingId: String(hit.bookingID || hit.key || ""),
+        codReference: hit.codReference || "",
+        guest: hit.guest || "",
+        checkin: hit.checkin || "",
+        checkout: hit.checkout || "",
+    };
+}
+
+// The booking page hardcodes the reservation ULID into the messaging JS.
+// Pull it out so we can call /api/messaging/post_sales_channel_message.
+export async function getReservationUlid(bookingId) {
+    const html = await maproFetchHtml(`/booking/reservation/${encodeURIComponent(bookingId)}`);
+    const m = html.match(/post_sales_channel_message[\s\S]{0,400}?['"]reservation_id['"]\s*:\s*['"]([0-9A-Z]{26})['"]/);
+    if (m) return m[1];
+    // Fallback: any ULID followed by /api/messaging/fetch_state on the page
+    const m2 = html.match(/\/api\/messaging\/fetch_state\/([0-9A-Z]{26})/);
+    return m2 ? m2[1] : null;
+}
+
+export async function sendChannelMessage(reservationUlid, body) {
+    const form = new URLSearchParams();
+    form.append("reservation_id", reservationUlid);
+    form.append("body", body);
+    const json = await maproPostForm("/api/messaging/post_sales_channel_message", form.toString());
+    return json;
 }
 
 export async function getUnitStays(key, referenceDate) {

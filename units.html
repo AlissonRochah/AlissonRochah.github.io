@@ -961,7 +961,10 @@
                 : isVrbo && r.guest
                 ? `<a class="btn-vrbo" href="https://www.vrbo.com/supply/inbox?search=${encodeURIComponent(r.guest)}" target="_blank" rel="noopener">VRBO ↗</a>`
                 : "";
-            const actions = [platformLink, maproLink].filter(Boolean).join("");
+            const messageBtn = isAirbnb && r.confirmation
+                ? `<button class="btn-message-guest" type="button" onclick="openMessageGuestModal('${escapeHtml(r.confirmation)}', '${escapeHtml(r.guest || "")}')">Message ✉</button>`
+                : "";
+            const actions = [platformLink, messageBtn, maproLink].filter(Boolean).join("");
             return `<div class="stay-card stay-${kind}">
                 <div class="stay-label">${label}</div>
                 <div class="stay-guest">${escapeHtml(r.guest || "Unknown")}</div>
@@ -2391,6 +2394,70 @@
             }
         };
 
+        window.openMessageGuestModal = function (confirmation, guest) {
+            const modal = document.getElementById("msg-modal");
+            if (!modal) return;
+            modal.dataset.conf = confirmation || "";
+            document.getElementById("msg-conf-code").textContent = confirmation || "";
+            document.getElementById("msg-guest-label").textContent = guest || "Guest";
+            document.getElementById("msg-body").value = "";
+            const status = document.getElementById("msg-status");
+            status.textContent = "";
+            status.style.color = "";
+            modal.classList.add("active");
+            setTimeout(() => document.getElementById("msg-body").focus(), 50);
+        };
+
+        window.closeMessageGuestModal = function () {
+            const modal = document.getElementById("msg-modal");
+            if (modal) modal.classList.remove("active");
+        };
+
+        window.sendGuestMessage = async function () {
+            const modal = document.getElementById("msg-modal");
+            const confirmation = modal && modal.dataset.conf;
+            const body = document.getElementById("msg-body").value.trim();
+            const status = document.getElementById("msg-status");
+            const btn = document.getElementById("msg-send-btn");
+            if (!confirmation) { status.textContent = "Missing confirmation code."; status.style.color = "var(--danger)"; return; }
+            if (!body) { status.textContent = "Message can't be empty."; status.style.color = "var(--danger)"; return; }
+            if (!currentUser) { status.textContent = "Not signed in."; status.style.color = "var(--danger)"; return; }
+            btn.disabled = true;
+            btn.textContent = "Sending…";
+            status.textContent = "Sending to guest…";
+            status.style.color = "var(--text-muted)";
+            try {
+                const idToken = await currentUser.getIdToken();
+                const res = await fetch(proxyUrl + "/api/mapro/send-message", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": "Bearer " + idToken,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ confirmationCode: confirmation, body }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.ok) {
+                    const msg = (data && data.error) || `HTTP ${res.status}`;
+                    status.textContent = "Failed: " + msg;
+                    status.style.color = "var(--danger)";
+                    showToast("Send failed: " + msg, "error");
+                    return;
+                }
+                status.textContent = "Sent.";
+                status.style.color = "var(--success, #10b981)";
+                showToast("Message sent", "success");
+                setTimeout(() => closeMessageGuestModal(), 600);
+            } catch (e) {
+                status.textContent = "Failed: " + (e && e.message || e);
+                status.style.color = "var(--danger)";
+                showToast("Send failed", "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Send";
+            }
+        };
+
         window.submitExtraPH = function (key) {
             const u = filteredUnits.find((x) => x.key === key);
             if (!u || !u._extraDraft || u._extraDraft.submitting) return;
@@ -3044,6 +3111,32 @@
             <div class="modal-footer">
                 <button onclick="closeGuestReportModal()" class="btn btn-ghost">Cancel</button>
                 <button id="gr-submit-btn" onclick="grSubmit()" class="btn btn-primary">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Guest modal -->
+    <div id="msg-modal" class="modal-overlay" onclick="if(event.target===this)closeMessageGuestModal()">
+        <div class="modal gr-modal">
+            <div class="modal-header">
+                <h2>Message Guest — <span id="msg-guest-label" style="color: var(--text-muted); font-weight: 500;"></span></h2>
+                <button onclick="closeMessageGuestModal()" class="btn-icon" title="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="gr-info">
+                    <div class="gr-info-row"><span class="gr-info-label">Confirmation</span><span id="msg-conf-code" class="gr-info-value"></span></div>
+                </div>
+                <label class="gr-field">
+                    <span>Message</span>
+                    <textarea id="msg-body" class="gate-input" rows="6" placeholder="Type your message to the guest…" style="resize: vertical; min-height: 120px; font-family: inherit; line-height: 1.5;"></textarea>
+                </label>
+                <div id="msg-status" style="font-size: 0.85em; min-height: 1.2em;"></div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeMessageGuestModal()" class="btn btn-ghost">Cancel</button>
+                <button id="msg-send-btn" onclick="sendGuestMessage()" class="btn btn-primary">Send</button>
             </div>
         </div>
     </div>

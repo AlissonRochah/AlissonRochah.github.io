@@ -276,6 +276,28 @@
     border-color: var(--accent);
 }
 
+.btn-message-guest {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+}
+.btn-message-guest:hover {
+    color: var(--success, #10b981);
+    border-color: var(--success, #10b981);
+}
+.btn-message-guest:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .units-toast {
     position: fixed;
     bottom: 24px;
