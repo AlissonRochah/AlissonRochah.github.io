@@ -697,6 +697,13 @@ html.light .badge-danger {
        branded background. */
     transform: translateY(11vh);
 }
+/* Marcellus is single-weight; a hairline stroke (scaled per element via
+   em) fattens it slightly without changing the typeface. */
+.break-overlay-name,
+.break-overlay-status,
+.break-overlay-time {
+    -webkit-text-stroke: 0.018em currentColor;
+}
 .break-overlay-name {
     /* One standard size for every name — scales with the viewport but
        not with the name length. */
