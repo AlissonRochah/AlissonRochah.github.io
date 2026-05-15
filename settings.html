@@ -66,6 +66,7 @@
                 document.getElementById("user-email").innerText = user.email;
                 loadSettings(user.uid);
                 loadStickers(user.uid);
+                loadBulkTemplates(user.uid);
             } else {
                 window.location.href = "index.html";
             }
@@ -189,6 +190,231 @@
                 p.classList.toggle("active", p.dataset.panel === tabKey);
             });
         };
+
+        // ========== BULK MESSAGE ==========
+
+        const BULK_PROXY_URL = "https://alisson-rochah-github-io.vercel.app";
+        let bulkTemplates = [];
+        let bulkScanResult = null;
+        let bulkCopyLists = {};
+
+        async function loadBulkTemplates(uid) {
+            try {
+                const col = collection(doc(db, "templates", uid), "userTemplates");
+                const snap = await getDocs(col);
+                bulkTemplates = [];
+                snap.forEach((d) => {
+                    const data = d.data();
+                    if (!data.name) return;
+                    bulkTemplates.push({
+                        name: data.name,
+                        body: (data.description || "").replace(/\\n/g, "\n"),
+                        order: data.order ?? 999999,
+                    });
+                });
+                bulkTemplates.sort((a, b) => a.order - b.order);
+                const sel = document.getElementById("bulk-template");
+                if (sel) {
+                    sel.innerHTML = '<option value="">— pick a template (optional) —</option>';
+                    bulkTemplates.forEach((t, i) => {
+                        const o = document.createElement("option");
+                        o.value = String(i);
+                        o.textContent = t.name;
+                        sel.appendChild(o);
+                    });
+                }
+            } catch (e) {
+                console.error("loadBulkTemplates failed:", e);
+            }
+        }
+
+        window.bulkOnTemplatePick = function () {
+            const sel = document.getElementById("bulk-template");
+            const t = bulkTemplates[Number(sel.value)];
+            if (t) document.getElementById("bulk-message").value = t.body;
+        };
+
+        function bulkFmtDate(s) {
+            if (!s) return "";
+            const d = new Date(String(s).replace(" ", "T"));
+            if (isNaN(d)) return String(s).slice(0, 10);
+            return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        }
+
+        function bulkApplyPlaceholders(text, item) {
+            const firstName = String(item.guest || "").trim().split(/\s+/)[0] || "";
+            return String(text)
+                .replace(/\{guest\}/gi, firstName)
+                .replace(/\{checkin\}/gi, bulkFmtDate(item.checkin))
+                .replace(/\{checkout\}/gi, bulkFmtDate(item.checkout))
+                .replace(/\{address\}/gi, item.address || "");
+        }
+
+        function bulkBucket(id, title, lines, tone) {
+            bulkCopyLists[id] = lines.join("\n");
+            const copyBtn = lines.length
+                ? `<button class="bulk-copy-btn" type="button" onclick="bulkCopy('${id}')">Copy</button>`
+                : "";
+            const body = lines.length
+                ? `<ul class="bulk-bucket-list">${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`
+                : `<p class="bulk-bucket-empty">none</p>`;
+            return `<div class="bulk-bucket bulk-tone-${tone}">
+                <div class="bulk-bucket-header">
+                    <span class="bulk-bucket-title">${escapeHtml(title)} <span class="bulk-bucket-count">${lines.length}</span></span>
+                    ${copyBtn}
+                </div>
+                ${body}
+            </div>`;
+        }
+
+        window.bulkCopy = function (id) {
+            const text = bulkCopyLists[id] || "";
+            navigator.clipboard.writeText(text).then(
+                () => showToast("Copied", "success"),
+                () => showToast("Copy failed", "error")
+            );
+        };
+
+        window.bulkScan = async function () {
+            const btn = document.getElementById("bulk-scan-btn");
+            const status = document.getElementById("bulk-status");
+            const results = document.getElementById("bulk-results");
+            const raw = document.getElementById("bulk-addresses").value;
+            const addresses = raw.split("\n")
+                .map((l) => l.split(",")[0].trim())
+                .filter(Boolean)
+                .filter((l) => l.toLowerCase() !== "address");
+            if (addresses.length === 0) {
+                status.textContent = "Paste at least one address.";
+                status.className = "bulk-status bulk-status-err";
+                return;
+            }
+            if (!auth.currentUser) {
+                status.textContent = "Not signed in.";
+                status.className = "bulk-status bulk-status-err";
+                return;
+            }
+            btn.disabled = true;
+            btn.textContent = "Scanning…";
+            status.textContent = `Scanning ${addresses.length} addresses…`;
+            status.className = "bulk-status";
+            results.innerHTML = "";
+            try {
+                const idToken = await auth.currentUser.getIdToken();
+                const res = await fetch(BULK_PROXY_URL + "/api/mapro/bulk-scan", {
+                    method: "POST",
+                    headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+                    body: JSON.stringify({ addresses }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const msg = data.error === "MAPRO_NOT_LOGGED_IN"
+                        ? "MAPRO session expired — open app.mapro.us and sign in, then retry."
+                        : (data.error || `HTTP ${res.status}`);
+                    status.textContent = "Scan failed: " + msg;
+                    status.className = "bulk-status bulk-status-err";
+                    return;
+                }
+                bulkScanResult = data;
+                status.textContent = `Scanned. ${data.airbnb.length} Airbnb guest(s) checking in today.`;
+                status.className = "bulk-status bulk-status-ok";
+                bulkRenderScan(data);
+            } catch (e) {
+                status.textContent = "Scan failed: " + (e && e.message || e);
+                status.className = "bulk-status bulk-status-err";
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Scan";
+            }
+        };
+
+        function bulkRenderScan(d) {
+            const results = document.getElementById("bulk-results");
+            let html = "";
+            html += bulkBucket("airbnb", "✅ Airbnb — will receive",
+                d.airbnb.map((x) => `${x.guest || "?"} — ${x.address}`), "ok");
+            html += bulkBucket("notAirbnb", "🟡 Not Airbnb",
+                d.notAirbnb.map((x) => `${x.address} — ${x.channel || "unknown channel"}`), "warn");
+            html += bulkBucket("noCheckin", "⚪ No check-in today",
+                d.noCheckinToday.map((x) => x.address), "muted");
+            html += bulkBucket("notFound", "❌ Address not found", d.notFound, "bad");
+            if (d.airbnb.length > 0) {
+                html += `<button id="bulk-send-btn" class="btn btn-primary bulk-send-btn" onclick="bulkConfirmSend()">Confirm &amp; send to ${d.airbnb.length} guest${d.airbnb.length > 1 ? "s" : ""}</button>`;
+            } else {
+                html += `<p class="bulk-empty-note">No Airbnb guests checking in today — nothing to send.</p>`;
+            }
+            results.innerHTML = html;
+        }
+
+        window.bulkConfirmSend = async function () {
+            if (!bulkScanResult || !bulkScanResult.airbnb.length) return;
+            const message = document.getElementById("bulk-message").value;
+            const btn = document.getElementById("bulk-send-btn");
+            const status = document.getElementById("bulk-status");
+            if (!message.trim()) {
+                status.textContent = "Write a message first.";
+                status.className = "bulk-status bulk-status-err";
+                return;
+            }
+            const sends = bulkScanResult.airbnb.map((x) => ({
+                bookingId: x.bookingId,
+                body: bulkApplyPlaceholders(message, x),
+            }));
+            btn.disabled = true;
+            btn.textContent = `Sending to ${sends.length}…`;
+            status.textContent = "Sending messages…";
+            status.className = "bulk-status";
+            try {
+                const idToken = await auth.currentUser.getIdToken();
+                const res = await fetch(BULK_PROXY_URL + "/api/mapro/bulk-send", {
+                    method: "POST",
+                    headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
+                    body: JSON.stringify({ sends }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const msg = data.error === "MAPRO_NOT_LOGGED_IN"
+                        ? "MAPRO session expired — sign in to app.mapro.us and retry."
+                        : (data.error || `HTTP ${res.status}`);
+                    status.textContent = "Send failed: " + msg;
+                    status.className = "bulk-status bulk-status-err";
+                    btn.disabled = false;
+                    btn.textContent = `Confirm & send to ${sends.length} guests`;
+                    return;
+                }
+                bulkRenderReport(data.results || []);
+                const ok = (data.results || []).filter((r) => r.ok).length;
+                status.textContent = `Done. ${ok}/${sends.length} sent.`;
+                status.className = "bulk-status bulk-status-ok";
+            } catch (e) {
+                status.textContent = "Send failed: " + (e && e.message || e);
+                status.className = "bulk-status bulk-status-err";
+                btn.disabled = false;
+                btn.textContent = `Confirm & send to ${sends.length} guests`;
+            }
+        };
+
+        function bulkRenderReport(sendResults) {
+            const results = document.getElementById("bulk-results");
+            const byId = {};
+            bulkScanResult.airbnb.forEach((x) => { byId[x.bookingId] = x; });
+            const sent = [], failed = [];
+            sendResults.forEach((s) => {
+                const item = byId[s.bookingId];
+                const label = item ? `${item.guest || "?"} — ${item.address}` : `booking ${s.bookingId}`;
+                if (s.ok) sent.push(label);
+                else failed.push(`${label} — ${s.error || "failed"}`);
+            });
+            let html = "";
+            html += bulkBucket("sent", "✅ Sent", sent, "ok");
+            html += bulkBucket("failed", "❌ Failed", failed, "bad");
+            html += bulkBucket("notAirbnb", "🟡 Not Airbnb",
+                bulkScanResult.notAirbnb.map((x) => `${x.address} — ${x.channel || "unknown channel"}`), "warn");
+            html += bulkBucket("noCheckin", "⚪ No check-in today",
+                bulkScanResult.noCheckinToday.map((x) => x.address), "muted");
+            html += bulkBucket("notFound", "❌ Address not found", bulkScanResult.notFound, "bad");
+            results.innerHTML = html;
+        }
 
         // ========== GREETING ==========
 
@@ -708,6 +934,7 @@
             <button class="settings-tab" data-tab="categories" onclick="showTab('categories')" role="tab">Categories</button>
             <button class="settings-tab" data-tab="signature" onclick="showTab('signature')" role="tab">Signature</button>
             <button class="settings-tab" data-tab="bridge" onclick="showTab('bridge')" role="tab">Bridge</button>
+            <button class="settings-tab" data-tab="bulk" onclick="showTab('bulk')" role="tab">Bulk Message</button>
             <button class="settings-tab" data-tab="stickers" onclick="showTab('stickers')" role="tab">Break Stickers</button>
             <button class="settings-tab" id="tab-users" data-tab="users" onclick="showTab('users')" role="tab" style="display:none;">Users</button>
         </div>
@@ -888,6 +1115,42 @@ Your Name</pre>
             </a>
         </section>
         </div><!-- /bridge panel -->
+
+        <!-- Bulk Message Panel -->
+        <div class="settings-panel" data-panel="bulk">
+        <section class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>Bulk Message</h2>
+                    <p>Paste a list of house addresses. The system finds today's Airbnb check-in for each house and sends your message to those guests. Scan first, then confirm.</p>
+                </div>
+            </div>
+
+            <label class="bulk-field">
+                <span>Template</span>
+                <select id="bulk-template" class="bulk-input" onchange="bulkOnTemplatePick()">
+                    <option value="">— pick a template (optional) —</option>
+                </select>
+            </label>
+
+            <label class="bulk-field">
+                <span>Message <small>placeholders: {guest} {checkin} {checkout} {address} — optional</small></span>
+                <textarea id="bulk-message" class="bulk-input" rows="6" placeholder="Type the message, or pick a template above…"></textarea>
+            </label>
+
+            <label class="bulk-field">
+                <span>Addresses <small>one per line</small></span>
+                <textarea id="bulk-addresses" class="bulk-input" rows="8" placeholder="2966 Buccaneer Palm Rd&#10;453 Ocean Course Ave&#10;112 Jetty Way"></textarea>
+            </label>
+
+            <div class="bulk-actions">
+                <button id="bulk-scan-btn" class="btn btn-primary" onclick="bulkScan()">Scan</button>
+                <span id="bulk-status" class="bulk-status"></span>
+            </div>
+
+            <div id="bulk-results"></div>
+        </section>
+        </div><!-- /bulk panel -->
 
         <!-- Break Stickers Panel -->
         <div class="settings-panel" data-panel="stickers">

@@ -328,3 +328,110 @@ export async function getUnitStays(key, referenceDate) {
     const [a, p, n] = await Promise.all([shapeStay(active), shapeStay(previous), shapeStay(next)]);
     return { active: a, previous: p, next: n };
 }
+
+// ------------- bulk message: scan + send -------------
+
+// Canonical match key for an address: "<number> <first-street-word>"
+// (e.g. "16280 saint"). The first street word is the distinctive part —
+// "Rd"/"Street"/etc. come last and never collide — so this survives
+// "Saint Martin St" vs "St Martin Street" without abbreviation tables.
+function addrKey(s) {
+    const m = String(s || "").trim().toLowerCase().match(/(\d+)\s+([a-z]+)/);
+    return m ? `${m[1]} ${m[2]}` : null;
+}
+
+// Today's date in Florida (the resorts' timezone), as YYYY-MM-DD.
+function floridaToday() {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+function unitLabel(u) {
+    return String(u.code || u.title || u.address || "").trim();
+}
+
+// One /calendar/reservation call for many properties. The endpoint
+// accepts a comma-joined `properties` list and returns a JSON object
+// keyed by property ULID.
+async function fetchCalendarMulti(ulids, start) {
+    const path = `/calendar/reservation?start=${start}&properties=${ulids.join(",")}`;
+    const text = await maproFetchHtml(path);
+    try { return JSON.parse(text); } catch (_) { return {}; }
+}
+
+// Match a list of free-form addresses to MAPRO units, look up which has
+// a guest checking in today, and split into four buckets.
+export async function bulkScanAddresses(addresses) {
+    const units = await listUnits();
+
+    // Index units by address key — built from address, title and code so
+    // a hit on any of them counts.
+    const byKey = new Map();
+    for (const u of units) {
+        for (const field of [u.address, u.title, u.code]) {
+            const k = addrKey(field);
+            if (!k) continue;
+            if (!byKey.has(k)) byKey.set(k, []);
+            const arr = byKey.get(k);
+            if (!arr.includes(u)) arr.push(u);
+        }
+    }
+
+    const matched = [];
+    const notFound = [];
+    for (const raw of addresses) {
+        const k = addrKey(raw);
+        const hits = k ? byKey.get(k) : null;
+        // No match, or ambiguous (same key resolves to >1 unit) → notFound.
+        if (!hits || hits.length !== 1) { notFound.push(raw); continue; }
+        matched.push({ address: raw, unit: hits[0] });
+    }
+
+    const today = floridaToday();
+    const ulids = matched.map((m) => m.unit.ulid).filter(Boolean);
+    const cal = ulids.length ? await fetchCalendarMulti(ulids, today) : {};
+
+    const airbnb = [], notAirbnb = [], noCheckinToday = [];
+    for (const m of matched) {
+        const list = Array.isArray(cal[m.unit.ulid]) ? cal[m.unit.ulid] : [];
+        const r = list.find((x) => x.rt === "g" && String(x.ci || "").slice(0, 10) === today);
+        if (!r) { noCheckinToday.push({ address: m.address, unit: unitLabel(m.unit) }); continue; }
+        const channel = parseChannel(r.t);
+        const item = {
+            address: m.address,
+            unit: unitLabel(m.unit),
+            guest: r.g || "",
+            checkin: r.ci || "",
+            checkout: r.co || "",
+            channel,
+            bookingId: reservaIdFromLink(r.l),
+        };
+        if (/airbnb/i.test(channel)) airbnb.push(item);
+        else notAirbnb.push(item);
+    }
+    return { today, airbnb, notAirbnb, noCheckinToday, notFound };
+}
+
+// Send a list of { bookingId, body } messages, 5 at a time. Each send
+// resolves the reservation ULID from the booking page, then posts.
+export async function bulkSend(sends) {
+    const results = [];
+    const CONC = 5;
+    for (let i = 0; i < sends.length; i += CONC) {
+        const chunk = sends.slice(i, i + CONC);
+        const out = await Promise.all(chunk.map(async (s) => {
+            try {
+                const ulid = await getReservationUlid(s.bookingId);
+                if (!ulid) return { bookingId: s.bookingId, ok: false, error: "no messaging ULID — channel not connected" };
+                const res = await sendChannelMessage(ulid, s.body);
+                if (!res || res.status === 0 || res.status === false) {
+                    return { bookingId: s.bookingId, ok: false, error: res?.error || "MAPRO rejected the message" };
+                }
+                return { bookingId: s.bookingId, ok: true };
+            } catch (e) {
+                return { bookingId: s.bookingId, ok: false, error: String(e?.message || e) };
+            }
+        }));
+        results.push(...out);
+    }
+    return results;
+}
