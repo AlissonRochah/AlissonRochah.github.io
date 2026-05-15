@@ -91,3 +91,27 @@ the user's templates from Firestore; bucket lists styled in
 - Per-guest custom messages (one shared template only).
 - Non-Airbnb sending (VRBO/Booking.com).
 - Scheduling / retries — a failed send is reported, user re-runs manually.
+
+## v2 (2026-05-15) — input sources + reservation selector
+
+`bulk-scan` generalised. Input is now:
+
+```
+{ source: "addresses" | "codes" | "resort",
+  addresses | codes | resort,
+  mode: "checkin" | "inhouse",   // ignored when source=codes
+  date: "YYYY-MM-DD" }           // ignored when source=codes
+```
+
+- **addresses** — match a pasted address list to units (v1 behaviour).
+- **resort** — every unit whose `resort` field equals the pick. Resort
+  list comes from `/api/mapro/units` (no new endpoint).
+- **codes** — each Airbnb confirmation code is one exact reservation;
+  found → `airbnb`, not found → `notFound`. The mode/date selector does
+  not apply and is hidden in the UI.
+- **mode** — `checkin`: reservation checking in on `date`. `inhouse`:
+  reservation spanning `date` (ci ≤ noon(date) < co).
+
+Buckets unchanged except `noCheckinToday` → `noMatch` (label adapts to
+mode/date). UI adds a source segmented control, a check-in/in-house
+toggle, a date picker (default Florida today), and a resort dropdown.

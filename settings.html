@@ -197,8 +197,13 @@
         let bulkTemplates = [];
         let bulkScanResult = null;
         let bulkCopyLists = {};
+        let bulkSource = "addresses";
+        let bulkMode = "checkin";
+        let bulkResortsLoaded = false;
 
         async function loadBulkTemplates(uid) {
+            const dateInput = document.getElementById("bulk-date");
+            if (dateInput && !dateInput.value) dateInput.value = bulkFloridaToday();
             try {
                 const col = collection(doc(db, "templates", uid), "userTemplates");
                 const snap = await getDocs(col);
@@ -233,6 +238,57 @@
             const t = bulkTemplates[Number(sel.value)];
             if (t) document.getElementById("bulk-message").value = t.body;
         };
+
+        function bulkFloridaToday() {
+            return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        }
+
+        window.bulkSetSource = function (src) {
+            bulkSource = src;
+            document.querySelectorAll("#bulk-source-seg .bulk-seg-btn").forEach((b) => {
+                b.classList.toggle("active", b.dataset.src === src);
+            });
+            document.getElementById("bulk-addresses-field").style.display = src === "addresses" ? "" : "none";
+            document.getElementById("bulk-codes-field").style.display = src === "codes" ? "" : "none";
+            document.getElementById("bulk-resort-field").style.display = src === "resort" ? "" : "none";
+            // The reservation selector is meaningless for exact codes.
+            document.getElementById("bulk-mode-field").style.display = src === "codes" ? "none" : "";
+            if (src === "resort" && !bulkResortsLoaded) loadBulkResorts();
+        };
+
+        window.bulkSetMode = function (m) {
+            bulkMode = m;
+            document.querySelectorAll("#bulk-mode-seg .bulk-seg-btn").forEach((b) => {
+                b.classList.toggle("active", b.dataset.mode === m);
+            });
+        };
+
+        async function loadBulkResorts() {
+            const sel = document.getElementById("bulk-resort");
+            sel.innerHTML = '<option value="">— loading… —</option>';
+            try {
+                const idToken = await auth.currentUser.getIdToken();
+                const res = await fetch(BULK_PROXY_URL + "/api/mapro/units", {
+                    headers: { "Authorization": "Bearer " + idToken },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                const resorts = Array.from(new Set(
+                    (data.units || []).map((u) => (u.resort || "").trim()).filter(Boolean)
+                )).sort((a, b) => a.localeCompare(b));
+                sel.innerHTML = '<option value="">— pick a resort —</option>';
+                resorts.forEach((r) => {
+                    const o = document.createElement("option");
+                    o.value = r;
+                    o.textContent = r;
+                    sel.appendChild(o);
+                });
+                bulkResortsLoaded = true;
+            } catch (e) {
+                sel.innerHTML = '<option value="">— failed to load —</option>';
+                showToast("Couldn't load resorts: " + (e && e.message || e), "error");
+            }
+        }
 
         function bulkFmtDate(s) {
             if (!s) return "";
@@ -279,24 +335,41 @@
             const btn = document.getElementById("bulk-scan-btn");
             const status = document.getElementById("bulk-status");
             const results = document.getElementById("bulk-results");
-            const raw = document.getElementById("bulk-addresses").value;
-            const addresses = raw.split("\n")
-                .map((l) => l.split(",")[0].trim())
-                .filter(Boolean)
-                .filter((l) => l.toLowerCase() !== "address");
-            if (addresses.length === 0) {
-                status.textContent = "Paste at least one address.";
-                status.className = "bulk-status bulk-status-err";
-                return;
+            const fail = (msg) => { status.textContent = msg; status.className = "bulk-status bulk-status-err"; };
+
+            if (!auth.currentUser) { fail("Not signed in."); return; }
+
+            // Build the request from the chosen source.
+            const payload = { source: bulkSource };
+            let scanningLabel = "";
+            if (bulkSource === "addresses") {
+                const addresses = document.getElementById("bulk-addresses").value.split("\n")
+                    .map((l) => l.split(",")[0].trim())
+                    .filter(Boolean)
+                    .filter((l) => l.toLowerCase() !== "address");
+                if (addresses.length === 0) { fail("Paste at least one address."); return; }
+                payload.addresses = addresses;
+                payload.mode = bulkMode;
+                payload.date = document.getElementById("bulk-date").value || bulkFloridaToday();
+                scanningLabel = `Scanning ${addresses.length} addresses…`;
+            } else if (bulkSource === "codes") {
+                const codes = document.getElementById("bulk-codes").value.split("\n")
+                    .map((l) => l.trim()).filter(Boolean);
+                if (codes.length === 0) { fail("Paste at least one confirmation code."); return; }
+                payload.codes = codes;
+                scanningLabel = `Looking up ${codes.length} codes…`;
+            } else {
+                const resort = document.getElementById("bulk-resort").value;
+                if (!resort) { fail("Pick a resort."); return; }
+                payload.resort = resort;
+                payload.mode = bulkMode;
+                payload.date = document.getElementById("bulk-date").value || bulkFloridaToday();
+                scanningLabel = `Scanning ${resort}…`;
             }
-            if (!auth.currentUser) {
-                status.textContent = "Not signed in.";
-                status.className = "bulk-status bulk-status-err";
-                return;
-            }
+
             btn.disabled = true;
             btn.textContent = "Scanning…";
-            status.textContent = `Scanning ${addresses.length} addresses…`;
+            status.textContent = scanningLabel;
             status.className = "bulk-status";
             results.innerHTML = "";
             try {
@@ -304,29 +377,38 @@
                 const res = await fetch(BULK_PROXY_URL + "/api/mapro/bulk-scan", {
                     method: "POST",
                     headers: { "Authorization": "Bearer " + idToken, "Content-Type": "application/json" },
-                    body: JSON.stringify({ addresses }),
+                    body: JSON.stringify(payload),
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) {
-                    const msg = data.error === "MAPRO_NOT_LOGGED_IN"
+                    fail("Scan failed: " + (data.error === "MAPRO_NOT_LOGGED_IN"
                         ? "MAPRO session expired — open app.mapro.us and sign in, then retry."
-                        : (data.error || `HTTP ${res.status}`);
-                    status.textContent = "Scan failed: " + msg;
-                    status.className = "bulk-status bulk-status-err";
+                        : (data.error || `HTTP ${res.status}`)));
                     return;
                 }
                 bulkScanResult = data;
-                status.textContent = `Scanned. ${data.airbnb.length} Airbnb guest(s) checking in today.`;
+                status.textContent = `Scanned. ${data.airbnb.length} Airbnb guest(s) to message.`;
                 status.className = "bulk-status bulk-status-ok";
                 bulkRenderScan(data);
             } catch (e) {
-                status.textContent = "Scan failed: " + (e && e.message || e);
-                status.className = "bulk-status bulk-status-err";
+                fail("Scan failed: " + (e && e.message || e));
             } finally {
                 btn.disabled = false;
                 btn.textContent = "Scan";
             }
         };
+
+        function bulkNoMatchLabel(d) {
+            return d.mode === "inhouse"
+                ? `⚪ No guest in the house on ${d.day || ""}`
+                : `⚪ No check-in on ${d.day || ""}`;
+        }
+
+        function bulkNotFoundLabel(d) {
+            if (d.source === "codes") return "❌ Code not found";
+            if (d.source === "resort") return "❌ Resort not found";
+            return "❌ Address not found";
+        }
 
         function bulkRenderScan(d) {
             const results = document.getElementById("bulk-results");
@@ -335,13 +417,13 @@
                 d.airbnb.map((x) => `${x.guest || "?"} — ${x.address}`), "ok");
             html += bulkBucket("notAirbnb", "🟡 Not Airbnb",
                 d.notAirbnb.map((x) => `${x.address} — ${x.channel || "unknown channel"}`), "warn");
-            html += bulkBucket("noCheckin", "⚪ No check-in today",
-                d.noCheckinToday.map((x) => x.address), "muted");
-            html += bulkBucket("notFound", "❌ Address not found", d.notFound, "bad");
+            html += bulkBucket("noMatch", bulkNoMatchLabel(d),
+                d.noMatch.map((x) => x.address), "muted");
+            html += bulkBucket("notFound", bulkNotFoundLabel(d), d.notFound, "bad");
             if (d.airbnb.length > 0) {
                 html += `<button id="bulk-send-btn" class="btn btn-primary bulk-send-btn" onclick="bulkConfirmSend()">Confirm &amp; send to ${d.airbnb.length} guest${d.airbnb.length > 1 ? "s" : ""}</button>`;
             } else {
-                html += `<p class="bulk-empty-note">No Airbnb guests checking in today — nothing to send.</p>`;
+                html += `<p class="bulk-empty-note">No Airbnb guests to message — nothing to send.</p>`;
             }
             results.innerHTML = html;
         }
@@ -410,9 +492,9 @@
             html += bulkBucket("failed", "❌ Failed", failed, "bad");
             html += bulkBucket("notAirbnb", "🟡 Not Airbnb",
                 bulkScanResult.notAirbnb.map((x) => `${x.address} — ${x.channel || "unknown channel"}`), "warn");
-            html += bulkBucket("noCheckin", "⚪ No check-in today",
-                bulkScanResult.noCheckinToday.map((x) => x.address), "muted");
-            html += bulkBucket("notFound", "❌ Address not found", bulkScanResult.notFound, "bad");
+            html += bulkBucket("noMatch", bulkNoMatchLabel(bulkScanResult),
+                bulkScanResult.noMatch.map((x) => x.address), "muted");
+            html += bulkBucket("notFound", bulkNotFoundLabel(bulkScanResult), bulkScanResult.notFound, "bad");
             results.innerHTML = html;
         }
 
@@ -1138,10 +1220,40 @@ Your Name</pre>
                 <textarea id="bulk-message" class="bulk-input" rows="6" placeholder="Type the message, or pick a template above…"></textarea>
             </label>
 
-            <label class="bulk-field">
+            <div class="bulk-field">
+                <span>Source</span>
+                <div class="bulk-seg" id="bulk-source-seg">
+                    <button type="button" class="bulk-seg-btn active" data-src="addresses" onclick="bulkSetSource('addresses')">Addresses</button>
+                    <button type="button" class="bulk-seg-btn" data-src="codes" onclick="bulkSetSource('codes')">Confirmation codes</button>
+                    <button type="button" class="bulk-seg-btn" data-src="resort" onclick="bulkSetSource('resort')">Resort</button>
+                </div>
+            </div>
+
+            <label class="bulk-field" id="bulk-addresses-field">
                 <span>Addresses <small>one per line</small></span>
                 <textarea id="bulk-addresses" class="bulk-input" rows="8" placeholder="2966 Buccaneer Palm Rd&#10;453 Ocean Course Ave&#10;112 Jetty Way"></textarea>
             </label>
+
+            <label class="bulk-field" id="bulk-codes-field" style="display:none;">
+                <span>Confirmation codes <small>one per line — sends to exactly these reservations</small></span>
+                <textarea id="bulk-codes" class="bulk-input" rows="8" placeholder="HMX8RDPPWF&#10;HMABC12XYZ"></textarea>
+            </label>
+
+            <label class="bulk-field" id="bulk-resort-field" style="display:none;">
+                <span>Resort <small>messages every house in the resort</small></span>
+                <select id="bulk-resort" class="bulk-input"><option value="">— pick a resort —</option></select>
+            </label>
+
+            <div class="bulk-field" id="bulk-mode-field">
+                <span>Reservations</span>
+                <div class="bulk-mode-row">
+                    <div class="bulk-seg" id="bulk-mode-seg">
+                        <button type="button" class="bulk-seg-btn active" data-mode="checkin" onclick="bulkSetMode('checkin')">Check-in</button>
+                        <button type="button" class="bulk-seg-btn" data-mode="inhouse" onclick="bulkSetMode('inhouse')">In the house</button>
+                    </div>
+                    <input type="date" id="bulk-date" class="bulk-input bulk-date-input">
+                </div>
+            </div>
 
             <div class="bulk-actions">
                 <button id="bulk-scan-btn" class="btn btn-primary" onclick="bulkScan()">Scan</button>

@@ -358,13 +358,9 @@ async function fetchCalendarMulti(ulids, start) {
     try { return JSON.parse(text); } catch (_) { return {}; }
 }
 
-// Match a list of free-form addresses to MAPRO units, look up which has
-// a guest checking in today, and split into four buckets.
-export async function bulkScanAddresses(addresses) {
-    const units = await listUnits();
-
-    // Index units by address key — built from address, title and code so
-    // a hit on any of them counts.
+// Resolve a list of addresses to MAPRO units via the "<number>
+// <street-word>" key. Returns { matched: [{address, unit}], notFound }.
+function matchAddressesToUnits(addresses, units) {
     const byKey = new Map();
     for (const u of units) {
         for (const field of [u.address, u.title, u.code]) {
@@ -375,40 +371,114 @@ export async function bulkScanAddresses(addresses) {
             if (!arr.includes(u)) arr.push(u);
         }
     }
-
     const matched = [];
     const notFound = [];
     for (const raw of addresses) {
         const k = addrKey(raw);
         const hits = k ? byKey.get(k) : null;
-        // No match, or ambiguous (same key resolves to >1 unit) → notFound.
+        // No match, or ambiguous (same key → >1 unit) → notFound.
         if (!hits || hits.length !== 1) { notFound.push(raw); continue; }
         matched.push({ address: raw, unit: hits[0] });
     }
+    return { matched, notFound };
+}
 
-    const today = floridaToday();
-    const ulids = matched.map((m) => m.unit.ulid).filter(Boolean);
-    const cal = ulids.length ? await fetchCalendarMulti(ulids, today) : {};
-
-    const airbnb = [], notAirbnb = [], noCheckinToday = [];
-    for (const m of matched) {
-        const list = Array.isArray(cal[m.unit.ulid]) ? cal[m.unit.ulid] : [];
-        const r = list.find((x) => x.rt === "g" && String(x.ci || "").slice(0, 10) === today);
-        if (!r) { noCheckinToday.push({ address: m.address, unit: unitLabel(m.unit) }); continue; }
-        const channel = parseChannel(r.t);
-        const item = {
-            address: m.address,
-            unit: unitLabel(m.unit),
+function shapeAirbnbItem(address, unit, r) {
+    const channel = parseChannel(r.t);
+    return {
+        item: {
+            address,
+            unit: unitLabel(unit || {}),
             guest: r.g || "",
             checkin: r.ci || "",
             checkout: r.co || "",
             channel,
             bookingId: reservaIdFromLink(r.l),
-        };
-        if (/airbnb/i.test(channel)) airbnb.push(item);
-        else notAirbnb.push(item);
+        },
+        isAirbnb: /airbnb/i.test(channel),
+    };
+}
+
+// Bulk scan. Sources:
+//   - "addresses": match a pasted address list to units.
+//   - "resort":   take every unit whose `resort` field equals the pick.
+//   - "codes":    each Airbnb confirmation code is one exact reservation;
+//                 the mode/date selector does not apply.
+// Modes (addresses/resort only): "checkin" = reservation checking in on
+// `date`; "inhouse" = reservation spanning `date` (ci ≤ date < co).
+// Returns { day, mode, source, airbnb, notAirbnb, noMatch, notFound }.
+export async function bulkScan({ source, addresses, codes, resort, mode, date }) {
+    const day = date || floridaToday();
+
+    // ---- codes: one exact reservation per confirmation code ----
+    if (source === "codes") {
+        const list = (codes || []).map((c) => String(c || "").trim()).filter(Boolean);
+        const airbnb = [], notFound = [];
+        const CONC = 6;
+        for (let i = 0; i < list.length; i += CONC) {
+            const chunk = list.slice(i, i + CONC);
+            const out = await Promise.all(chunk.map(async (code) => {
+                try {
+                    const b = await findBookingByConfirmationCode(code);
+                    return b && b.bookingId ? { code, booking: b } : { code, booking: null };
+                } catch (_) { return { code, booking: null }; }
+            }));
+            for (const o of out) {
+                if (o.booking) {
+                    airbnb.push({
+                        address: o.booking.codReference || o.code,
+                        unit: "",
+                        guest: o.booking.guest || "",
+                        checkin: o.booking.checkin || "",
+                        checkout: o.booking.checkout || "",
+                        channel: "Airbnb",
+                        bookingId: o.booking.bookingId,
+                    });
+                } else {
+                    notFound.push(o.code);
+                }
+            }
+        }
+        return { day, mode: "codes", source, airbnb, notAirbnb: [], noMatch: [], notFound };
     }
-    return { today, airbnb, notAirbnb, noCheckinToday, notFound };
+
+    // ---- addresses / resort: resolve to a set of units ----
+    const units = await listUnits();
+    let matched = [];
+    let notFound = [];
+
+    if (source === "resort") {
+        const want = String(resort || "").toLowerCase().trim();
+        const hit = units.filter((u) => String(u.resort || "").toLowerCase().trim() === want);
+        matched = hit.map((u) => ({ address: unitLabel(u), unit: u }));
+        if (matched.length === 0) notFound = [resort || "(no resort selected)"];
+    } else {
+        const r = matchAddressesToUnits(addresses || [], units);
+        matched = r.matched;
+        notFound = r.notFound;
+    }
+
+    // Lookback 90 days so "in the house" catches stays that began earlier.
+    const startD = new Date(day + "T12:00:00");
+    startD.setDate(startD.getDate() - 90);
+    const start = startD.toISOString().slice(0, 10);
+    const ulids = matched.map((m) => m.unit.ulid).filter(Boolean);
+    const cal = ulids.length ? await fetchCalendarMulti(ulids, start) : {};
+
+    const refTs = new Date(day + "T12:00:00").getTime();
+    const ts = (s) => new Date(String(s).replace(" ", "T")).getTime();
+
+    const airbnb = [], notAirbnb = [], noMatch = [];
+    for (const m of matched) {
+        const list = (Array.isArray(cal[m.unit.ulid]) ? cal[m.unit.ulid] : []).filter((r) => r.rt === "g");
+        const r = mode === "inhouse"
+            ? list.find((x) => ts(x.ci) <= refTs && refTs < ts(x.co))
+            : list.find((x) => String(x.ci || "").slice(0, 10) === day);
+        if (!r) { noMatch.push({ address: m.address, unit: unitLabel(m.unit) }); continue; }
+        const { item, isAirbnb } = shapeAirbnbItem(m.address, m.unit, r);
+        (isAirbnb ? airbnb : notAirbnb).push(item);
+    }
+    return { day, mode: mode === "inhouse" ? "inhouse" : "checkin", source, airbnb, notAirbnb, noMatch, notFound };
 }
 
 // Send a list of { bookingId, body } messages, 5 at a time. Each send

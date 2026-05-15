@@ -1,8 +1,8 @@
 import { requireFirebaseUser } from "../_lib/auth.js";
 import { applyCors } from "../_lib/cors.js";
-import { bulkScanAddresses, MaproNotLoggedIn } from "../_lib/mapro.js";
+import { bulkScan, MaproNotLoggedIn } from "../_lib/mapro.js";
 
-const MAX_ADDRESSES = 200;
+const MAX_ITEMS = 300;
 
 export default async function handler(req, res) {
     if (applyCors(req, res)) return;
@@ -18,23 +18,50 @@ export default async function handler(req, res) {
         return;
     }
 
-    const raw = (req.body && req.body.addresses) || [];
-    if (!Array.isArray(raw)) {
-        res.status(400).json({ error: "addresses must be an array" });
+    const body = req.body || {};
+    const source = body.source || "addresses";
+    if (!["addresses", "codes", "resort"].includes(source)) {
+        res.status(400).json({ error: `unknown source "${source}"` });
         return;
     }
-    const addresses = raw.map((a) => String(a || "").trim()).filter(Boolean);
-    if (addresses.length === 0) {
-        res.status(400).json({ error: "addresses is empty" });
-        return;
-    }
-    if (addresses.length > MAX_ADDRESSES) {
-        res.status(400).json({ error: `too many addresses (max ${MAX_ADDRESSES})` });
-        return;
+    const mode = body.mode === "inhouse" ? "inhouse" : "checkin";
+    const date = body.date && /^\d{4}-\d{2}-\d{2}$/.test(String(body.date)) ? String(body.date) : undefined;
+
+    const clean = (arr) => (Array.isArray(arr) ? arr : [])
+        .map((a) => String(a || "").trim())
+        .filter(Boolean);
+
+    let addresses, codes, resort;
+    if (source === "addresses") {
+        addresses = clean(body.addresses).filter((l) => l.toLowerCase() !== "address");
+        if (addresses.length === 0) {
+            res.status(400).json({ error: "addresses is empty" });
+            return;
+        }
+        if (addresses.length > MAX_ITEMS) {
+            res.status(400).json({ error: `too many addresses (max ${MAX_ITEMS})` });
+            return;
+        }
+    } else if (source === "codes") {
+        codes = clean(body.codes);
+        if (codes.length === 0) {
+            res.status(400).json({ error: "codes is empty" });
+            return;
+        }
+        if (codes.length > MAX_ITEMS) {
+            res.status(400).json({ error: `too many codes (max ${MAX_ITEMS})` });
+            return;
+        }
+    } else {
+        resort = String(body.resort || "").trim();
+        if (!resort) {
+            res.status(400).json({ error: "resort is required" });
+            return;
+        }
     }
 
     try {
-        const out = await bulkScanAddresses(addresses);
+        const out = await bulkScan({ source, addresses, codes, resort, mode, date });
         res.status(200).json(out);
     } catch (err) {
         if (err instanceof MaproNotLoggedIn) {
