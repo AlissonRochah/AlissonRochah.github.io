@@ -668,6 +668,7 @@ html.light .badge-danger {
     inset: 0;
     z-index: 9999;
     background: #000;
+    color: #fff;
     text-align: center;
     font-family: "Cinzel", "Times New Roman", serif;
     user-select: none;
@@ -695,18 +696,6 @@ html.light .badge-danger {
        branded background. */
     transform: translateY(11vh);
 }
-/* Soft, vivid warm gold clipped to the glyphs — a gentle two-stop
-   blend (no metallic shine band) with a faint warm glow. */
-.break-overlay-name,
-.break-overlay-status,
-.break-overlay-time {
-    background: linear-gradient(180deg, #ffd84a 0%, #f3a836 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
-    text-shadow: 0 0 22px rgba(255, 198, 72, 0.28);
-}
 .break-overlay-name {
     /* Fallback size — JS scales it to fit the viewport on one line. */
     font-size: clamp(60px, 14vw, 260px);
@@ -733,10 +722,7 @@ html.light .badge-danger {
 }
 .break-overlay-status-over,
 .break-overlay-time-over {
-    background: none;
-    -webkit-text-fill-color: #ff3b3b;
     color: #ff3b3b;
-    text-shadow: none;
     animation: breakPulseRed 1s ease-in-out infinite;
 }
 @keyframes breakPulseRed {
