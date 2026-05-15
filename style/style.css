@@ -1,7 +1,7 @@
 /* @import must lead the file — anywhere else the browser drops it.
-   Marcellus is the Break Time overlay typeface — a classical Roman
-   inscriptional capital, the look of an engraved wall sign. */
-@import url("https://fonts.googleapis.com/css2?family=Marcellus&display=swap");
+   Cinzel is the Break Time overlay typeface — a classical Roman
+   inscriptional capital (engraved wall-sign look) with real weights. */
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&display=swap");
 
 /* ========================================
    DESIGN TOKENS — Clean dark (slate, refined)
@@ -671,7 +671,7 @@ html.light .badge-danger {
     background: #000;
     color: #f4c843;
     text-align: center;
-    font-family: "Marcellus", "Times New Roman", serif;
+    font-family: "Cinzel", "Times New Roman", serif;
     user-select: none;
     overflow: hidden;
     display: flex;
@@ -697,18 +697,11 @@ html.light .badge-danger {
        branded background. */
     transform: translateY(11vh);
 }
-/* Marcellus is single-weight; a hairline stroke (scaled per element via
-   em) fattens it slightly without changing the typeface. */
-.break-overlay-name,
-.break-overlay-status,
-.break-overlay-time {
-    -webkit-text-stroke: 0.018em currentColor;
-}
 .break-overlay-name {
     /* One standard size for every name — scales with the viewport but
        not with the name length. */
     font-size: clamp(72px, 12vw, 220px);
-    font-weight: 400;
+    font-weight: 600;
     line-height: 1.05;
     text-transform: uppercase;
     letter-spacing: 0.02em;
@@ -717,7 +710,7 @@ html.light .badge-danger {
 }
 .break-overlay-status {
     font-size: clamp(32px, 4vw, 64px);
-    font-weight: 400;
+    font-weight: 500;
     letter-spacing: 0.16em;
     text-transform: uppercase;
     line-height: 1.25;
@@ -725,7 +718,7 @@ html.light .badge-danger {
 }
 .break-overlay-time {
     font-size: clamp(46px, 5.6vw, 100px);
-    font-weight: 400;
+    font-weight: 600;
     letter-spacing: 0.06em;
     line-height: 1.2;
 }
