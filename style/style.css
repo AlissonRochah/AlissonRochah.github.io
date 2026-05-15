@@ -1,6 +1,6 @@
 /* @import must lead the file — anywhere else the browser drops it.
-   Marcellus is the Break Time overlay typeface. */
-@import url("https://fonts.googleapis.com/css2?family=Marcellus&display=swap");
+   Cinzel is the Break Time overlay typeface (has real bold weights). */
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap");
 
 /* ========================================
    DESIGN TOKENS — Clean dark (slate, refined)
@@ -668,9 +668,8 @@ html.light .badge-danger {
     inset: 0;
     z-index: 9999;
     background: #000;
-    color: #e7c77d;
     text-align: center;
-    font-family: "Marcellus", "Times New Roman", serif;
+    font-family: "Cinzel", "Times New Roman", serif;
     user-select: none;
     overflow: hidden;
     display: flex;
@@ -691,36 +690,58 @@ html.light .badge-danger {
     position: relative;
     z-index: 2;
     padding: 24px 32px;
-    max-width: 92vw;
+    max-width: 96vw;
+    /* Sit lower than dead-centre — clears the logo at the top of the
+       branded background. */
+    transform: translateY(11vh);
+}
+/* Metallic gold gradient clipped to the glyphs — bright reflective
+   band through the middle. */
+.break-overlay-name,
+.break-overlay-status,
+.break-overlay-time {
+    background: linear-gradient(180deg,
+        #f7e7a6 0%,
+        #e8c25a 30%,
+        #fff6cf 50%,
+        #e0ae3a 70%,
+        #c6892a 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
 .break-overlay-name {
-    font-size: clamp(72px, 12vw, 240px);
-    font-weight: 400;
-    line-height: 1.02;
+    /* Fallback size — JS scales it to fit the viewport on one line. */
+    font-size: clamp(60px, 14vw, 260px);
+    font-weight: 700;
+    line-height: 1.05;
     text-transform: uppercase;
     letter-spacing: 0.02em;
     margin: 0 auto 7vh;
-    max-width: 80vw;
-    overflow-wrap: break-word;
+    white-space: nowrap;
 }
 .break-overlay-status {
-    font-size: clamp(34px, 4.2vw, 68px);
-    font-weight: 400;
-    letter-spacing: 0.14em;
+    font-size: clamp(32px, 4vw, 64px);
+    font-weight: 600;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     line-height: 1.25;
     margin-bottom: 3vh;
 }
 .break-overlay-time {
-    font-size: clamp(48px, 6vw, 104px);
-    font-weight: 400;
-    letter-spacing: 0.08em;
-    font-variant-numeric: tabular-nums;
+    font-size: clamp(46px, 5.6vw, 100px);
+    font-weight: 700;
+    letter-spacing: 0.06em;
     line-height: 1.2;
 }
 .break-overlay-status-over,
 .break-overlay-time-over {
+    background: none;
+    -webkit-text-fill-color: #ff3b3b;
     color: #ff3b3b;
+    text-shadow: none;
     animation: breakPulseRed 1s ease-in-out infinite;
 }
 @keyframes breakPulseRed {
