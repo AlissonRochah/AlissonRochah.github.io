@@ -700,7 +700,7 @@ html.light .badge-danger {
     text-transform: uppercase;
     letter-spacing: 0.02em;
     margin: 0 auto 7vh;
-    max-width: 60vw;
+    max-width: 80vw;
     overflow-wrap: break-word;
 }
 .break-overlay-status {
