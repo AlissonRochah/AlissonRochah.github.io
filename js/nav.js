@@ -98,7 +98,7 @@ function fitBreakName() {
     el.style.fontSize = ref + "px";
     const w = el.scrollWidth;
     if (!w) return;
-    const byWidth = ref * (window.innerWidth * 0.86) / w;
+    const byWidth = ref * (window.innerWidth * 0.60) / w;
     const byHeight = window.innerHeight * 0.34;
     el.style.fontSize = Math.min(byWidth, byHeight) + "px";
 }

@@ -695,22 +695,23 @@ html.light .badge-danger {
        branded background. */
     transform: translateY(11vh);
 }
-/* Metallic gold gradient clipped to the glyphs — bright reflective
-   band through the middle. */
+/* Vivid metallic gold clipped to the glyphs — saturated, with a bright
+   shine band and a warm glow so it reads alive on the dark bg. */
 .break-overlay-name,
 .break-overlay-status,
 .break-overlay-time {
-    background: linear-gradient(180deg,
-        #f7e7a6 0%,
-        #e8c25a 30%,
-        #fff6cf 50%,
-        #e0ae3a 70%,
-        #c6892a 100%);
+    background: linear-gradient(170deg,
+        #ffe87a 0%,
+        #f8c01a 24%,
+        #fff7cc 47%,
+        #f5a800 60%,
+        #ffd23d 82%,
+        #f0a900 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     color: transparent;
-    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 0 30px rgba(250, 190, 45, 0.4);
 }
 .break-overlay-name {
     /* Fallback size — JS scales it to fit the viewport on one line. */
