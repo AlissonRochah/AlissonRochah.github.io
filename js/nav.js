@@ -3,9 +3,8 @@
 // toggle, a 45-minute Break overlay button, and a Sign Out button wired
 // to Firebase signOut.
 
-import { auth, db } from "./firebase.js";
+import { auth } from "./firebase.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js";
-import { collection as fsCollection, getDocs as fsGetDocs } from "https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js";
 
 const PAGES = [
     { key: "templates", label: "Templates", href: "template.html" },
@@ -43,10 +42,7 @@ function ensureBreakOverlay() {
     el.className = "break-overlay";
     el.hidden = true;
     el.innerHTML = `
-        <video class="break-overlay-video" autoplay loop muted playsinline preload="auto">
-            <source src="img/break-bg.mp4" type="video/mp4">
-        </video>
-        <div class="break-overlay-stickers" id="break-overlay-stickers"></div>
+        <img class="break-overlay-bg" src="img/break-bg.jpg" alt="">
         <div class="break-overlay-content">
             <div class="break-overlay-name" id="break-overlay-name">—</div>
             <div class="break-overlay-status" id="break-overlay-status">BREAK IN PROGRESS</div>
@@ -91,39 +87,6 @@ function fireBreakAlarm() {
     if (time) time.classList.add("break-overlay-time-over");
 }
 
-async function loadStickersForUid(uid) {
-    if (!uid) return [];
-    try {
-        const snap = await fsGetDocs(fsCollection(db, "breakStickers", uid, "items"));
-        const out = [];
-        snap.forEach((d) => {
-            const url = (d.data() || {}).dataUrl;
-            if (url) out.push(url);
-        });
-        return out;
-    } catch (_) { return []; }
-}
-
-const STICKER_SLOTS = ["tl", "tc", "tr", "bl", "br"];
-
-function renderBreakStickers(urls) {
-    const host = document.getElementById("break-overlay-stickers");
-    if (!host) return;
-    host.innerHTML = "";
-    // Shuffle copy and pick up to 5 — one per slot.
-    const pool = urls.slice().sort(() => Math.random() - 0.5).slice(0, STICKER_SLOTS.length);
-    const slots = STICKER_SLOTS.slice().sort(() => Math.random() - 0.5);
-    pool.forEach((url, i) => {
-        const img = document.createElement("img");
-        img.className = `break-sticker break-sticker-${slots[i]}`;
-        img.src = url;
-        img.alt = "";
-        // Stagger the float animation so they don't bob in sync.
-        img.style.animationDelay = `${(i * 0.6).toFixed(2)}s`;
-        host.appendChild(img);
-    });
-}
-
 function fmtHourAmPm(d) {
     let h = d.getHours();
     const m = String(d.getMinutes()).padStart(2, "0");
@@ -144,15 +107,6 @@ function openBreak() {
     document.getElementById("break-overlay-time").textContent = `${fmtHourAmPm(now)} - ${fmtHourAmPm(end)}`;
     const overlay = document.getElementById("break-overlay");
     overlay.hidden = false;
-    // Stickers only render between 4 PM and 11:59 PM local time. Outside
-    // that window the overlay stays clean.
-    const hour = new Date().getHours();
-    if (hour >= 16) {
-        loadStickersForUid(uid).then(renderBreakStickers).catch(() => {});
-    } else {
-        const host = document.getElementById("break-overlay-stickers");
-        if (host) host.innerHTML = "";
-    }
     breakAlarmTimer = setTimeout(fireBreakAlarm, BREAK_MINUTES * 60 * 1000);
     // Fullscreen — the click is a same-doc gesture so the request lands.
     const docEl = document.documentElement;
