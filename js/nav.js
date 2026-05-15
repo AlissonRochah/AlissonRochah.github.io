@@ -87,22 +87,6 @@ function fireBreakAlarm() {
     if (time) time.classList.add("break-overlay-time-over");
 }
 
-// Size the name to fill the viewport on one line — bigger for short
-// names, smaller for long ones, never wrapping or clipping. Text width
-// scales linearly with font-size, so one measure-and-divide pass nails
-// it; a height cap stops short names from getting absurdly tall.
-function fitBreakName() {
-    const el = document.getElementById("break-overlay-name");
-    if (!el) return;
-    const ref = 200;
-    el.style.fontSize = ref + "px";
-    const w = el.scrollWidth;
-    if (!w) return;
-    const byWidth = ref * (window.innerWidth * 0.60) / w;
-    const byHeight = window.innerHeight * 0.34;
-    el.style.fontSize = Math.min(byWidth, byHeight) + "px";
-}
-
 function fmtHourAmPm(d) {
     let h = d.getHours();
     const m = String(d.getMinutes()).padStart(2, "0");
@@ -123,10 +107,6 @@ function openBreak() {
     document.getElementById("break-overlay-time").textContent = `${fmtHourAmPm(now)} - ${fmtHourAmPm(end)}`;
     const overlay = document.getElementById("break-overlay");
     overlay.hidden = false;
-    // Fit once now, then again once the Cinzel webfont has loaded (the
-    // first measure can run against the fallback font).
-    fitBreakName();
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitBreakName);
     breakAlarmTimer = setTimeout(fireBreakAlarm, BREAK_MINUTES * 60 * 1000);
     // Fullscreen — the click is a same-doc gesture so the request lands.
     const docEl = document.documentElement;

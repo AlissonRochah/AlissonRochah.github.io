@@ -697,8 +697,9 @@ html.light .badge-danger {
     transform: translateY(11vh);
 }
 .break-overlay-name {
-    /* Fallback size — JS scales it to fit the viewport on one line. */
-    font-size: clamp(60px, 14vw, 260px);
+    /* One standard size for every name — scales with the viewport but
+       not with the name length. */
+    font-size: clamp(72px, 12vw, 220px);
     font-weight: 800;
     line-height: 1.05;
     text-transform: uppercase;
