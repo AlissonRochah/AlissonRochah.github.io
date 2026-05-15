@@ -58,6 +58,7 @@
                 document.getElementById("user-email").innerText = user.email;
                 loadSettings(user.uid);
                 loadBulkTemplates(user.uid);
+                loadBulkResorts();
             } else {
                 window.location.href = "index.html";
             }
@@ -146,9 +147,44 @@
             });
         };
 
+        const BULK_RESORTS_CACHE_KEY = "masterbotBulkResortsCache";
+        const BULK_RESORTS_TTL_MS = 24 * 60 * 60 * 1000;
+
+        function readBulkResortsCache() {
+            try {
+                const obj = JSON.parse(localStorage.getItem(BULK_RESORTS_CACHE_KEY) || "null");
+                if (!obj || !obj.ts || !Array.isArray(obj.resorts)) return null;
+                if (Date.now() - obj.ts > BULK_RESORTS_TTL_MS) return null;
+                return obj.resorts;
+            } catch (_) { return null; }
+        }
+
+        function fillBulkResortSelect(resorts) {
+            const sel = document.getElementById("bulk-resort");
+            if (!sel) return;
+            const current = sel.value;
+            sel.innerHTML = '<option value="">— pick a resort —</option>';
+            resorts.forEach((r) => {
+                const o = document.createElement("option");
+                o.value = r;
+                o.textContent = r;
+                sel.appendChild(o);
+            });
+            if (current) sel.value = current;
+        }
+
+        // Cached in localStorage (24h) so the dropdown is instant — same
+        // stale-while-revalidate idea units.html uses: show the cache
+        // immediately, then refresh in the background.
         async function loadBulkResorts() {
             const sel = document.getElementById("bulk-resort");
-            sel.innerHTML = '<option value="">— loading… —</option>';
+            const cached = readBulkResortsCache();
+            if (cached) {
+                fillBulkResortSelect(cached);
+                bulkResortsLoaded = true;
+            } else if (sel) {
+                sel.innerHTML = '<option value="">— loading… —</option>';
+            }
             try {
                 const idToken = await auth.currentUser.getIdToken();
                 const res = await fetch(BULK_PROXY_URL + "/api/mapro/units", {
@@ -159,17 +195,17 @@
                 const resorts = Array.from(new Set(
                     (data.units || []).map((u) => (u.resort || "").trim()).filter(Boolean)
                 )).sort((a, b) => a.localeCompare(b));
-                sel.innerHTML = '<option value="">— pick a resort —</option>';
-                resorts.forEach((r) => {
-                    const o = document.createElement("option");
-                    o.value = r;
-                    o.textContent = r;
-                    sel.appendChild(o);
-                });
+                try {
+                    localStorage.setItem(BULK_RESORTS_CACHE_KEY, JSON.stringify({ ts: Date.now(), resorts }));
+                } catch (_) { /* quota — ignore */ }
+                fillBulkResortSelect(resorts);
                 bulkResortsLoaded = true;
             } catch (e) {
-                sel.innerHTML = '<option value="">— failed to load —</option>';
-                showToast("Couldn't load resorts: " + (e && e.message || e), "error");
+                if (!cached) {
+                    if (sel) sel.innerHTML = '<option value="">— failed to load —</option>';
+                    showToast("Couldn't load resorts: " + (e && e.message || e), "error");
+                }
+                // With a cache in hand, a failed refresh is silent.
             }
         }
 
