@@ -343,6 +343,27 @@ function pickAddVisitorLink(resident) {
     return a ? a.link : null;
 }
 
+// The resident's "View Resident" detail page path.
+function residentDetailPath(resident) {
+    if (resident && resident.quick_link) return resident.quick_link;
+    const links = (resident && resident.links) || [];
+    const v = links.find((l) => /view\s*resident/i.test(l.text || ""));
+    return v ? v.link : null;
+}
+
+// Fallback for residents whose directory row omits the Add Visitor link
+// (Solterra "Non-Occupant Owner" types). The link still exists on the
+// resident's detail page — same /resident/.../visitors/.../add/... URL
+// the table gives everyone else; we just have to scrape it from there.
+async function proptiaFindAddVisitorLinkOnDetail(jar, detailPath) {
+    if (!detailPath) return null;
+    const r = await jarFetch(jar, new URL(detailPath, BASE).toString(), { method: "GET" });
+    if (!r.ok) return null;
+    const html = await r.text();
+    const m = html.match(/\/en-us\/resident\/resident\/[0-9a-f-]+\/visitors\/[0-9a-f-]+\/add\/[0-9a-f-]+\/[0-9a-f-]+/i);
+    return m ? m[0] : null;
+}
+
 // Prefer a "STR Pass" / "guest" / "visitor" option when the resort has
 // multiple pass types (Solterra has Interviewee / Registered Vendor /
 // STR Pass / Vendor Import; we want STR for vacation rentals). Falls
@@ -415,7 +436,12 @@ export async function proptiaAddGuests({ slug, email, password, orgUUID, houseHi
                 `First few of ${residents.length}: ${sample}`
             );
         }
-        const link = pickAddVisitorLink(target);
+        let link = pickAddVisitorLink(target);
+        if (!link) {
+            // Non-occupant owners don't get an Add Visitor link in the
+            // directory table — pull it from the resident's detail page.
+            link = await proptiaFindAddVisitorLinkOnDetail(jar, residentDetailPath(target));
+        }
         if (!link) throw new Error(`resident "${target.street_address}" has no Add Visitor link`);
         label = `${target.full_name || target.street_address} — ${target.street_address}`;
         getCtx = () => proptiaGetAddVisitorContextFromUrl(jar, link);
