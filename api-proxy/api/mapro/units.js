@@ -17,7 +17,23 @@ export default async function handler(req, res) {
     }
 
     try {
-        const [units, extras, resorts] = await Promise.all([listUnits(), listExtras(), listResorts()]);
+        // listUnits is the only call that must succeed — without it
+        // we have nothing to show. listExtras and listResorts only
+        // decorate the rows (BBQ flag, pool heater tier, resort
+        // address), so if the account behind the cookie can't see
+        // /settings/services or /manage/houses/resort, we degrade
+        // gracefully instead of failing the whole endpoint.
+        const units = await listUnits();
+        const [extras, resorts] = await Promise.all([
+            listExtras().catch((e) => {
+                console.warn("listExtras failed:", e?.message || e);
+                return { bbq: new Set(), ph35: new Set(), ph75: new Set() };
+            }),
+            listResorts().catch((e) => {
+                console.warn("listResorts failed:", e?.message || e);
+                return new Map();
+            }),
+        ]);
         const enriched = units.map((u) => {
             const id = String(u.idMAPRO ?? u.key ?? "");
             const resortName = (u.resort || "").trim();
