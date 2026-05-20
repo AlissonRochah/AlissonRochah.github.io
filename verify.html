@@ -44,6 +44,7 @@
         .verify-table tbody tr:hover { background: #f9fafb; }
         .verify-table tbody tr:last-child td { border-bottom: none; }
         .verify-table tr.flag-red { background: #fef2f2; }
+        .verify-table tr.flag-orange { background: #fff7ed; }
         .verify-table tr.flag-yellow { background: #fffbeb; }
         .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
         .badge-yes { background: #dcfce7; color: #166534; }
@@ -236,19 +237,54 @@
 
         // ---------- cross-check engine (the 6-scenario matrix) ----------
 
+        // Reads the property mapping cached by units.html (built as the user
+        // expanded each unit there). Keys: MAPRO unit.key. Value carries the
+        // Jobber propertyId we'd otherwise have to search for live.
+        function readJobberMapping() {
+            try { return JSON.parse(localStorage.getItem("masterbotJobberMapping") || "{}"); }
+            catch (_) { return {}; }
+        }
+
         function crossCheck(reservations, visits) {
-            const visitsByProp = new Map();
+            // Two indices per visit so we can fall back when street matching misses:
+            //   - by `streetKey(property.street)` (most common, no setup needed)
+            //   - by Jobber's `property.id` (uses the unit-page cache as a bridge)
+            const visitsByStreet = new Map();
+            const visitsByJobberId = new Map();
             for (const v of visits) {
-                const k = streetKey(v.property?.street);
-                if (!visitsByProp.has(k)) visitsByProp.set(k, []);
-                visitsByProp.get(k).push({ ...v, date: dateInFlorida(v.startAt) });
+                const dated = { ...v, date: dateInFlorida(v.startAt) };
+                const sk = streetKey(v.property?.street);
+                if (sk) {
+                    if (!visitsByStreet.has(sk)) visitsByStreet.set(sk, []);
+                    visitsByStreet.get(sk).push(dated);
+                }
+                const jpId = v.property?.id;
+                if (jpId) {
+                    if (!visitsByJobberId.has(jpId)) visitsByJobberId.set(jpId, []);
+                    visitsByJobberId.get(jpId).push(dated);
+                }
             }
+
+            const mapping = readJobberMapping();
+            // Pick the visit list for a reservation: street first, fall back to
+            // the cached MAPRO→Jobber id mapping if street didn't match.
+            function visitsForReservation(r) {
+                const sk = streetKey(r.propertyName);
+                if (sk && visitsByStreet.has(sk)) {
+                    return { source: "street", list: visitsByStreet.get(sk) };
+                }
+                const cached = mapping[r.propertyMaproId];
+                if (cached?.propertyId && visitsByJobberId.has(cached.propertyId)) {
+                    return { source: "mapping_cache", list: visitsByJobberId.get(cached.propertyId) };
+                }
+                return { source: "unmatched", list: [] };
+            }
+
             const accountedVisits = new Set();
             const rows = [];
 
             for (const r of reservations) {
-                const k = streetKey(r.propertyName);
-                const propVisits = visitsByProp.get(k) || [];
+                const { source, list: propVisits } = visitsForReservation(r);
                 const onCheckout = propVisits.find((v) => v.date === r.checkout && !accountedVisits.has(v.id));
                 if (onCheckout) accountedVisits.add(onCheckout.id);
 
@@ -272,10 +308,17 @@
                         flag = "🔴";
                         code = "DATA_ERRADA";
                         motivo = `BBQ Clean #${jobNumber} agendado em ${midStay.date}, dentro da estadia (checkout é ${r.checkout})`;
+                    } else if (source === "unmatched") {
+                        // Could not align this MAPRO property with any Jobber
+                        // property — keep separate from real JOB_FALTANDO so the
+                        // team knows it's a mapping problem, not a missing job.
+                        flag = "🟠";
+                        code = "PROPRIEDADE_SEM_MATCH";
+                        motivo = "Não achei essa casa no Jobber (nem por nome, nem pelo cache de mapeamento). Abre Units, expande essa casa lá pra cachear o match, depois roda de novo.";
                     } else {
                         flag = "🔴";
                         code = "JOB_FALTANDO";
-                        motivo = "Reserva tem BBQ marcado mas não tem BBQ Clean no Jobber pro checkout";
+                        motivo = `Reserva tem BBQ marcado mas não tem BBQ Clean no Jobber pro checkout (matching via ${source})`;
                     }
                 } else if (!isCancelled && !r.hasBBQGrill && onCheckout) {
                     flag = "🟡";
@@ -287,13 +330,18 @@
                     motivo = "Reserva cancelada, sem job órfão.";
                 }
 
-                rows.push({ ...r, flag, code, motivo, jobberJobNumber: jobNumber });
+                rows.push({ ...r, flag, code, motivo, jobberJobNumber: jobNumber, matchSource: source });
             }
 
             // Orphan visits — any visit not accounted for during the reservation loop.
-            for (const [, propVisits] of visitsByProp) {
-                for (const v of propVisits) {
-                    if (accountedVisits.has(v.id)) continue;
+            const allVisitLists = new Set();
+            for (const list of visitsByStreet.values()) allVisitLists.add(list);
+            for (const list of visitsByJobberId.values()) allVisitLists.add(list);
+            const seen = new Set();
+            for (const list of allVisitLists) {
+                for (const v of list) {
+                    if (seen.has(v.id) || accountedVisits.has(v.id)) continue;
+                    seen.add(v.id);
                     rows.push({
                         bookingId: "",
                         guest: "(orphan job)",
@@ -316,6 +364,7 @@
                         code: "JOB_ORFAO",
                         motivo: `BBQ Clean #${v.job?.jobNumber || ""} agendado em ${v.date} sem reserva nessa data`,
                         jobberJobNumber: v.job?.jobNumber || "",
+                        matchSource: "orphan",
                     });
                 }
             }
@@ -445,6 +494,7 @@
 
         function rowClass(flag) {
             if (flag === "🔴") return "flag-red";
+            if (flag === "🟠") return "flag-orange";
             if (flag === "🟡") return "flag-yellow";
             return "";
         }
@@ -482,7 +532,7 @@
         window.downloadCsv = function () {
             if (lastFlags.length === 0) return;
             const headers = [
-                "Flag", "Code", "Motivo",
+                "Flag", "Code", "Motivo", "Match Source",
                 "Booking ID", "Guest", "Property", "Property MAPRO ID",
                 "Check-in", "Check-out",
                 "Has BBQ", "BBQ Amount",
@@ -492,7 +542,7 @@
                 "Jobber Job #",
             ];
             const rows = lastFlags.map((r) => [
-                r.flag, r.code, r.motivo,
+                r.flag, r.code, r.motivo, r.matchSource || "",
                 r.bookingId, r.guest, r.propertyName, r.propertyMaproId,
                 r.checkin, r.checkout,
                 r.hasBBQGrill ? "Yes" : "No",
