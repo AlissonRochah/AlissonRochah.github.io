@@ -422,6 +422,24 @@ export async function sendChannelMessage(reservationUlid, body) {
     return json;
 }
 
+// MAPRO chatapp bootstrap. Returns ~1000 threads with embedded reservation
+// context (channel, guest, property, dates, unread count) but NO message
+// bodies — those live in refresh_reservation_state per thread.
+// Schema: { status, tags, events: [{datatype: "thread"|"agent"|...}, ...] }.
+export async function getInboxState() {
+    return await maproFetchJson("/api/inbox/v1/initial_state");
+}
+
+// Full state for ONE thread: returns the thread object plus all its messages.
+// Each message has { msg_id, thread_id, sent_on_utc, is_incoming, sender_name,
+// body, ... }. sender_name reflects the connected Airbnb account, NOT the
+// human author — for that, parse the signature in `body`.
+export async function getThreadState(reservationId) {
+    const id = encodeURIComponent(String(reservationId || "").trim());
+    if (!id) throw new Error("reservationId required");
+    return await maproFetchJson(`/api/inbox/v1/refresh_reservation_state?reservation_id=${id}`);
+}
+
 export async function getUnitStays(key, referenceDate) {
     const ref = referenceDate ? new Date(referenceDate + "T12:00:00").getTime() : Date.now();
     const lookbackFrom = Math.min(Date.now(), ref);
