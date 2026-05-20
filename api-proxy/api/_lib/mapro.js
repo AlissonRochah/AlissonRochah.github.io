@@ -338,15 +338,27 @@ const RESERVATIONS_PAGE = 500;
 // `checkoutFrom`/`checkoutTo` are YYYY-MM-DD (inclusive). `max` caps the total
 // rows returned (default 50000) — internally pages with skip/take until either
 // MAPRO runs out of rows or `max` is reached.
+// `mode` controls the date filter:
+//   - "overlap" (default) — return any reservation whose stay touches the
+//     window: checkin < (to + 1d) AND checkout >= from. Catches in-progress
+//     stays so a BBQ Clean scheduled mid-stay can still be matched to its
+//     reservation instead of looking orphan.
+//   - "checkout" — only reservations whose checkout falls in the window.
 // Returns normalized rows: has* fields become booleans, status/paymentStatus/
 // integrator are plain text, propertyCode is split into id + name.
-export async function listReservations({ checkoutFrom, checkoutTo, max = 50000 } = {}) {
+export async function listReservations({ checkoutFrom, checkoutTo, max = 50000, mode = "overlap" } = {}) {
     // Filter shared across pages. MAPRO's DataTables backend expects plain
     // YYYY-MM-DD; tacking " 23:59:59" onto the upper bound makes it answer with
     // "invalid date". Use `<` against the day after so the bound stays inclusive.
     const parts = [];
-    if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
-    if (checkoutTo) parts.push(["checkout", "<", addOneDay(checkoutTo)]);
+    if (mode === "checkout") {
+        if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
+        if (checkoutTo) parts.push(["checkout", "<", addOneDay(checkoutTo)]);
+    } else {
+        // overlap: stay's interval intersects the window
+        if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
+        if (checkoutTo) parts.push(["checkin", "<", addOneDay(checkoutTo)]);
+    }
     let filter = null;
     if (parts.length === 1) filter = parts[0];
     else if (parts.length === 2) filter = [parts[0], "and", parts[1]];

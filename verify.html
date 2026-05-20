@@ -55,6 +55,26 @@
         .flag-cell { font-size: 16px; line-height: 1; }
         .motivo-cell { color: #4b5563; font-size: 12px; max-width: 380px; }
         .flatpickr-day.selected, .flatpickr-day.selected:hover { background: #2563eb; border-color: #2563eb; }
+
+        /* Manual property match modal + button */
+        .match-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid #2563eb; background: #fff; color: #2563eb; font-size: 12px; font-weight: 500; cursor: pointer; margin-left: 8px; white-space: nowrap; }
+        .match-btn:hover { background: #eff6ff; }
+        .match-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.42); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .match-modal-card { background: #fff; border-radius: 12px; max-width: 620px; width: 92%; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 32px rgba(0,0,0,0.18); }
+        .match-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #e5e7eb; }
+        .match-modal-header strong { font-size: 15px; }
+        .match-close { border: none; background: none; font-size: 24px; cursor: pointer; color: #6b7280; line-height: 1; }
+        .match-close:hover { color: #111827; }
+        .match-modal-body { padding: 14px 18px; overflow-y: auto; }
+        .match-target { font-size: 13px; color: #4b5563; margin-bottom: 12px; }
+        .match-search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .match-search-row input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; }
+        .match-search-row input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+        .match-results { max-height: 360px; overflow-y: auto; }
+        .match-result { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+        .match-result:hover { background: #f9fafb; border-color: #2563eb; }
+        .match-result strong { font-size: 14px; }
+        .match-result small { color: #6b7280; display: block; margin-top: 2px; }
     </style>
 
     <script type="module">
@@ -298,12 +318,100 @@
         // ---------- cross-check engine (the 6-scenario matrix) ----------
 
         // Reads the property mapping cached by units.html (built as the user
-        // expanded each unit there). Keys: MAPRO unit.key. Value carries the
-        // Jobber propertyId we'd otherwise have to search for live.
+        // expanded each unit there) plus manual matches saved from this page.
+        // Keys: MAPRO unit.key OR reservation.propertyMaproId. Value carries
+        // the Jobber propertyId we'd otherwise have to search for live.
         function readJobberMapping() {
             try { return JSON.parse(localStorage.getItem("masterbotJobberMapping") || "{}"); }
             catch (_) { return {}; }
         }
+        function writeJobberMapping(map) {
+            try { localStorage.setItem("masterbotJobberMapping", JSON.stringify(map)); }
+            catch (_) { /* quota — ignore */ }
+        }
+
+        // Used by the "Casar com Jobber" button to let the user search Jobber
+        // for the right Property and link it manually.
+        const SEARCH_QUERY = `
+            query GlobalSearch($searchTerm: String!, $first: Int) {
+                search(searchTerm: $searchTerm, first: $first) {
+                    nodes {
+                        __typename
+                        ... on Property {
+                            id
+                            propertyName: name
+                            street
+                            propertySc: client { id name }
+                        }
+                    }
+                }
+            }
+        `;
+
+        window.openMatchDialog = function (propertyMaproId, propertyName) {
+            const target = document.getElementById("match-target");
+            target.dataset.propertyMaproId = propertyMaproId || "";
+            target.dataset.propertyName = propertyName || "";
+            target.textContent = `Casar "${propertyName}" (MAPRO id ${propertyMaproId}) com uma propriedade do Jobber:`;
+            document.getElementById("match-search").value = propertyName || "";
+            document.getElementById("match-results").innerHTML = "";
+            document.getElementById("match-modal").style.display = "flex";
+            // Auto-search to give the user a head start.
+            setTimeout(() => window.searchJobberProperty(), 60);
+        };
+
+        window.closeMatchDialog = function () {
+            document.getElementById("match-modal").style.display = "none";
+        };
+
+        window.searchJobberProperty = async function () {
+            const term = document.getElementById("match-search").value.trim();
+            const resultsEl = document.getElementById("match-results");
+            if (!term) {
+                resultsEl.innerHTML = "<i style='color:#6b7280;font-size:13px;'>Digite alguma coisa pra buscar (número da casa, rua, nome).</i>";
+                return;
+            }
+            resultsEl.innerHTML = "<i style='color:#6b7280;font-size:13px;'>Buscando…</i>";
+            try {
+                const data = await jobberQuery("GlobalSearch", SEARCH_QUERY, { searchTerm: term, first: 20 });
+                const nodes = (data?.search?.nodes || []).filter((n) => n.__typename === "Property");
+                if (nodes.length === 0) {
+                    resultsEl.innerHTML = "<i style='color:#6b7280;font-size:13px;'>Nenhuma propriedade encontrada com esse termo.</i>";
+                    return;
+                }
+                window._matchCandidates = nodes;
+                resultsEl.innerHTML = nodes.map((n, i) => `
+                    <div class="match-result" onclick="pickJobberProperty(${i})">
+                        <strong>${escapeHtml(n.street || n.propertyName || "(sem nome)")}</strong>
+                        ${n.propertyName && n.propertyName !== n.street ? `<small>Nome: ${escapeHtml(n.propertyName)}</small>` : ""}
+                        ${n.propertySc?.name ? `<small>Cliente: ${escapeHtml(n.propertySc.name)}</small>` : ""}
+                    </div>
+                `).join("");
+            } catch (e) {
+                resultsEl.innerHTML = `<i style='color:#dc2626;font-size:13px;'>Erro: ${escapeHtml(e?.message || String(e))}</i>`;
+            }
+        };
+
+        window.pickJobberProperty = function (idx) {
+            const target = document.getElementById("match-target");
+            const propertyMaproId = target.dataset.propertyMaproId;
+            const picked = window._matchCandidates?.[idx];
+            if (!propertyMaproId || !picked) return;
+            const mapping = readJobberMapping();
+            mapping[propertyMaproId] = {
+                propertyId: picked.id,
+                propertyName: picked.propertyName || "",
+                street: picked.street || "",
+                clientId: picked.propertySc?.id || "",
+                clientName: picked.propertySc?.name || "",
+                ts: Date.now(),
+                matchedManually: true,
+            };
+            writeJobberMapping(mapping);
+            window.closeMatchDialog();
+            // Re-run the verification so the new mapping is reflected.
+            window.loadAndCheck();
+        };
 
         function crossCheck(reservations, visits) {
             // Two indices per visit so we can fall back when street matching misses:
@@ -569,7 +677,11 @@
                 tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:32px;">${onlyFlagged ? "Nenhum flag — tudo limpo no período. 🎉" : "Nenhuma reserva nesse período."}</td></tr>`;
                 return;
             }
-            tbody.innerHTML = shown.map((r) => `
+            tbody.innerHTML = shown.map((r) => {
+                const matchBtn = r.code === "PROPRIEDADE_SEM_MATCH"
+                    ? `<button class="match-btn" data-mid="${escapeHtml(r.propertyMaproId)}" data-pname="${escapeHtml(r.propertyName)}" onclick="openMatchDialog(this.dataset.mid, this.dataset.pname)">Casar com Jobber</button>`
+                    : "";
+                return `
                 <tr class="${rowClass(r.flag)}">
                     <td class="flag-cell">${r.flag}</td>
                     <td>${escapeHtml(r.bookingId)}</td>
@@ -579,9 +691,9 @@
                     <td>${escapeHtml(r.checkout)}</td>
                     <td>${yesNoBadge(r.hasBBQGrill)}</td>
                     <td>${statusBadge(r.status)}</td>
-                    <td class="motivo-cell">${escapeHtml(r.motivo)}</td>
-                </tr>
-            `).join("");
+                    <td class="motivo-cell">${escapeHtml(r.motivo)} ${matchBtn}</td>
+                </tr>`;
+            }).join("");
         }
 
         // ---------- CSV ----------
@@ -663,6 +775,24 @@
 
         <div class="verify-filter">
             <label><input type="checkbox" id="only-flagged" onchange="toggleFilter()"> Só mostrar flags (esconder ✅)</label>
+        </div>
+
+        <!-- Manual property match modal — opened by 'Casar com Jobber' button -->
+        <div id="match-modal" class="match-modal" style="display:none;">
+            <div class="match-modal-card">
+                <div class="match-modal-header">
+                    <strong>Casar com Jobber</strong>
+                    <button class="match-close" onclick="closeMatchDialog()" title="Fechar">×</button>
+                </div>
+                <div class="match-modal-body">
+                    <p class="match-target" id="match-target" data-property-mapro-id="" data-property-name=""></p>
+                    <div class="match-search-row">
+                        <input type="text" id="match-search" placeholder="Endereço, número, nome do cliente…" onkeydown="if(event.key==='Enter') searchJobberProperty()">
+                        <button class="verify-btn" onclick="searchJobberProperty()">Buscar</button>
+                    </div>
+                    <div id="match-results" class="match-results"></div>
+                </div>
+            </div>
         </div>
 
         <div class="verify-table-wrap">

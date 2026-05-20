@@ -27,9 +27,12 @@ export default async function handler(req, res) {
     // Default high so daily windows and catch-up sweeps both work.
     const maxRaw = parseInt(req.query.max || "50000", 10);
     const max = Math.min(Math.max(Number.isFinite(maxRaw) ? maxRaw : 50000, 1), 50000);
+    // Default to "overlap" — include in-progress stays so mid-stay BBQ Cleans
+    // aren't flagged as orphan. Pass ?mode=checkout to revert to the old behaviour.
+    const mode = req.query.mode === "checkout" ? "checkout" : "overlap";
 
     try {
-        const reservations = await listReservations({ checkoutFrom, checkoutTo, max });
+        const reservations = await listReservations({ checkoutFrom, checkoutTo, max, mode });
         res.setHeader("Cache-Control", "private, max-age=30");
         res.status(200).json({ count: reservations.length, reservations });
     } catch (err) {
