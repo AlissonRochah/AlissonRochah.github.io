@@ -150,16 +150,27 @@
         }
 
         // ---------- street normalization ----------
-        // MAPRO sends "7669 Recife Drive"; Jobber may say "7669 Recife Dr" or "7669 Recife Drive".
-        // Strip street-type suffixes + punctuation so both keys collide on "7669 recife".
+        // MAPRO sends short names like "7669 Recife Drive". Jobber's property.street
+        // often comes as the FULL address ("7669 Recife Drive, Kissimmee, FL 34747"),
+        // so stripping suffixes alone wasn't enough — the trailing city/state/zip
+        // killed the match. Use the bulk-scan trick: <number> <first-street-word>,
+        // which is the distinctive part on both sides ("7669 recife").
         function streetKey(s) {
-            return String(s || "")
-                .trim()
-                .toLowerCase()
-                .replace(/[.,]/g, "")
-                .replace(/\b(drive|dr|street|st|road|rd|avenue|ave|way|court|ct|lane|ln|place|pl|boulevard|blvd|circle|cir|terrace|ter|parkway|pkwy|highway|hwy)\b/g, "")
-                .replace(/\s+/g, " ")
-                .trim();
+            const m = String(s || "").trim().toLowerCase().match(/(\d+)\s+([a-z]+)/);
+            return m ? `${m[1]} ${m[2]}` : "";
+        }
+
+        // Jobber's startAt is ISO 8601 in UTC. A visit scheduled for the evening
+        // in Florida flips date when sliced as UTC ("2026-05-20T22:00:00Z" -> 20,
+        // but "2026-05-20T23:30:00-04:00" expressed in UTC is "2026-05-21" if we
+        // slice the raw string). Convert to America/New_York then take YYYY-MM-DD.
+        function dateInFlorida(iso) {
+            if (!iso) return "";
+            try {
+                return new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+            } catch (_) {
+                return "";
+            }
         }
 
         // ---------- MAPRO fetch ----------
@@ -211,7 +222,7 @@
                 if (!v || !Array.isArray(v.nodes)) break;
                 const bbq = v.nodes.filter((n) => /bbq\s*clean/i.test(n.title || n.job?.title || ""));
                 const inWindow = bbq.filter((n) => {
-                    const d = dateOnly(n.startAt);
+                    const d = dateInFlorida(n.startAt);
                     return d >= fromIso && d <= toIso;
                 });
                 all.push(...inWindow);
@@ -230,7 +241,7 @@
             for (const v of visits) {
                 const k = streetKey(v.property?.street);
                 if (!visitsByProp.has(k)) visitsByProp.set(k, []);
-                visitsByProp.get(k).push({ ...v, date: dateOnly(v.startAt) });
+                visitsByProp.get(k).push({ ...v, date: dateInFlorida(v.startAt) });
             }
             const accountedVisits = new Set();
             const rows = [];
@@ -356,6 +367,33 @@
 
                 const flags = crossCheck(reservations, visits);
                 lastFlags = flags;
+
+                // Diagnostic — open DevTools, run `verifyDebug()` to inspect
+                // what got matched. Useful when a reservation flags as
+                // JOB_FALTANDO but the job *is* in Jobber.
+                window.verifyDebug = function () {
+                    console.group("Verify debug");
+                    console.log("Reservations:", reservations);
+                    console.log("Jobber BBQ Cleans:", visits);
+                    console.table(reservations.map((r) => ({
+                        bookingId: r.bookingId,
+                        property: r.propertyName,
+                        streetKey: streetKey(r.propertyName),
+                        checkout: r.checkout,
+                        hasBBQ: r.hasBBQGrill,
+                        status: r.status,
+                    })));
+                    console.table(visits.map((v) => ({
+                        jobNumber: v.job?.jobNumber,
+                        title: v.title || v.job?.title,
+                        property: v.property?.street,
+                        streetKey: streetKey(v.property?.street),
+                        dateFlorida: dateInFlorida(v.startAt),
+                        startAt: v.startAt,
+                    })));
+                    console.groupEnd();
+                };
+                console.log("[verify] run window.verifyDebug() to inspect matching");
 
                 const counts = {};
                 for (const f of flags) counts[f.code] = (counts[f.code] || 0) + 1;
