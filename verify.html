@@ -17,27 +17,168 @@
     <link rel="stylesheet" href="style/reset.css">
     <link rel="stylesheet" href="style/style.css">
 
+    <!-- flatpickr — calendar picker that respects MM/DD/YYYY regardless of locale -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+
     <style>
-        .verify-main { max-width: 1280px; margin: 0 auto; padding: 24px; }
-        .verify-intro { color: #6b7280; font-size: 14px; margin-bottom: 18px; }
-        .verify-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-        .verify-toolbar label { font-size: 13px; color: #6b7280; display: flex; gap: 6px; align-items: center; }
-        .verify-toolbar input[type="text"] { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: inherit; width: 120px; }
-        .verify-toolbar input[type="text"].invalid { border-color: #dc2626; }
-        .verify-toolbar button { padding: 7px 16px; border-radius: 6px; border: 1px solid #2563eb; background: #2563eb; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; }
-        .verify-toolbar button:disabled { opacity: 0.55; cursor: not-allowed; }
-        .verify-status { font-size: 13px; color: #6b7280; margin-bottom: 14px; min-height: 20px; }
-        .verify-status.error { color: #dc2626; }
-        .verify-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .verify-table th, .verify-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eef0f2; }
-        .verify-table th { background: #f9fafb; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; }
-        .verify-table tbody tr:hover { background: #f9fafb; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+        .verify-main {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 28px 24px;
+        }
+
+        .verify-intro {
+            color: #6b7280;
+            font-size: 14px;
+            margin-bottom: 22px;
+            line-height: 1.5;
+            max-width: 720px;
+        }
+
+        .verify-toolbar {
+            display: flex;
+            gap: 14px;
+            align-items: flex-end;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+            padding: 16px 18px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+        }
+
+        .verify-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .verify-field label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            color: #6b7280;
+        }
+
+        .verify-field input {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            width: 140px;
+            background: #fff;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .verify-field input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+
+        .verify-btn {
+            padding: 9px 18px;
+            border-radius: 8px;
+            border: 1px solid #2563eb;
+            background: #2563eb;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, box-shadow 0.15s;
+        }
+
+        .verify-btn:hover:not(:disabled) {
+            background: #1d4ed8;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .verify-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .verify-btn.secondary {
+            background: #fff;
+            color: #2563eb;
+            border-color: #2563eb;
+        }
+
+        .verify-btn.secondary:hover:not(:disabled) {
+            background: #eff6ff;
+        }
+
+        .verify-status {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 14px;
+            min-height: 20px;
+        }
+
+        .verify-status.error {
+            color: #dc2626;
+        }
+
+        .verify-table-wrap {
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .verify-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .verify-table th,
+        .verify-table td {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid #eef0f2;
+        }
+
+        .verify-table thead th {
+            background: #f9fafb;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6b7280;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .verify-table tbody tr:hover {
+            background: #f9fafb;
+        }
+
+        .verify-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
         .badge-yes { background: #dcfce7; color: #166534; }
         .badge-no { background: #f3f4f6; color: #9ca3af; }
         .badge-cancelled { background: #fee2e2; color: #991b1b; }
         .badge-approved { background: #dcfce7; color: #166534; }
         .badge-other { background: #fef3c7; color: #92400e; }
+
+        /* flatpickr touch-ups so the popup feels native to the page */
+        .flatpickr-day.selected,
+        .flatpickr-day.selected:hover {
+            background: #2563eb;
+            border-color: #2563eb;
+        }
     </style>
 
     <script type="module">
@@ -49,21 +190,33 @@
 
         const PROXY_URL = "https://alisson-rochah-github-io.vercel.app";
         let currentUser = null;
+        let lastReservations = [];
+        let lastWindow = { from: "", to: "" };
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUser = user;
-                seedDefaults();
+                initPickers();
                 window.loadReservations();
             } else {
                 window.location.href = "index.html";
             }
         });
 
-        function usDateOffset(days) {
+        function isoDateOffset(days) {
             const d = new Date();
             d.setDate(d.getDate() + days);
-            return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        }
+
+        function initPickers() {
+            const common = {
+                dateFormat: "m/d/Y",
+                allowInput: true,
+                disableMobile: true,
+            };
+            flatpickr("#checkout-from", { ...common, defaultDate: isoDateOffset(0) });
+            flatpickr("#checkout-to", { ...common, defaultDate: isoDateOffset(14) });
         }
 
         // MM/DD/YYYY -> YYYY-MM-DD ; returns "" if invalid
@@ -75,24 +228,6 @@
             return `${yr}-${String(mo).padStart(2, "0")}-${String(dy).padStart(2, "0")}`;
         }
 
-        // Auto-insert slashes as the user types digits.
-        function maskUsDate(input) {
-            const digits = input.value.replace(/\D/g, "").slice(0, 8);
-            let out = digits;
-            if (digits.length >= 5) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-            else if (digits.length >= 3) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
-            input.value = out;
-            input.classList.toggle("invalid", out.length === 10 && !usToIso(out));
-        }
-        window.maskUsDate = maskUsDate;
-
-        function seedDefaults() {
-            const from = document.getElementById("checkout-from");
-            const to = document.getElementById("checkout-to");
-            if (!from.value) from.value = usDateOffset(0);
-            if (!to.value) to.value = usDateOffset(14);
-        }
-
         window.loadReservations = async function () {
             if (!currentUser) return;
             const fromRaw = document.getElementById("checkout-from").value.trim();
@@ -100,6 +235,7 @@
             const fromIso = usToIso(fromRaw);
             const toIso = usToIso(toRaw);
             const btn = document.getElementById("verify-load-btn");
+            const downloadBtn = document.getElementById("verify-download-btn");
             const status = document.getElementById("verify-status");
             const tbody = document.getElementById("verify-tbody");
 
@@ -110,9 +246,12 @@
             }
 
             btn.disabled = true;
+            downloadBtn.disabled = true;
             status.classList.remove("error");
             status.textContent = "Loading reservations…";
             tbody.innerHTML = "";
+            lastReservations = [];
+            lastWindow = { from: fromRaw, to: toRaw };
 
             try {
                 const idToken = await currentUser.getIdToken();
@@ -133,8 +272,10 @@
                     return;
                 }
                 const data = await res.json();
-                renderRows(data.reservations || []);
+                lastReservations = data.reservations || [];
+                renderRows(lastReservations);
                 status.textContent = `${data.count} reservas com checkout entre ${fromRaw} e ${toRaw}.`;
+                downloadBtn.disabled = lastReservations.length === 0;
             } catch (e) {
                 status.textContent = "Network error: " + (e && e.message || e);
                 status.classList.add("error");
@@ -166,6 +307,10 @@
 
         function renderRows(rows) {
             const tbody = document.getElementById("verify-tbody");
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px;">Nenhuma reserva nesse período.</td></tr>`;
+                return;
+            }
             tbody.innerHTML = rows.map((r) => `
                 <tr>
                     <td>${escapeHtml(r.bookingId)}</td>
@@ -179,6 +324,68 @@
                 </tr>
             `).join("");
         }
+
+        // CSV escape: wrap in quotes if the value contains comma, quote, or newline;
+        // double up any embedded quotes per RFC 4180.
+        function csvField(v) {
+            const s = v == null ? "" : String(v);
+            return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        }
+
+        window.downloadCsv = function () {
+            if (lastReservations.length === 0) return;
+            const headers = [
+                "Booking ID",
+                "Guest",
+                "Property",
+                "Property MAPRO ID",
+                "Check-in",
+                "Check-out",
+                "Has BBQ",
+                "BBQ Amount",
+                "Has Pool Heat",
+                "Has Pet",
+                "Has Laundry",
+                "Status",
+                "Payment Status",
+                "Channel",
+                "Total",
+                "Total Paid",
+                "Outstanding",
+            ];
+            const rows = lastReservations.map((r) => [
+                r.bookingId,
+                r.guest,
+                r.propertyName,
+                r.propertyMaproId,
+                r.checkin,
+                r.checkout,
+                r.hasBBQGrill ? "Yes" : "No",
+                r.amountBBQGrill || 0,
+                r.hasPoolHeat ? "Yes" : "No",
+                r.hasPet ? "Yes" : "No",
+                r.hasLaundry ? "Yes" : "No",
+                r.status,
+                r.paymentStatus,
+                r.integrator,
+                r.totalReservation || 0,
+                r.totalPaid || 0,
+                r.outstandingAmount || 0,
+            ]);
+            const csv = [headers, ...rows].map((row) => row.map(csvField).join(",")).join("\r\n");
+            // BOM so Excel renders accented characters correctly.
+            const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            const fromTag = lastWindow.from.replace(/\//g, "-");
+            const toTag = lastWindow.to.replace(/\//g, "-");
+            a.href = url;
+            a.download = `verify-${fromTag}_to_${toTag}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
     </script>
 </head>
 
@@ -188,42 +395,46 @@
     <main class="verify-main">
         <h1>Verify</h1>
         <p class="verify-intro">
-            Verificação diária de reservas. v0 — só lista reservas no período e mostra
-            se cada uma tem BBQ marcado. Próximo passo: cruzar com Jobber pra flagar
-            BBQ Clean faltando, em data errada, ou órfão de reserva cancelada.
+            Verificação diária de reservas. v0 — lista as reservas com checkout no
+            período e mostra se cada uma tem BBQ marcado. Baixa o CSV pra cross-check
+            manual com o Jobber por enquanto. Próximo passo: cruzamento automático
+            (matriz dos 6 cenários do BBQ) gerado pelo próprio relatório.
         </p>
 
         <div class="verify-toolbar">
-            <label>Checkout de
-                <input type="text" id="checkout-from" placeholder="MM/DD/YYYY"
-                    inputmode="numeric" maxlength="10"
-                    oninput="maskUsDate(this)">
-            </label>
-            <label>até
-                <input type="text" id="checkout-to" placeholder="MM/DD/YYYY"
-                    inputmode="numeric" maxlength="10"
-                    oninput="maskUsDate(this)">
-            </label>
-            <button id="verify-load-btn" onclick="loadReservations()">Carregar</button>
+            <div class="verify-field">
+                <label for="checkout-from">Checkout de</label>
+                <input type="text" id="checkout-from" placeholder="MM/DD/YYYY">
+            </div>
+            <div class="verify-field">
+                <label for="checkout-to">até</label>
+                <input type="text" id="checkout-to" placeholder="MM/DD/YYYY">
+            </div>
+            <button id="verify-load-btn" class="verify-btn" onclick="loadReservations()">Carregar</button>
+            <button id="verify-download-btn" class="verify-btn secondary" onclick="downloadCsv()" disabled>
+                Baixar CSV
+            </button>
         </div>
 
         <div class="verify-status" id="verify-status"></div>
 
-        <table class="verify-table">
-            <thead>
-                <tr>
-                    <th>Booking</th>
-                    <th>Guest</th>
-                    <th>Property</th>
-                    <th>Check-in</th>
-                    <th>Check-out</th>
-                    <th>BBQ?</th>
-                    <th>Status</th>
-                    <th>Channel</th>
-                </tr>
-            </thead>
-            <tbody id="verify-tbody"></tbody>
-        </table>
+        <div class="verify-table-wrap">
+            <table class="verify-table">
+                <thead>
+                    <tr>
+                        <th>Booking</th>
+                        <th>Guest</th>
+                        <th>Property</th>
+                        <th>Check-in</th>
+                        <th>Check-out</th>
+                        <th>BBQ?</th>
+                        <th>Status</th>
+                        <th>Channel</th>
+                    </tr>
+                </thead>
+                <tbody id="verify-tbody"></tbody>
+            </table>
+        </div>
     </main>
 </body>
 
