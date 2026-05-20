@@ -17,168 +17,43 @@
     <link rel="stylesheet" href="style/reset.css">
     <link rel="stylesheet" href="style/style.css">
 
-    <!-- flatpickr — calendar picker that respects MM/DD/YYYY regardless of locale -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 
     <style>
-        .verify-main {
-            max-width: 1280px;
-            margin: 0 auto;
-            padding: 28px 24px;
-        }
-
-        .verify-intro {
-            color: #6b7280;
-            font-size: 14px;
-            margin-bottom: 22px;
-            line-height: 1.5;
-            max-width: 720px;
-        }
-
-        .verify-toolbar {
-            display: flex;
-            gap: 14px;
-            align-items: flex-end;
-            margin-bottom: 18px;
-            flex-wrap: wrap;
-            padding: 16px 18px;
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-        }
-
-        .verify-field {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .verify-field label {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-            color: #6b7280;
-        }
-
-        .verify-field input {
-            padding: 8px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            font-size: 14px;
-            font-family: inherit;
-            width: 140px;
-            background: #fff;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }
-
-        .verify-field input:focus {
-            outline: none;
-            border-color: #2563eb;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
-        }
-
-        .verify-btn {
-            padding: 9px 18px;
-            border-radius: 8px;
-            border: 1px solid #2563eb;
-            background: #2563eb;
-            color: #fff;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.15s, box-shadow 0.15s;
-        }
-
-        .verify-btn:hover:not(:disabled) {
-            background: #1d4ed8;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .verify-btn:disabled {
-            opacity: 0.55;
-            cursor: not-allowed;
-        }
-
-        .verify-btn.secondary {
-            background: #fff;
-            color: #2563eb;
-            border-color: #2563eb;
-        }
-
-        .verify-btn.secondary:hover:not(:disabled) {
-            background: #eff6ff;
-        }
-
-        .verify-status {
-            font-size: 13px;
-            color: #6b7280;
-            margin-bottom: 14px;
-            min-height: 20px;
-        }
-
-        .verify-status.error {
-            color: #dc2626;
-        }
-
-        .verify-table-wrap {
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .verify-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-
-        .verify-table th,
-        .verify-table td {
-            text-align: left;
-            padding: 10px 12px;
-            border-bottom: 1px solid #eef0f2;
-        }
-
-        .verify-table thead th {
-            background: #f9fafb;
-            font-weight: 600;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #6b7280;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .verify-table tbody tr:hover {
-            background: #f9fafb;
-        }
-
-        .verify-table tbody tr:last-child td {
-            border-bottom: none;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 2px 9px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-
+        .verify-main { max-width: 1400px; margin: 0 auto; padding: 28px 24px; }
+        .verify-intro { color: #6b7280; font-size: 14px; margin-bottom: 22px; line-height: 1.5; max-width: 780px; }
+        .verify-toolbar { display: flex; gap: 14px; align-items: flex-end; margin-bottom: 18px; flex-wrap: wrap; padding: 16px 18px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; }
+        .verify-field { display: flex; flex-direction: column; gap: 4px; }
+        .verify-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; color: #6b7280; }
+        .verify-field input { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; width: 140px; background: #fff; transition: border-color 0.15s, box-shadow 0.15s; }
+        .verify-field input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+        .verify-btn { padding: 9px 18px; border-radius: 8px; border: 1px solid #2563eb; background: #2563eb; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s, box-shadow 0.15s; }
+        .verify-btn:hover:not(:disabled) { background: #1d4ed8; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+        .verify-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .verify-btn.secondary { background: #fff; color: #2563eb; border-color: #2563eb; }
+        .verify-btn.secondary:hover:not(:disabled) { background: #eff6ff; }
+        .verify-status { font-size: 13px; color: #6b7280; margin-bottom: 14px; min-height: 20px; line-height: 1.5; }
+        .verify-status.error { color: #dc2626; }
+        .verify-filter { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; font-size: 13px; color: #6b7280; }
+        .verify-filter label { cursor: pointer; }
+        .verify-table-wrap { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+        .verify-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .verify-table th, .verify-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eef0f2; vertical-align: top; }
+        .verify-table thead th { background: #f9fafb; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+        .verify-table tbody tr:hover { background: #f9fafb; }
+        .verify-table tbody tr:last-child td { border-bottom: none; }
+        .verify-table tr.flag-red { background: #fef2f2; }
+        .verify-table tr.flag-yellow { background: #fffbeb; }
+        .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
         .badge-yes { background: #dcfce7; color: #166534; }
         .badge-no { background: #f3f4f6; color: #9ca3af; }
         .badge-cancelled { background: #fee2e2; color: #991b1b; }
         .badge-approved { background: #dcfce7; color: #166534; }
         .badge-other { background: #fef3c7; color: #92400e; }
-
-        /* flatpickr touch-ups so the popup feels native to the page */
-        .flatpickr-day.selected,
-        .flatpickr-day.selected:hover {
-            background: #2563eb;
-            border-color: #2563eb;
-        }
+        .flag-cell { font-size: 16px; line-height: 1; }
+        .motivo-cell { color: #4b5563; font-size: 12px; max-width: 380px; }
+        .flatpickr-day.selected, .flatpickr-day.selected:hover { background: #2563eb; border-color: #2563eb; }
     </style>
 
     <script type="module">
@@ -189,19 +64,22 @@
         renderHeader("verify");
 
         const PROXY_URL = "https://alisson-rochah-github-io.vercel.app";
+        const JOBBER_EXTENSION_ID = "dmaenamjjgeclplnofeoiipddinihhhl";
+
         let currentUser = null;
-        let lastReservations = [];
+        let lastFlags = [];
         let lastWindow = { from: "", to: "" };
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUser = user;
                 initPickers();
-                window.loadReservations();
             } else {
                 window.location.href = "index.html";
             }
         });
+
+        // ---------- date helpers ----------
 
         function isoDateOffset(days) {
             const d = new Date();
@@ -209,17 +87,6 @@
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         }
 
-        function initPickers() {
-            const common = {
-                dateFormat: "m/d/Y",
-                allowInput: true,
-                disableMobile: true,
-            };
-            flatpickr("#checkout-from", { ...common, defaultDate: isoDateOffset(0) });
-            flatpickr("#checkout-to", { ...common, defaultDate: isoDateOffset(14) });
-        }
-
-        // MM/DD/YYYY -> YYYY-MM-DD ; returns "" if invalid
         function usToIso(s) {
             const m = String(s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
             if (!m) return "";
@@ -228,7 +95,208 @@
             return `${yr}-${String(mo).padStart(2, "0")}-${String(dy).padStart(2, "0")}`;
         }
 
-        window.loadReservations = async function () {
+        function dateOnly(iso) { return String(iso || "").slice(0, 10); }
+
+        function initPickers() {
+            const common = { dateFormat: "m/d/Y", allowInput: true, disableMobile: true };
+            flatpickr("#checkout-from", { ...common, defaultDate: isoDateOffset(0) });
+            flatpickr("#checkout-to", { ...common, defaultDate: isoDateOffset(14) });
+        }
+
+        // ---------- Jobber bridge ----------
+
+        function jobberMessage(action, payload) {
+            return new Promise((resolve) => {
+                if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+                    resolve({ ok: false, error: "no_extension_api" });
+                    return;
+                }
+                try {
+                    chrome.runtime.sendMessage(JOBBER_EXTENSION_ID, { action, payload }, (response) => {
+                        if (chrome.runtime.lastError) {
+                            resolve({ ok: false, error: "extension_unreachable" });
+                            return;
+                        }
+                        resolve(response || { ok: false, error: "no_response" });
+                    });
+                } catch (e) {
+                    resolve({ ok: false, error: String(e && e.message || e) });
+                }
+            });
+        }
+
+        async function jobberQuery(operationName, query, variables) {
+            const res = await jobberMessage("jobber-query", { operationName, query, variables: variables || {} });
+            if (!res || !res.ok) throw new Error(res?.error || "jobber_unknown_error");
+            return res.data;
+        }
+
+        // ---------- street normalization ----------
+        // MAPRO sends "7669 Recife Drive"; Jobber may say "7669 Recife Dr" or "7669 Recife Drive".
+        // Strip street-type suffixes + punctuation so both keys collide on "7669 recife".
+        function streetKey(s) {
+            return String(s || "")
+                .trim()
+                .toLowerCase()
+                .replace(/[.,]/g, "")
+                .replace(/\b(drive|dr|street|st|road|rd|avenue|ave|way|court|ct|lane|ln|place|pl|boulevard|blvd|circle|cir|terrace|ter|parkway|pkwy|highway|hwy)\b/g, "")
+                .replace(/\s+/g, " ")
+                .trim();
+        }
+
+        // ---------- MAPRO fetch ----------
+
+        async function fetchReservations(fromIso, toIso) {
+            const idToken = await currentUser.getIdToken();
+            const url = `${PROXY_URL}/api/mapro/reservations?checkoutFrom=${encodeURIComponent(fromIso)}&checkoutTo=${encodeURIComponent(toIso)}`;
+            const res = await fetch(url, { headers: { "Authorization": "Bearer " + idToken } });
+            if (res.status === 503) {
+                const body = await res.json().catch(() => ({}));
+                if (body.error === "MAPRO_NOT_LOGGED_IN") {
+                    throw new Error("MAPRO session expirou. Admin: atualizar cookie em Settings.");
+                }
+            }
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(`MAPRO erro ${res.status}: ${body.error || "unknown"}`);
+            }
+            const data = await res.json();
+            return data.reservations || [];
+        }
+
+        // ---------- Jobber visits fetch ----------
+
+        const VISITS_QUERY = `
+            query Visits($first: Int!, $after: String) {
+                visits(first: $first, after: $after) {
+                    nodes {
+                        id
+                        title
+                        startAt
+                        endAt
+                        property { id street }
+                        job { id jobNumber title }
+                    }
+                    pageInfo { endCursor hasNextPage }
+                }
+            }
+        `;
+
+        async function fetchBBQVisits(fromIso, toIso, onProgress) {
+            const all = [];
+            let after = null;
+            const PAGE_LIMIT = 100;
+            let pages = 0;
+            while (pages < PAGE_LIMIT) {
+                const data = await jobberQuery("Visits", VISITS_QUERY, { first: 100, after });
+                const v = data.visits;
+                if (!v || !Array.isArray(v.nodes)) break;
+                const bbq = v.nodes.filter((n) => /bbq\s*clean/i.test(n.title || n.job?.title || ""));
+                const inWindow = bbq.filter((n) => {
+                    const d = dateOnly(n.startAt);
+                    return d >= fromIso && d <= toIso;
+                });
+                all.push(...inWindow);
+                pages++;
+                onProgress?.(pages, all.length);
+                if (!v.pageInfo?.hasNextPage) break;
+                after = v.pageInfo.endCursor;
+            }
+            return all;
+        }
+
+        // ---------- cross-check engine (the 6-scenario matrix) ----------
+
+        function crossCheck(reservations, visits) {
+            const visitsByProp = new Map();
+            for (const v of visits) {
+                const k = streetKey(v.property?.street);
+                if (!visitsByProp.has(k)) visitsByProp.set(k, []);
+                visitsByProp.get(k).push({ ...v, date: dateOnly(v.startAt) });
+            }
+            const accountedVisits = new Set();
+            const rows = [];
+
+            for (const r of reservations) {
+                const k = streetKey(r.propertyName);
+                const propVisits = visitsByProp.get(k) || [];
+                const onCheckout = propVisits.find((v) => v.date === r.checkout && !accountedVisits.has(v.id));
+                if (onCheckout) accountedVisits.add(onCheckout.id);
+
+                const status = (r.status || "").toLowerCase();
+                const isCancelled = status === "cancelled" || status === "canceled" || status === "declined";
+
+                let flag = "✅";
+                let code = "OK";
+                let motivo = "";
+                let jobNumber = onCheckout?.job?.jobNumber || "";
+
+                if (isCancelled && onCheckout) {
+                    flag = "🔴";
+                    code = "CANCELOU_RESERVA_E_DEIXOU_JOB";
+                    motivo = `Reserva cancelada mas o BBQ Clean #${jobNumber} continua agendado em ${onCheckout.date}`;
+                } else if (!isCancelled && r.hasBBQGrill && !onCheckout) {
+                    const midStay = propVisits.find((v) => v.date > r.checkin && v.date < r.checkout && !accountedVisits.has(v.id));
+                    if (midStay) {
+                        accountedVisits.add(midStay.id);
+                        jobNumber = midStay.job?.jobNumber || "";
+                        flag = "🔴";
+                        code = "DATA_ERRADA";
+                        motivo = `BBQ Clean #${jobNumber} agendado em ${midStay.date}, dentro da estadia (checkout é ${r.checkout})`;
+                    } else {
+                        flag = "🔴";
+                        code = "JOB_FALTANDO";
+                        motivo = "Reserva tem BBQ marcado mas não tem BBQ Clean no Jobber pro checkout";
+                    }
+                } else if (!isCancelled && !r.hasBBQGrill && onCheckout) {
+                    flag = "🟡";
+                    code = "ESQUECERAM_DE_MARCAR";
+                    motivo = `BBQ Clean #${jobNumber} existe no Jobber pro checkout mas a reserva não tem BBQ marcado em MAPRO`;
+                } else if (isCancelled && !onCheckout) {
+                    flag = "✅";
+                    code = "CANCELADA_LIMPA";
+                    motivo = "Reserva cancelada, sem job órfão.";
+                }
+
+                rows.push({ ...r, flag, code, motivo, jobberJobNumber: jobNumber });
+            }
+
+            // Orphan visits — any visit not accounted for during the reservation loop.
+            for (const [, propVisits] of visitsByProp) {
+                for (const v of propVisits) {
+                    if (accountedVisits.has(v.id)) continue;
+                    rows.push({
+                        bookingId: "",
+                        guest: "(orphan job)",
+                        propertyName: v.property?.street || "",
+                        propertyMaproId: "",
+                        checkin: "",
+                        checkout: v.date,
+                        hasBBQGrill: false,
+                        hasPoolHeat: false,
+                        hasPet: false,
+                        hasLaundry: false,
+                        amountBBQGrill: 0,
+                        status: "",
+                        paymentStatus: "",
+                        integrator: "",
+                        totalReservation: 0,
+                        totalPaid: 0,
+                        outstandingAmount: 0,
+                        flag: "🔴",
+                        code: "JOB_ORFAO",
+                        motivo: `BBQ Clean #${v.job?.jobNumber || ""} agendado em ${v.date} sem reserva nessa data`,
+                        jobberJobNumber: v.job?.jobNumber || "",
+                    });
+                }
+            }
+
+            return rows;
+        }
+
+        // ---------- UI ----------
+
+        window.loadAndCheck = async function () {
             if (!currentUser) return;
             const fromRaw = document.getElementById("checkout-from").value.trim();
             const toRaw = document.getElementById("checkout-to").value.trim();
@@ -248,41 +316,64 @@
             btn.disabled = true;
             downloadBtn.disabled = true;
             status.classList.remove("error");
-            status.textContent = "Loading reservations…";
+            status.textContent = "Carregando reservas do MAPRO…";
             tbody.innerHTML = "";
-            lastReservations = [];
+            lastFlags = [];
             lastWindow = { from: fromRaw, to: toRaw };
 
             try {
-                const idToken = await currentUser.getIdToken();
-                const url = `${PROXY_URL}/api/mapro/reservations?checkoutFrom=${encodeURIComponent(fromIso)}&checkoutTo=${encodeURIComponent(toIso)}`;
-                const res = await fetch(url, { headers: { "Authorization": "Bearer " + idToken } });
-                if (res.status === 503) {
-                    const body = await res.json().catch(() => ({}));
-                    if (body.error === "MAPRO_NOT_LOGGED_IN") {
-                        status.textContent = "MAPRO session expired. Admin: refresh the cookie in Settings.";
-                        status.classList.add("error");
-                        return;
-                    }
-                }
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({}));
-                    status.textContent = `Error ${res.status}: ${body.error || "unknown"}`;
+                const reservations = await fetchReservations(fromIso, toIso);
+                status.textContent = `MAPRO ok (${reservations.length} reservas). Buscando BBQ Clean no Jobber…`;
+
+                const ping = await jobberMessage("ping");
+                if (!ping || !ping.ok) {
+                    status.textContent = "Extensão MasterBot Bridge não está ativa. Habilita a extensão (ela é quem fala com o Jobber).";
                     status.classList.add("error");
                     return;
                 }
-                const data = await res.json();
-                lastReservations = data.reservations || [];
-                renderRows(lastReservations);
-                status.textContent = `${data.count} reservas com checkout entre ${fromRaw} e ${toRaw}.`;
-                downloadBtn.disabled = lastReservations.length === 0;
+
+                const visits = await fetchBBQVisits(fromIso, toIso, (pages, n) => {
+                    status.textContent = `MAPRO ok (${reservations.length} reservas). Jobber: ${pages} páginas, ${n} BBQ Cleans…`;
+                });
+
+                const flags = crossCheck(reservations, visits);
+                lastFlags = flags;
+
+                const counts = {};
+                for (const f of flags) counts[f.code] = (counts[f.code] || 0) + 1;
+                const flaggedCount = flags.filter((f) => f.flag !== "✅").length;
+
+                const parts = [
+                    `${reservations.length} reservas`,
+                    `${visits.length} BBQ Cleans no Jobber`,
+                    `${flaggedCount} flag${flaggedCount === 1 ? "" : "s"}`,
+                ];
+                Object.entries(counts)
+                    .filter(([c]) => c !== "OK" && c !== "CANCELADA_LIMPA")
+                    .sort()
+                    .forEach(([c, n]) => parts.push(`${n} ${c}`));
+                status.textContent = parts.join(" · ");
+
+                renderRows(flags);
+                downloadBtn.disabled = false;
             } catch (e) {
-                status.textContent = "Network error: " + (e && e.message || e);
+                status.textContent = "Erro: " + (e && e.message || e);
                 status.classList.add("error");
             } finally {
                 btn.disabled = false;
             }
         };
+
+        window.toggleFilter = function () {
+            renderRows(lastFlags);
+        };
+
+        function escapeHtml(s) {
+            return String(s ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
 
         function statusBadge(s) {
             if (!s) return `<span class="badge badge-other">—</span>`;
@@ -293,26 +384,26 @@
         }
 
         function yesNoBadge(v) {
-            return v
-                ? `<span class="badge badge-yes">Yes</span>`
-                : `<span class="badge badge-no">—</span>`;
+            return v ? `<span class="badge badge-yes">Yes</span>` : `<span class="badge badge-no">—</span>`;
         }
 
-        function escapeHtml(s) {
-            return String(s ?? "")
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;");
+        function rowClass(flag) {
+            if (flag === "🔴") return "flag-red";
+            if (flag === "🟡") return "flag-yellow";
+            return "";
         }
 
         function renderRows(rows) {
+            const onlyFlagged = document.getElementById("only-flagged")?.checked;
+            const shown = onlyFlagged ? rows.filter((r) => r.flag !== "✅") : rows;
             const tbody = document.getElementById("verify-tbody");
-            if (rows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px;">Nenhuma reserva nesse período.</td></tr>`;
+            if (shown.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:32px;">${onlyFlagged ? "Nenhum flag — tudo limpo no período. 🎉" : "Nenhuma reserva nesse período."}</td></tr>`;
                 return;
             }
-            tbody.innerHTML = rows.map((r) => `
-                <tr>
+            tbody.innerHTML = shown.map((r) => `
+                <tr class="${rowClass(r.flag)}">
+                    <td class="flag-cell">${r.flag}</td>
                     <td>${escapeHtml(r.bookingId)}</td>
                     <td>${escapeHtml(r.guest)}</td>
                     <td>${escapeHtml(r.propertyName)}</td>
@@ -320,67 +411,51 @@
                     <td>${escapeHtml(r.checkout)}</td>
                     <td>${yesNoBadge(r.hasBBQGrill)}</td>
                     <td>${statusBadge(r.status)}</td>
-                    <td>${escapeHtml(r.integrator)}</td>
+                    <td class="motivo-cell">${escapeHtml(r.motivo)}</td>
                 </tr>
             `).join("");
         }
 
-        // CSV escape: wrap in quotes if the value contains comma, quote, or newline;
-        // double up any embedded quotes per RFC 4180.
+        // ---------- CSV ----------
+
         function csvField(v) {
             const s = v == null ? "" : String(v);
             return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         }
 
         window.downloadCsv = function () {
-            if (lastReservations.length === 0) return;
+            if (lastFlags.length === 0) return;
             const headers = [
-                "Booking ID",
-                "Guest",
-                "Property",
-                "Property MAPRO ID",
-                "Check-in",
-                "Check-out",
-                "Has BBQ",
-                "BBQ Amount",
-                "Has Pool Heat",
-                "Has Pet",
-                "Has Laundry",
-                "Status",
-                "Payment Status",
-                "Channel",
-                "Total",
-                "Total Paid",
-                "Outstanding",
+                "Flag", "Code", "Motivo",
+                "Booking ID", "Guest", "Property", "Property MAPRO ID",
+                "Check-in", "Check-out",
+                "Has BBQ", "BBQ Amount",
+                "Has Pool Heat", "Has Pet", "Has Laundry",
+                "Status", "Payment Status", "Channel",
+                "Total", "Total Paid", "Outstanding",
+                "Jobber Job #",
             ];
-            const rows = lastReservations.map((r) => [
-                r.bookingId,
-                r.guest,
-                r.propertyName,
-                r.propertyMaproId,
-                r.checkin,
-                r.checkout,
+            const rows = lastFlags.map((r) => [
+                r.flag, r.code, r.motivo,
+                r.bookingId, r.guest, r.propertyName, r.propertyMaproId,
+                r.checkin, r.checkout,
                 r.hasBBQGrill ? "Yes" : "No",
                 r.amountBBQGrill || 0,
                 r.hasPoolHeat ? "Yes" : "No",
                 r.hasPet ? "Yes" : "No",
                 r.hasLaundry ? "Yes" : "No",
-                r.status,
-                r.paymentStatus,
-                r.integrator,
-                r.totalReservation || 0,
-                r.totalPaid || 0,
-                r.outstandingAmount || 0,
+                r.status, r.paymentStatus, r.integrator,
+                r.totalReservation || 0, r.totalPaid || 0, r.outstandingAmount || 0,
+                r.jobberJobNumber,
             ]);
             const csv = [headers, ...rows].map((row) => row.map(csvField).join(",")).join("\r\n");
-            // BOM so Excel renders accented characters correctly.
             const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             const fromTag = lastWindow.from.replace(/\//g, "-");
             const toTag = lastWindow.to.replace(/\//g, "-");
             a.href = url;
-            a.download = `verify-${fromTag}_to_${toTag}.csv`;
+            a.download = `verify-bbq-${fromTag}_to_${toTag}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -395,10 +470,10 @@
     <main class="verify-main">
         <h1>Verify</h1>
         <p class="verify-intro">
-            Verificação diária de reservas. v0 — lista as reservas com checkout no
-            período e mostra se cada uma tem BBQ marcado. Baixa o CSV pra cross-check
-            manual com o Jobber por enquanto. Próximo passo: cruzamento automático
-            (matriz dos 6 cenários do BBQ) gerado pelo próprio relatório.
+            Verificação diária BBQ. Carrega as reservas do MAPRO no período, busca todos os
+            BBQ Cleans do Jobber, cruza, e flag os 6 cenários da matriz: job faltando, data
+            errada, esqueceram de marcar BBQ na reserva, job de reserva cancelada, job
+            órfão. Baixa o CSV com tudo pra cima e ação direta.
         </p>
 
         <div class="verify-toolbar">
@@ -410,7 +485,7 @@
                 <label for="checkout-to">até</label>
                 <input type="text" id="checkout-to" placeholder="MM/DD/YYYY">
             </div>
-            <button id="verify-load-btn" class="verify-btn" onclick="loadReservations()">Carregar</button>
+            <button id="verify-load-btn" class="verify-btn" onclick="loadAndCheck()">Verificar</button>
             <button id="verify-download-btn" class="verify-btn secondary" onclick="downloadCsv()" disabled>
                 Baixar CSV
             </button>
@@ -418,10 +493,15 @@
 
         <div class="verify-status" id="verify-status"></div>
 
+        <div class="verify-filter">
+            <label><input type="checkbox" id="only-flagged" onchange="toggleFilter()"> Só mostrar flags (esconder ✅)</label>
+        </div>
+
         <div class="verify-table-wrap">
             <table class="verify-table">
                 <thead>
                     <tr>
+                        <th>Flag</th>
                         <th>Booking</th>
                         <th>Guest</th>
                         <th>Property</th>
@@ -429,7 +509,7 @@
                         <th>Check-out</th>
                         <th>BBQ?</th>
                         <th>Status</th>
-                        <th>Channel</th>
+                        <th>Motivo</th>
                     </tr>
                 </thead>
                 <tbody id="verify-tbody"></tbody>
