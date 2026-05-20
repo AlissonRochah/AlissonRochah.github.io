@@ -919,6 +919,43 @@
             }
         };
 
+        // ========== ADMIN: UPDATE MAPRO COOKIE ==========
+
+        window.updateMaproCookie = async function () {
+            const input = document.getElementById("mapro-cookie-input");
+            const cookie = input.value.trim();
+            if (cookie.length < 10) {
+                showToast("Paste the MAPRO session cookie.", "error");
+                return;
+            }
+            const user = auth.currentUser;
+            if (!user) { showToast("Not signed in.", "error"); return; }
+
+            const btn = document.getElementById("mapro-cookie-btn");
+            btn.disabled = true;
+            btn.textContent = "Updating…";
+            try {
+                const idToken = await user.getIdToken();
+                const res = await fetch(BULK_PROXY_URL + "/api/admin/mapro-cookie", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": "Bearer " + idToken,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ cookie }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                input.value = "";
+                showToast("MAPRO cookie updated.");
+            } catch (e) {
+                showToast("Error: " + (e && e.message || e), "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Update Cookie";
+            }
+        };
+
     </script>
 </head>
 
@@ -1200,6 +1237,20 @@ Your Name</pre>
                 <input type="password" id="new-user-password" placeholder="At least 6 characters" autocomplete="new-password">
             </div>
             <button id="create-user-btn" onclick="createNewUser()" class="btn btn-primary btn-sm">Create User</button>
+        </section>
+
+        <section id="mapro-cookie-section" class="settings-section">
+            <div class="section-header">
+                <div class="section-info">
+                    <h2>MAPRO Cookie</h2>
+                    <p>Paste the session cookie from app.mapro.us when units stop loading. DevTools → Application → Cookies → app.mapro.us; copy the full cookie header.</p>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="mapro-cookie-input">Cookie</label>
+                <textarea id="mapro-cookie-input" rows="4" placeholder="name1=value1; name2=value2; …" autocomplete="off" spellcheck="false"></textarea>
+            </div>
+            <button id="mapro-cookie-btn" onclick="updateMaproCookie()" class="btn btn-primary btn-sm">Update Cookie</button>
         </section>
         </div><!-- /users panel -->
 
