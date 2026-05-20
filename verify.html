@@ -87,6 +87,17 @@
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         }
 
+        function dateOffset(days) {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        }
+
+        function formatUs(d) {
+            return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+        }
+
         function usToIso(s) {
             const m = String(s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
             if (!m) return "";
@@ -98,9 +109,16 @@
         function dateOnly(iso) { return String(iso || "").slice(0, 10); }
 
         function initPickers() {
+            const fromInput = document.getElementById("checkout-from");
+            const toInput = document.getElementById("checkout-to");
+            // Pre-fill the raw input value first so the user sees the defaults even
+            // if flatpickr fails to load (CDN block, slow network, etc.) — then let
+            // flatpickr enhance it with the calendar popup on top.
+            fromInput.value = formatUs(dateOffset(0));
+            toInput.value = formatUs(dateOffset(14));
             const common = { dateFormat: "m/d/Y", allowInput: true, disableMobile: true };
-            flatpickr("#checkout-from", { ...common, defaultDate: isoDateOffset(0) });
-            flatpickr("#checkout-to", { ...common, defaultDate: isoDateOffset(14) });
+            flatpickr(fromInput, { ...common, defaultDate: dateOffset(0) });
+            flatpickr(toInput, { ...common, defaultDate: dateOffset(14) });
         }
 
         // ---------- Jobber bridge ----------
