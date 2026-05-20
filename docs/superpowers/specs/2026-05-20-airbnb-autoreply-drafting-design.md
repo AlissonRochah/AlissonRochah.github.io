@@ -9,12 +9,18 @@
 - The corpus: `~/.airbnb-corpus/pairs.jsonl` (sub-project 2).
 - A hand-edited style guide: `~/.airbnb-style.md`. Starts with a minimal stub; Alisson appends rules as he notices Claude drift.
 
+## What "the new question" actually is
+
+Not a single message. It's **every unanswered incoming since the last team outgoing** — guests often stack 2-5 messages before we reply (yes/thanks/follow-up/one-more-thing). The reply must cohesively address all of them in one message.
+
+So the "new question" passed to retrieval and the prompt is the **concatenation** of all unanswered incomings in chronological order, plus our **immediately preceding outgoing** so the conversational thread makes sense (e.g., guest's "yes please!" only parses if we know we asked "do you want BBQ?").
+
 ## Retrieval
 
 Pick 5 examples from the corpus to use as few-shot. Method:
 
-1. Parse the new guest question (most recent incoming, signature/quoted-history stripped).
-2. Score every pair in `pairs.jsonl` by keyword overlap (BM25-lite) between the pair's `guest_question` and the new question.
+1. Parse the unanswered guest messages (all incomings since the last team outgoing, signatures/quoted-history stripped, concatenated in chronological order).
+2. Score every pair in `pairs.jsonl` by keyword overlap (BM25-lite) between the pair's `guest_question` and the concatenated new messages.
 3. Re-rank: ties broken by `author == "alisson"` > other named authors > `team` > `unknown`. Templates (`is_template: true`) get a hard score penalty so they don't drown out personal voice.
 4. Take top 5.
 
@@ -62,13 +68,14 @@ Check-in: {checkin}    Check-out: {checkout}
 Status: {r_status}
 Channel: {origin} (Airbnb code {r_channel_reservation_code})
 
-THREAD HISTORY (oldest → newest)
+THREAD HISTORY (oldest → newest, up to but not including the unanswered batch)
 [guest @ 2026-05-15 10:32] hello! is pool heat available?
-[alisson @ 2026-05-15 10:45] Hi Mary! Yes, it's $35/day...
-[guest @ 2026-05-16 01:52] great, can you add it for the whole stay?
+[alisson @ 2026-05-15 10:45] Hi Mary! Yes, it's $35/day. Want me to add the BBQ too for $75?
 
-NEW GUEST MESSAGE TO REPLY TO
-{the unanswered incoming(s)}
+UNANSWERED GUEST MESSAGES (you must address ALL of these in ONE reply, cohesively)
+[guest @ 2026-05-15 15:01] yes please!
+[guest @ 2026-05-15 15:02] also can you confirm checkin time
+[guest @ 2026-05-15 15:10] sorry one more thing - is parking free?
 
 SIMILAR PAST EXCHANGES (use these to match voice; do not copy verbatim)
 1. [author: alisson] When guest asked "...", you replied: "..."
