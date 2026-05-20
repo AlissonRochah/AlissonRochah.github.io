@@ -22,9 +22,7 @@ async function maproFetchHtml(path) {
         },
     });
 
-    if (res.status === 401 || res.status === 302 || res.status === 0) {
-        throw new MaproNotLoggedIn();
-    }
+    if (isMaproAuthFailure(res.status)) throw new MaproNotLoggedIn();
     if (!res.ok) throw new Error(`MAPRO ${res.status}`);
     return await res.text();
 }
@@ -42,9 +40,7 @@ async function maproFetchJson(path) {
             "User-Agent": "Mozilla/5.0 (compatible; MasterBotProxy/0.1)",
         },
     });
-    if (res.status === 401 || res.status === 302 || res.status === 0) {
-        throw new MaproNotLoggedIn();
-    }
+    if (isMaproAuthFailure(res.status)) throw new MaproNotLoggedIn();
     if (!res.ok) throw new Error(`MAPRO ${res.status}`);
     return await res.json();
 }
@@ -64,11 +60,16 @@ async function maproPostForm(path, body) {
         },
         body,
     });
-    if (res.status === 401 || res.status === 302 || res.status === 0) {
-        throw new MaproNotLoggedIn();
-    }
+    if (isMaproAuthFailure(res.status)) throw new MaproNotLoggedIn();
     if (!res.ok) throw new Error(`MAPRO ${res.status}`);
     return await res.json();
+}
+
+// MAPRO returns 401 when the cookie is missing, 302 when it redirects
+// to login, 0 when the redirect is opaque, and 403 when the cookie is
+// present but stale/invalid. All four mean the session needs refresh.
+function isMaproAuthFailure(status) {
+    return status === 401 || status === 403 || status === 302 || status === 0;
 }
 
 function extractLocalDataArray(html) {
