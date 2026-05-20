@@ -330,6 +330,79 @@
             catch (_) { /* quota — ignore */ }
         }
 
+        // Bulk-load all Jobber properties at the start of a run so the
+        // street→property map covers houses whose BBQ Clean isn't in this
+        // window (otherwise they'd be 🟠 by default).
+        const PROPERTIES_QUERY = `
+            query AllProperties($first: Int!, $after: String) {
+                properties(first: $first, after: $after) {
+                    nodes {
+                        id
+                        name
+                        street
+                        client { id name }
+                    }
+                    pageInfo { endCursor hasNextPage }
+                }
+            }
+        `;
+
+        async function fetchAllJobberProperties(onProgress) {
+            const all = [];
+            let after = null;
+            for (let i = 0; i < 50; i++) {
+                let data;
+                try {
+                    data = await jobberQuery("AllProperties", PROPERTIES_QUERY, { first: 100, after });
+                } catch (e) {
+                    // properties() at root may not exist on this endpoint — bail
+                    // and let crossCheck fall back to visits-based matching.
+                    console.warn("[verify] AllProperties query failed:", e.message);
+                    return all;
+                }
+                const p = data?.properties;
+                if (!p || !Array.isArray(p.nodes)) break;
+                all.push(...p.nodes);
+                onProgress?.(all.length);
+                if (!p.pageInfo?.hasNextPage) break;
+                after = p.pageInfo.endCursor;
+            }
+            return all;
+        }
+
+        // For each MAPRO reservation, try to find its Jobber property via the
+        // bulk-fetched list and persist the match into masterbotJobberMapping
+        // so future runs (and units.html) benefit too.
+        function autoMatchProperties(reservations, allJobberProps) {
+            const propByStreet = new Map();
+            for (const p of (allJobberProps || [])) {
+                const sk = streetKey(p.street || p.name);
+                if (sk && !propByStreet.has(sk)) propByStreet.set(sk, p);
+            }
+            const mapping = readJobberMapping();
+            let added = 0;
+            for (const r of reservations) {
+                if (!r.propertyMaproId) continue;
+                if (mapping[r.propertyMaproId]?.propertyId) continue;
+                const sk = streetKey(r.propertyName);
+                if (!sk) continue;
+                const jp = propByStreet.get(sk);
+                if (!jp) continue;
+                mapping[r.propertyMaproId] = {
+                    propertyId: jp.id,
+                    propertyName: jp.name || "",
+                    street: jp.street || "",
+                    clientId: jp.client?.id || "",
+                    clientName: jp.client?.name || "",
+                    ts: Date.now(),
+                    matchedAuto: true,
+                };
+                added++;
+            }
+            if (added > 0) writeJobberMapping(mapping);
+            return added;
+        }
+
         // Used by the "Casar com Jobber" button to let the user search Jobber
         // for the right Property and link it manually.
         const SEARCH_QUERY = `
@@ -590,8 +663,17 @@
                     return;
                 }
 
+                // 1) Bulk-fetch all Jobber properties and auto-cache matches
+                //    against MAPRO propertyMaproId. Reduces 🟠s dramatically.
+                status.textContent = `MAPRO ok (${reservations.length} reservas). Carregando propriedades do Jobber…`;
+                const allJobberProps = await fetchAllJobberProperties((n) => {
+                    status.textContent = `MAPRO ok (${reservations.length} reservas). Jobber: ${n} propriedades…`;
+                });
+                const autoMatched = autoMatchProperties(reservations, allJobberProps);
+                console.log(`[verify] Jobber properties: ${allJobberProps.length} · auto-matched ${autoMatched} new pairs`);
+
                 const visits = await fetchBBQVisits(fromIso, toIso, (pages, n) => {
-                    status.textContent = `MAPRO ok (${reservations.length} reservas). Jobber: ${pages} páginas, ${n} BBQ Cleans…`;
+                    status.textContent = `Jobber: ${allJobberProps.length} props, ${pages} pgs visits, ${n} BBQ Cleans…`;
                 });
 
                 const flags = crossCheck(reservations, visits);
