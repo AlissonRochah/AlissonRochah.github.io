@@ -10,6 +10,7 @@ const PAGES = [
     { key: "templates", label: "Templates", href: "template.html" },
     { key: "messages",  label: "Messages",  href: "messages.html" },
     { key: "units",     label: "Units",     href: "units.html" },
+    { key: "verify",    label: "Verify",    href: "verify.html" },
     { key: "settings",  label: "Settings",  href: "settings.html" },
 ];
 
