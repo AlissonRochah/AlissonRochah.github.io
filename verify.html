@@ -196,7 +196,25 @@
 
         // ---------- Jobber visits fetch ----------
 
-        const VISITS_QUERY = `
+        // Two query variants — the public Jobber API takes `sort`, but the
+        // internal endpoint may not. Try sorted first (newest first lets us
+        // early-stop when we go past the window) and fall back unsorted.
+        const VISITS_QUERY_SORTED = `
+            query Visits($first: Int!, $after: String) {
+                visits(first: $first, after: $after, sort: [{ key: START_AT, direction: DESCENDING }]) {
+                    nodes {
+                        id
+                        title
+                        startAt
+                        endAt
+                        property { id street name }
+                        job { id jobNumber title }
+                    }
+                    pageInfo { endCursor hasNextPage }
+                }
+            }
+        `;
+        const VISITS_QUERY_PLAIN = `
             query Visits($first: Int!, $after: String) {
                 visits(first: $first, after: $after) {
                     nodes {
@@ -222,23 +240,58 @@
         async function fetchBBQVisits(fromIso, toIso, onProgress) {
             const all = [];
             let after = null;
-            const PAGE_LIMIT = 100;
+            const PAGE_LIMIT = 200;
             let pages = 0;
+            let useSorted = true;
+            let queryToUse = VISITS_QUERY_SORTED;
+            let stopReason = null;
+
             while (pages < PAGE_LIMIT) {
-                const data = await jobberQuery("Visits", VISITS_QUERY, { first: 100, after });
-                const v = data.visits;
-                if (!v || !Array.isArray(v.nodes)) break;
-                const bbq = v.nodes.filter((n) => /bbq\s*clean/i.test(n.title || n.job?.title || ""));
-                const inWindow = bbq.filter((n) => {
-                    const d = dateInFlorida(n.startAt);
-                    return d >= fromIso && d <= toIso;
-                });
+                let data;
+                try {
+                    data = await jobberQuery("Visits", queryToUse, { first: 100, after });
+                } catch (e) {
+                    // The sorted variant may reject if the internal endpoint
+                    // doesn't accept the sort enum. Fall back once and retry
+                    // the same page unsorted before bailing.
+                    if (useSorted && pages === 0) {
+                        console.warn("[verify] sorted Visits query rejected, falling back to unsorted:", e.message);
+                        queryToUse = VISITS_QUERY_PLAIN;
+                        useSorted = false;
+                        continue;
+                    }
+                    throw e;
+                }
+                const v = data?.visits;
+                if (!v || !Array.isArray(v.nodes)) {
+                    console.warn("[verify] unexpected Visits response shape — data:", data);
+                    stopReason = "bad_shape";
+                    break;
+                }
+                if (pages === 0) {
+                    console.log("[verify] first Jobber page — nodes:", v.nodes.length,
+                        "useSorted:", useSorted,
+                        "sample titles:", v.nodes.slice(0, 10).map((n) => n.title || n.job?.title));
+                    if (v.nodes[0]) console.log("[verify] first raw visit:", v.nodes[0]);
+                }
+                const dated = v.nodes.map((n) => ({ ...n, _date: dateInFlorida(n.startAt) }));
+                const bbq = dated.filter((n) => /bbq\s*clean/i.test(n.title || n.job?.title || ""));
+                const inWindow = bbq.filter((n) => n._date >= fromIso && n._date <= toIso);
                 all.push(...inWindow);
                 pages++;
                 onProgress?.(pages, all.length);
-                if (!v.pageInfo?.hasNextPage) break;
+                console.log(`[verify] page ${pages}: ${v.nodes.length} raw / ${bbq.length} BBQ / ${inWindow.length} in window`);
+
+                if (useSorted) {
+                    // Newest-first: once a whole page is older than the window's
+                    // lower bound, we know everything past this is even older.
+                    const allBefore = dated.length > 0 && dated.every((n) => n._date && n._date < fromIso);
+                    if (allBefore) { stopReason = "past_window"; break; }
+                }
+                if (!v.pageInfo?.hasNextPage) { stopReason = "end_of_pages"; break; }
                 after = v.pageInfo.endCursor;
             }
+            console.log(`[verify] Jobber visits done · pages=${pages} · stop=${stopReason} · BBQ in window=${all.length}`);
             return all;
         }
 
