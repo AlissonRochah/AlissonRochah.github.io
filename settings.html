@@ -923,11 +923,15 @@
 
         window.updateMaproCookie = async function () {
             const input = document.getElementById("mapro-cookie-input");
-            const cookie = input.value.trim();
-            if (cookie.length < 10) {
-                showToast("Paste the MAPRO session cookie.", "error");
+            // Accept either the raw SID value or a "SID=..." string —
+            // store as "SID=<value>" since mapro.js uses it as the
+            // Cookie header verbatim.
+            const raw = input.value.trim().replace(/^SID=/, "");
+            if (raw.length < 10) {
+                showToast("Paste the SID value.", "error");
                 return;
             }
+            const cookie = "SID=" + raw;
             const user = auth.currentUser;
             if (!user) { showToast("Not signed in.", "error"); return; }
 
@@ -945,10 +949,14 @@
                     body: JSON.stringify({ cookie }),
                 });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                if (!res.ok) {
+                    console.error("mapro-cookie update failed:", res.status, data);
+                    throw new Error(data.error || `HTTP ${res.status}`);
+                }
                 input.value = "";
                 showToast("MAPRO cookie updated.");
             } catch (e) {
+                console.error("mapro-cookie update error:", e);
                 showToast("Error: " + (e && e.message || e), "error");
             } finally {
                 btn.disabled = false;
@@ -1243,12 +1251,12 @@ Your Name</pre>
             <div class="section-header">
                 <div class="section-info">
                     <h2>MAPRO Cookie</h2>
-                    <p>Paste the session cookie from app.mapro.us when units stop loading. DevTools → Application → Cookies → app.mapro.us; copy the full cookie header.</p>
+                    <p>Paste the SID value from app.mapro.us when units stop loading. DevTools → Application → Cookies → app.mapro.us → copy the value of the <code>SID</code> cookie.</p>
                 </div>
             </div>
             <div class="form-group">
-                <label for="mapro-cookie-input">Cookie</label>
-                <textarea id="mapro-cookie-input" rows="4" placeholder="name1=value1; name2=value2; …" autocomplete="off" spellcheck="false"></textarea>
+                <label for="mapro-cookie-input">SID</label>
+                <input type="text" id="mapro-cookie-input" placeholder="SID value" autocomplete="off" spellcheck="false">
             </div>
             <button id="mapro-cookie-btn" onclick="updateMaproCookie()" class="btn btn-primary btn-sm">Update Cookie</button>
         </section>
