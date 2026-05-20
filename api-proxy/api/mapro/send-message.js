@@ -1,4 +1,4 @@
-import { requireFirebaseUser } from "../_lib/auth.js";
+import { requireBridgeOrUser } from "../_lib/auth.js";
 import { applyCors } from "../_lib/cors.js";
 import {
     findBookingByConfirmationCode,
@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        await requireFirebaseUser(req);
+        await requireBridgeOrUser(req);
     } catch (err) {
         res.status(err.status || 401).json({ error: err.message });
         return;
