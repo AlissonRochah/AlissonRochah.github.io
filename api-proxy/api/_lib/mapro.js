@@ -330,34 +330,45 @@ function addOneDay(iso) {
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
+// Page size for /booking/check-reservation. MAPRO accepts up to a few thousand
+// per request comfortably; 500 keeps each round fast and pagination cheap.
+const RESERVATIONS_PAGE = 500;
+
 // List reservations from MAPRO's /booking/check-reservation DataTables endpoint.
-// `checkoutFrom`/`checkoutTo` are YYYY-MM-DD (inclusive). All params optional;
-// without filters this returns the first `take` rows MAPRO would show.
+// `checkoutFrom`/`checkoutTo` are YYYY-MM-DD (inclusive). `max` caps the total
+// rows returned (default 50000) — internally pages with skip/take until either
+// MAPRO runs out of rows or `max` is reached.
 // Returns normalized rows: has* fields become booleans, status/paymentStatus/
 // integrator are plain text, propertyCode is split into id + name.
-export async function listReservations({ checkoutFrom, checkoutTo, take = 1000 } = {}) {
-    const params = new URLSearchParams();
-    params.set("gridAjax", "");
-    params.set("skip", "0");
-    params.set("take", String(take));
-    params.set("requireTotalCount", "false");
-    params.set("sort", JSON.stringify([{ selector: "checkout", desc: false }]));
-
-    // MAPRO's DataTables backend expects plain YYYY-MM-DD date strings; tacking
-    // " 23:59:59" onto the upper bound makes it answer with "invalid date".
-    // Use `<` against the day after instead, so checkout==checkoutTo is included.
+export async function listReservations({ checkoutFrom, checkoutTo, max = 50000 } = {}) {
+    // Filter shared across pages. MAPRO's DataTables backend expects plain
+    // YYYY-MM-DD; tacking " 23:59:59" onto the upper bound makes it answer with
+    // "invalid date". Use `<` against the day after so the bound stays inclusive.
     const parts = [];
     if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
     if (checkoutTo) parts.push(["checkout", "<", addOneDay(checkoutTo)]);
     let filter = null;
     if (parts.length === 1) filter = parts[0];
     else if (parts.length === 2) filter = [parts[0], "and", parts[1]];
-    if (filter) params.set("filter", JSON.stringify(filter));
 
-    const json = await maproFetchJson(`/booking/check-reservation?${params.toString()}`);
-    const items = Array.isArray(json?.items) ? json.items : [];
+    const allItems = [];
+    for (let skip = 0; skip < max; skip += RESERVATIONS_PAGE) {
+        const params = new URLSearchParams();
+        params.set("gridAjax", "");
+        params.set("skip", String(skip));
+        params.set("take", String(Math.min(RESERVATIONS_PAGE, max - skip)));
+        params.set("requireTotalCount", "false");
+        params.set("sort", JSON.stringify([{ selector: "checkout", desc: false }]));
+        if (filter) params.set("filter", JSON.stringify(filter));
 
-    return items.map((r) => {
+        const json = await maproFetchJson(`/booking/check-reservation?${params.toString()}`);
+        const items = Array.isArray(json?.items) ? json.items : [];
+        allItems.push(...items);
+        // No more pages if MAPRO returned fewer than we asked for.
+        if (items.length < RESERVATIONS_PAGE) break;
+    }
+
+    return allItems.map((r) => {
         const prop = parsePropertyCode(r.propertyCode);
         return {
             bookingId: String(r.bookingID || r.key || ""),
