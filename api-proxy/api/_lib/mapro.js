@@ -320,50 +320,26 @@ function dateOnly(s) {
     return m ? m[1] : "";
 }
 
-// YYYY-MM-DD -> the next calendar day, same format. Used to express an
-// inclusive upper bound as `checkout < (to + 1d)` for MAPRO's grid filter.
-function addOneDay(iso) {
+// YYYY-MM-DD -> the calendar date N days later, same format. Used to express
+// upper bounds for MAPRO's grid filter (`<` against the day after).
+function addDays(iso, n) {
     const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return iso;
     const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-    d.setUTCDate(d.getUTCDate() + 1);
+    d.setUTCDate(d.getUTCDate() + n);
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
+function addOneDay(iso) { return addDays(iso, 1); }
 
 // Page size for /booking/check-reservation. MAPRO accepts up to a few thousand
 // per request comfortably; 500 keeps each round fast and pagination cheap.
 const RESERVATIONS_PAGE = 500;
 
-// List reservations from MAPRO's /booking/check-reservation DataTables endpoint.
-// `checkoutFrom`/`checkoutTo` are YYYY-MM-DD (inclusive). `max` caps the total
-// rows returned (default 50000) — internally pages with skip/take until either
-// MAPRO runs out of rows or `max` is reached.
-// `mode` controls the date filter:
-//   - "overlap" (default) — return any reservation whose stay touches the
-//     window: checkin < (to + 1d) AND checkout >= from. Catches in-progress
-//     stays so a BBQ Clean scheduled mid-stay can still be matched to its
-//     reservation instead of looking orphan.
-//   - "checkout" — only reservations whose checkout falls in the window.
-// Returns normalized rows: has* fields become booleans, status/paymentStatus/
-// integrator are plain text, propertyCode is split into id + name.
-export async function listReservations({ checkoutFrom, checkoutTo, max = 50000, mode = "overlap" } = {}) {
-    // Filter shared across pages. MAPRO's DataTables backend expects plain
-    // YYYY-MM-DD; tacking " 23:59:59" onto the upper bound makes it answer with
-    // "invalid date". Use `<` against the day after so the bound stays inclusive.
-    const parts = [];
-    if (mode === "checkout") {
-        if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
-        if (checkoutTo) parts.push(["checkout", "<", addOneDay(checkoutTo)]);
-    } else {
-        // overlap: stay's interval intersects the window
-        if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
-        if (checkoutTo) parts.push(["checkin", "<", addOneDay(checkoutTo)]);
-    }
-    let filter = null;
-    if (parts.length === 1) filter = parts[0];
-    else if (parts.length === 2) filter = [parts[0], "and", parts[1]];
-
-    const allItems = [];
+// Internal: fetch a paginated set of reservation rows from MAPRO's grid
+// endpoint with an arbitrary filter triple/array. Used by listReservations
+// to issue same-field queries (MAPRO doesn't reliably AND across fields).
+async function fetchReservationsPaged(filter, max) {
+    const items = [];
     for (let skip = 0; skip < max; skip += RESERVATIONS_PAGE) {
         const params = new URLSearchParams();
         params.set("gridAjax", "");
@@ -372,15 +348,66 @@ export async function listReservations({ checkoutFrom, checkoutTo, max = 50000, 
         params.set("requireTotalCount", "false");
         params.set("sort", JSON.stringify([{ selector: "checkout", desc: false }]));
         if (filter) params.set("filter", JSON.stringify(filter));
-
         const json = await maproFetchJson(`/booking/check-reservation?${params.toString()}`);
-        const items = Array.isArray(json?.items) ? json.items : [];
-        allItems.push(...items);
-        // No more pages if MAPRO returned fewer than we asked for.
-        if (items.length < RESERVATIONS_PAGE) break;
+        const page = Array.isArray(json?.items) ? json.items : [];
+        items.push(...page);
+        if (page.length < RESERVATIONS_PAGE) break;
+    }
+    return items;
+}
+
+// List reservations from MAPRO's /booking/check-reservation DataTables endpoint.
+// `checkoutFrom`/`checkoutTo` are YYYY-MM-DD (inclusive). `max` caps the total
+// rows fetched (default 50000) — internally pages with skip/take until either
+// MAPRO runs out of rows or `max` is reached.
+// `mode` controls what counts as "in the window":
+//   - "overlap" (default) — any reservation whose stay touches the window.
+//     Implemented as TWO same-field queries (MAPRO's grid doesn't seem to
+//     AND filters across different columns reliably): checkouts-in-window
+//     UNION future-checkouts whose checkin already landed.
+//   - "checkout" — only reservations whose checkout falls in the window.
+// Returns normalized rows: has* fields become booleans, status/paymentStatus/
+// integrator are plain text, propertyCode is split into id + name.
+export async function listReservations({ checkoutFrom, checkoutTo, max = 50000, mode = "overlap" } = {}) {
+    const afterEnd = checkoutTo ? addOneDay(checkoutTo) : null;
+
+    // Query A: checkouts in window — same-field AND, known to work.
+    const filterA = (() => {
+        const parts = [];
+        if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
+        if (afterEnd) parts.push(["checkout", "<", afterEnd]);
+        if (parts.length === 0) return null;
+        if (parts.length === 1) return parts[0];
+        return [parts[0], "and", parts[1]];
+    })();
+
+    let raw = await fetchReservationsPaged(filterA, max);
+
+    if (mode === "overlap" && afterEnd) {
+        // Query B: stays whose checkout is AFTER the window (haven't left yet).
+        // Cap with checkout < to+60d so we don't drag in the full future log.
+        const farFuture = addDays(checkoutTo, 60);
+        const filterB = [
+            ["checkout", ">=", afterEnd],
+            "and",
+            ["checkout", "<", farFuture],
+        ];
+        const futurePool = await fetchReservationsPaged(filterB, max);
+        // Of those, keep only the ones whose check-in already happened — that's
+        // what makes them in-progress over the window.
+        const inProgress = futurePool.filter((r) => {
+            const ci = String(r.checkin || "").slice(0, 10);
+            return ci && ci < afterEnd;
+        });
+        const byKey = new Map();
+        for (const r of [...raw, ...inProgress]) {
+            const k = String(r.bookingID || r.key || "");
+            if (!byKey.has(k)) byKey.set(k, r);
+        }
+        raw = [...byKey.values()];
     }
 
-    return allItems.map((r) => {
+    return raw.map((r) => {
         const prop = parsePropertyCode(r.propertyCode);
         return {
             bookingId: String(r.bookingID || r.key || ""),
