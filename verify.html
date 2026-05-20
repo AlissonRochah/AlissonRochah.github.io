@@ -204,13 +204,20 @@
                         title
                         startAt
                         endAt
-                        property { id street }
+                        property { id street name }
                         job { id jobNumber title }
                     }
                     pageInfo { endCursor hasNextPage }
                 }
             }
         `;
+
+        // Jobber Property might carry the address on `street` OR `name`
+        // depending on how the team set up the property. Pick whichever has
+        // the most useful text.
+        function propText(p) {
+            return (p && (p.street || p.name)) || "";
+        }
 
         async function fetchBBQVisits(fromIso, toIso, onProgress) {
             const all = [];
@@ -253,7 +260,7 @@
             const visitsByJobberId = new Map();
             for (const v of visits) {
                 const dated = { ...v, date: dateInFlorida(v.startAt) };
-                const sk = streetKey(v.property?.street);
+                const sk = streetKey(propText(v.property));
                 if (sk) {
                     if (!visitsByStreet.has(sk)) visitsByStreet.set(sk, []);
                     visitsByStreet.get(sk).push(dated);
@@ -435,11 +442,13 @@
                     console.table(visits.map((v) => ({
                         jobNumber: v.job?.jobNumber,
                         title: v.title || v.job?.title,
-                        property: v.property?.street,
-                        streetKey: streetKey(v.property?.street),
+                        propStreet: v.property?.street,
+                        propName: v.property?.name,
+                        streetKey: streetKey(propText(v.property)),
                         dateFlorida: dateInFlorida(v.startAt),
                         startAt: v.startAt,
                     })));
+                    if (visits[0]) console.log("First visit raw:", visits[0]);
                     console.groupEnd();
                 };
                 console.log("[verify] run window.verifyDebug() to inspect matching");
