@@ -434,16 +434,25 @@
             }
 
             const mapping = readJobberMapping();
-            // Pick the visit list for a reservation: street first, fall back to
-            // the cached MAPRO→Jobber id mapping if street didn't match.
+            // Pick the visit list for a reservation. Three outcomes:
+            //   street          — matched via streetKey to visits we already saw
+            //   mapping_cache   — cached MAPRO→Jobber id link found, AND that
+            //                     Jobber property has BBQ Clean visits in the window
+            //   mapping_cache_empty — same link exists but NO BBQ Clean visits in
+            //                     window (the casa is matched, just no job yet —
+            //                     this is JOB_FALTANDO, not PROPRIEDADE_SEM_MATCH)
+            //   unmatched       — no streetKey hit and no cache entry at all
             function visitsForReservation(r) {
                 const sk = streetKey(r.propertyName);
                 if (sk && visitsByStreet.has(sk)) {
                     return { source: "street", list: visitsByStreet.get(sk) };
                 }
                 const cached = mapping[r.propertyMaproId];
-                if (cached?.propertyId && visitsByJobberId.has(cached.propertyId)) {
-                    return { source: "mapping_cache", list: visitsByJobberId.get(cached.propertyId) };
+                if (cached?.propertyId) {
+                    if (visitsByJobberId.has(cached.propertyId)) {
+                        return { source: "mapping_cache", list: visitsByJobberId.get(cached.propertyId) };
+                    }
+                    return { source: "mapping_cache_empty", list: [] };
                 }
                 return { source: "unmatched", list: [] };
             }
@@ -477,16 +486,19 @@
                         code = "DATA_ERRADA";
                         motivo = `BBQ Clean #${jobNumber} agendado em ${midStay.date}, dentro da estadia (checkout é ${r.checkout})`;
                     } else if (source === "unmatched") {
-                        // Could not align this MAPRO property with any Jobber
-                        // property — keep separate from real JOB_FALTANDO so the
-                        // team knows it's a mapping problem, not a missing job.
+                        // Couldn't link this MAPRO property to a Jobber property
+                        // at all — different from JOB_FALTANDO. Manual match resolves it.
                         flag = "🟠";
                         code = "PROPRIEDADE_SEM_MATCH";
-                        motivo = "Não achei essa casa no Jobber (nem por nome, nem pelo cache de mapeamento). Abre Units, expande essa casa lá pra cachear o match, depois roda de novo.";
+                        motivo = "Não achei essa casa no Jobber (nem por nome, nem pelo cache de mapeamento). Clica 'Casar com Jobber' pra linkar manualmente.";
                     } else {
+                        // Property is matched (either by street or via cache) but
+                        // there's no BBQ Clean for it in the window — real missing job.
                         flag = "🔴";
                         code = "JOB_FALTANDO";
-                        motivo = `Reserva tem BBQ marcado mas não tem BBQ Clean no Jobber pro checkout (matching via ${source})`;
+                        motivo = source === "mapping_cache_empty"
+                            ? "Casa matchada no Jobber mas nenhum BBQ Clean agendado pra essa reserva."
+                            : `Reserva tem BBQ marcado mas não tem BBQ Clean no Jobber pro checkout (match via ${source}).`;
                     }
                 } else if (!isCancelled && !r.hasBBQGrill && onCheckout) {
                     flag = "🟡";
