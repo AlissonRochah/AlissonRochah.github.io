@@ -289,6 +289,89 @@ export async function findBookingByConfirmationCode(code) {
     };
 }
 
+// Strip MAPRO's "tabela2-tag" wrapper from status/paymentStatus/integrator —
+// returns the visible text (e.g. "Approved", "Paid out", "RED/AIR (Red Airbnb)").
+function tagText(html) {
+    const m = String(html || "").match(/tabela2-tag-tx[^>]*>\s*([^<]+?)\s*</);
+    return m ? m[1].trim() : "";
+}
+
+// propertyCode comes as <a href="/manage/houses/register/<id>" >Name</a>.
+// Pull out both the numeric id and the human-readable name.
+function parsePropertyCode(html) {
+    const s = String(html || "");
+    const idMatch = s.match(/\/manage\/houses\/register\/(\d+)/);
+    const nameMatch = s.match(/>([^<]+)<\/a>/);
+    return {
+        propertyMaproId: idMatch ? idMatch[1] : "",
+        propertyName: nameMatch ? nameMatch[1].trim() : "",
+    };
+}
+
+function dateOnly(s) {
+    const m = String(s || "").match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : "";
+}
+
+// List reservations from MAPRO's /booking/check-reservation DataTables endpoint.
+// `checkoutFrom`/`checkoutTo` are YYYY-MM-DD (inclusive). All params optional;
+// without filters this returns the first `take` rows MAPRO would show.
+// Returns normalized rows: has* fields become booleans, status/paymentStatus/
+// integrator are plain text, propertyCode is split into id + name.
+export async function listReservations({ checkoutFrom, checkoutTo, take = 1000 } = {}) {
+    const params = new URLSearchParams();
+    params.set("gridAjax", "");
+    params.set("skip", "0");
+    params.set("take", String(take));
+    params.set("requireTotalCount", "false");
+    params.set("sort", JSON.stringify([{ selector: "checkout", desc: false }]));
+
+    const parts = [];
+    if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
+    if (checkoutTo) parts.push(["checkout", "<=", `${checkoutTo} 23:59:59`]);
+    let filter = null;
+    if (parts.length === 1) filter = parts[0];
+    else if (parts.length === 2) filter = [parts[0], "and", parts[1]];
+    if (filter) params.set("filter", JSON.stringify(filter));
+
+    const json = await maproFetchJson(`/booking/check-reservation?${params.toString()}`);
+    const items = Array.isArray(json?.items) ? json.items : [];
+
+    return items.map((r) => {
+        const prop = parsePropertyCode(r.propertyCode);
+        return {
+            bookingId: String(r.bookingID || r.key || ""),
+            checkin: dateOnly(r.checkin),
+            checkout: dateOnly(r.checkout),
+            // Booked services (the "has<Service>" flag tells the team a service was sold)
+            hasBBQGrill: r.hasBBQGrill === "Yes",
+            amountBBQGrill: Number(r.amountBBQGrill) || 0,
+            hasPoolHeat: r.hasPoolHeat === "Yes",
+            amountPoolHeat: Number(r.amountPoolHeat) || 0,
+            hasPet: r.hasPet === "Yes",
+            amountPet: Number(r.amountPet) || 0,
+            hasLaundry: r.hasLaundry === "Yes",
+            amountLaundry: Number(r.amountLaundry) || 0,
+            hasInsurance: r.hasInsurance === "Yes",
+            insuranceAmount: Number(r.insuranceAmount) || 0,
+            hasBookingFee: r.hasBookingFee === "Yes",
+            amountBookingFee: Number(r.amountBookingFee) || 0,
+            // Property + guest
+            propertyMaproId: prop.propertyMaproId,
+            propertyName: prop.propertyName,
+            guest: r.guest || "",
+            // Status fields (HTML stripped)
+            status: tagText(r.status),
+            paymentStatus: tagText(r.paymentStatus),
+            integrator: tagText(r.integrator),
+            // Money — useful for Check 1 (valor) later
+            totalReservation: Number(r.totalReservation) || 0,
+            totalPaid: Number(r.totalPaid) || 0,
+            outstandingAmount: Number(r.outstandingAmount) || 0,
+        };
+    });
+}
+
 // The booking page hardcodes the reservation ULID into the messaging JS.
 // Pull it out so we can call /api/messaging/post_sales_channel_message.
 export async function getReservationUlid(bookingId) {
