@@ -964,6 +964,29 @@
             }
         };
 
+        window.testMaproCookie = async function () {
+            const out = document.getElementById("mapro-test-output");
+            const btn = document.getElementById("mapro-test-btn");
+            const user = auth.currentUser;
+            if (!user) { showToast("Not signed in.", "error"); return; }
+            btn.disabled = true;
+            btn.textContent = "Testing…";
+            out.textContent = "";
+            try {
+                const idToken = await user.getIdToken();
+                const res = await fetch(BULK_PROXY_URL + "/api/admin/mapro-test", {
+                    headers: { "Authorization": "Bearer " + idToken },
+                });
+                const data = await res.json().catch(() => ({}));
+                out.textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                out.textContent = "Error: " + (e && e.message || e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Test MAPRO";
+            }
+        };
+
     </script>
 </head>
 
@@ -1258,7 +1281,11 @@ Your Name</pre>
                 <label for="mapro-cookie-input">SID</label>
                 <input type="text" id="mapro-cookie-input" placeholder="SID value" autocomplete="off" spellcheck="false">
             </div>
-            <button id="mapro-cookie-btn" onclick="updateMaproCookie()" class="btn btn-primary btn-sm">Update Cookie</button>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <button id="mapro-cookie-btn" onclick="updateMaproCookie()" class="btn btn-primary btn-sm">Update Cookie</button>
+                <button id="mapro-test-btn" onclick="testMaproCookie()" class="btn btn-sm">Test MAPRO</button>
+            </div>
+            <pre id="mapro-test-output" style="margin-top:0.75rem; padding:0.5rem; background:#0001; border-radius:4px; white-space:pre-wrap; word-break:break-word; font-size:0.8rem; max-height:240px; overflow:auto;"></pre>
         </section>
         </div><!-- /users panel -->
 
