@@ -42,7 +42,14 @@ async function maproFetchJson(path) {
     });
     if (isMaproAuthFailure(res.status)) throw new MaproNotLoggedIn();
     if (!res.ok) throw new Error(`MAPRO ${res.status}`);
-    return await res.json();
+    // Read as text first so we can surface MAPRO's own error message
+    // (e.g. "invalid date") when the response isn't JSON.
+    const text = await res.text();
+    try {
+        return JSON.parse(text);
+    } catch (_) {
+        throw new Error(`MAPRO non-JSON response: ${text.slice(0, 200)}`);
+    }
 }
 
 async function maproPostForm(path, body) {
@@ -313,6 +320,16 @@ function dateOnly(s) {
     return m ? m[1] : "";
 }
 
+// YYYY-MM-DD -> the next calendar day, same format. Used to express an
+// inclusive upper bound as `checkout < (to + 1d)` for MAPRO's grid filter.
+function addOneDay(iso) {
+    const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return iso;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    d.setUTCDate(d.getUTCDate() + 1);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 // List reservations from MAPRO's /booking/check-reservation DataTables endpoint.
 // `checkoutFrom`/`checkoutTo` are YYYY-MM-DD (inclusive). All params optional;
 // without filters this returns the first `take` rows MAPRO would show.
@@ -326,9 +343,12 @@ export async function listReservations({ checkoutFrom, checkoutTo, take = 1000 }
     params.set("requireTotalCount", "false");
     params.set("sort", JSON.stringify([{ selector: "checkout", desc: false }]));
 
+    // MAPRO's DataTables backend expects plain YYYY-MM-DD date strings; tacking
+    // " 23:59:59" onto the upper bound makes it answer with "invalid date".
+    // Use `<` against the day after instead, so checkout==checkoutTo is included.
     const parts = [];
     if (checkoutFrom) parts.push(["checkout", ">=", checkoutFrom]);
-    if (checkoutTo) parts.push(["checkout", "<=", `${checkoutTo} 23:59:59`]);
+    if (checkoutTo) parts.push(["checkout", "<", addOneDay(checkoutTo)]);
     let filter = null;
     if (parts.length === 1) filter = parts[0];
     else if (parts.length === 2) filter = [parts[0], "and", parts[1]];
