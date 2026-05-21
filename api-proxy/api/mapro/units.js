@@ -24,23 +24,31 @@ export default async function handler(req, res) {
         // /settings/services or /manage/houses/resort, we degrade
         // gracefully instead of failing the whole endpoint.
         const units = await listUnits();
-        const [extras, resorts] = await Promise.all([
-            listExtras().catch((e) => {
-                console.warn("listExtras failed:", e?.message || e);
-                return { bbq: new Set(), ph35: new Set(), ph75: new Set() };
-            }),
-            listResorts().catch((e) => {
-                console.warn("listResorts failed:", e?.message || e);
-                return new Map();
-            }),
-        ]);
+        // listUnits is the only call that must succeed. listExtras
+        // depends on /settings/services/register/<id> which currently
+        // returns 403 (account permission was removed); when it fails
+        // we mark bbq/poolHeater as `null` (= unknown) instead of
+        // `false`, so downstream consumers don't conclude "no BBQ" for
+        // every house. listResorts is the same — degrade to empty map.
+        let extrasOk = true;
+        const extras = await listExtras().catch((e) => {
+            extrasOk = false;
+            console.warn("listExtras failed:", e?.message || e);
+            return { bbq: new Set(), ph35: new Set(), ph75: new Set() };
+        });
+        const resorts = await listResorts().catch((e) => {
+            console.warn("listResorts failed:", e?.message || e);
+            return new Map();
+        });
         const enriched = units.map((u) => {
             const id = String(u.idMAPRO ?? u.key ?? "");
             const resortName = (u.resort || "").trim();
             return {
                 ...u,
-                bbq: extras.bbq.has(id),
-                poolHeater: extras.ph75.has(id) ? 75 : extras.ph35.has(id) ? 35 : null,
+                bbq: extrasOk ? extras.bbq.has(id) : null,
+                poolHeater: extrasOk
+                    ? (extras.ph75.has(id) ? 75 : extras.ph35.has(id) ? 35 : null)
+                    : null,
                 resortAddress: resorts.get(resortName) || "",
             };
         });
