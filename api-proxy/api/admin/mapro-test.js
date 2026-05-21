@@ -1,4 +1,4 @@
-import { requireFirebaseUser } from "../_lib/auth.js";
+import { requireBridgeOrUser } from "../_lib/auth.js";
 import { applyCors } from "../_lib/cors.js";
 import { getMaproCookie } from "../_lib/kv.js";
 
@@ -25,14 +25,30 @@ async function probe(path, cookie) {
             },
         });
         const text = await r.text();
+        // Old regex: `checked` BEFORE `id="casa-N"`
+        const oldMatches = (text.match(/<input\s+checked[^>]*id="casa-\d+"/g) || []).length;
+        // New regex: any <input id="casa-N"> with `checked` anywhere
+        const tagRe = /<input\b[^>]*\bid=["']?casa-(\d+)["']?[^>]*>/gi;
+        let newMatches = 0;
+        let firstTagSample = null;
+        for (const m of text.matchAll(tagRe)) {
+            if (firstTagSample === null) firstTagSample = m[0];
+            if (/\bchecked\b/i.test(m[0])) newMatches++;
+        }
+        // Locate the first occurrence of "casa-" to dump surrounding HTML.
+        const idx = text.search(/\bid=["']?casa-/i);
+        const contextSnippet = idx >= 0 ? text.slice(Math.max(0, idx - 80), idx + 250) : null;
         return {
             path,
             status: r.status,
             location: r.headers.get("location") || null,
-            hasLocalData: /localData\s*=\s*\[/.test(text),
-            hasCheckedCasa: /<input\s+checked[^>]*id="casa-\d+"/.test(text),
             bodyLength: text.length,
-            bodySnippet: text.slice(0, 200),
+            inputCount: (text.match(/<input\b/gi) || []).length,
+            casaIdCount: (text.match(/\bid=["']?casa-\d+/gi) || []).length,
+            oldRegexMatches: oldMatches,
+            newRegexMatches: newMatches,
+            firstCasaTag: firstTagSample,
+            contextSnippet,
         };
     } catch (err) {
         return { path, error: String(err?.message || err) };
@@ -48,17 +64,21 @@ export default async function handler(req, res) {
 
     let user;
     try {
-        user = await requireFirebaseUser(req);
+        user = await requireBridgeOrUser(req);
     } catch (err) {
         res.status(err.status || 401).json({ error: err.message });
         return;
     }
 
-    const adminEmails = (process.env.ADMIN_EMAILS || "")
-        .split(",").map((s) => s.trim()).filter(Boolean);
-    if (!adminEmails.includes(user.email)) {
-        res.status(403).json({ error: "not an admin" });
-        return;
+    // Bridge callers (uid="bridge-cli") bypass the admin email check —
+    // having the BRIDGE_SECRET is itself proof of admin access.
+    if (user.source !== "bridge") {
+        const adminEmails = (process.env.ADMIN_EMAILS || "")
+            .split(",").map((s) => s.trim()).filter(Boolean);
+        if (!adminEmails.includes(user.email)) {
+            res.status(403).json({ error: "not an admin" });
+            return;
+        }
     }
 
     const cookie = await getMaproCookie();
