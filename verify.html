@@ -21,60 +21,93 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 
     <style>
+        /* All colors via the shared design tokens in style/style.css so this
+           page picks up both dark (default) and .light themes for free. */
+
         .verify-main { max-width: 1400px; margin: 0 auto; padding: 28px 24px; }
-        .verify-intro { color: #6b7280; font-size: 14px; margin-bottom: 22px; line-height: 1.5; max-width: 780px; }
-        .verify-toolbar { display: flex; gap: 14px; align-items: flex-end; margin-bottom: 18px; flex-wrap: wrap; padding: 16px 18px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; }
+        .verify-intro { color: var(--text-muted); font-size: 14px; margin-bottom: 22px; line-height: 1.5; max-width: 780px; }
+
+        .verify-toolbar { display: flex; gap: 14px; align-items: flex-end; margin-bottom: 18px; flex-wrap: wrap; padding: 16px 18px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); }
         .verify-field { display: flex; flex-direction: column; gap: 4px; }
-        .verify-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; color: #6b7280; }
-        .verify-field input { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; width: 140px; background: #fff; transition: border-color 0.15s, box-shadow 0.15s; }
-        .verify-field input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
-        .verify-btn { padding: 9px 18px; border-radius: 8px; border: 1px solid #2563eb; background: #2563eb; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s, box-shadow 0.15s; }
-        .verify-btn:hover:not(:disabled) { background: #1d4ed8; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+        .verify-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; color: var(--text-muted); }
+        .verify-field input { padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 14px; font-family: inherit; width: 140px; background: var(--bg-input); color: var(--text-primary); transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+        .verify-field input:focus { outline: none; border-color: var(--border-focus); box-shadow: var(--shadow-ring); }
+
+        .verify-btn { padding: 9px 18px; border-radius: var(--radius); border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+        .verify-btn:hover:not(:disabled) { background: var(--accent-hover); box-shadow: var(--shadow-sm); }
         .verify-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-        .verify-btn.secondary { background: #fff; color: #2563eb; border-color: #2563eb; }
-        .verify-btn.secondary:hover:not(:disabled) { background: #eff6ff; }
-        .verify-status { font-size: 13px; color: #6b7280; margin-bottom: 14px; min-height: 20px; line-height: 1.5; }
-        .verify-status.error { color: #dc2626; }
-        .verify-filter { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; font-size: 13px; color: #6b7280; }
+        .verify-btn.secondary { background: transparent; color: var(--accent); border-color: var(--accent); }
+        .verify-btn.secondary:hover:not(:disabled) { background: var(--accent-soft); }
+
+        .verify-status { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; min-height: 20px; line-height: 1.5; }
+        .verify-status.error { color: var(--danger); }
+
+        .verify-filter { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; font-size: 13px; color: var(--text-muted); }
         .verify-filter label { cursor: pointer; }
-        .verify-table-wrap { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
-        .verify-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .verify-table th, .verify-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eef0f2; vertical-align: top; }
-        .verify-table thead th { background: #f9fafb; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-        .verify-table tbody tr:hover { background: #f9fafb; }
+
+        .verify-table-wrap { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-card); }
+        .verify-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--text-primary); }
+        .verify-table th, .verify-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+        .verify-table thead th { background: var(--bg-elevated); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+        .verify-table tbody tr:hover { background: var(--bg-hover); }
         .verify-table tbody tr:last-child td { border-bottom: none; }
-        .verify-table tr.flag-red { background: #fef2f2; }
-        .verify-table tr.flag-orange { background: #fff7ed; }
-        .verify-table tr.flag-yellow { background: #fffbeb; }
-        .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-        .badge-yes { background: #dcfce7; color: #166534; }
-        .badge-no { background: #f3f4f6; color: #9ca3af; }
-        .badge-cancelled { background: #fee2e2; color: #991b1b; }
-        .badge-approved { background: #dcfce7; color: #166534; }
-        .badge-other { background: #fef3c7; color: #92400e; }
+        .verify-table tr.flag-red { background: var(--danger-soft); }
+        .verify-table tr.flag-orange { background: rgba(245, 158, 11, 0.10); }
+        .verify-table tr.flag-yellow { background: var(--warning-soft); }
+        .verify-table tr.flag-red:hover,
+        .verify-table tr.flag-orange:hover,
+        .verify-table tr.flag-yellow:hover { filter: brightness(1.05); }
+
+        .badge { display: inline-block; padding: 2px 9px; border-radius: var(--radius-full); font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .badge-yes,
+        .badge-approved { background: var(--success-soft); color: var(--success); }
+        .badge-no { background: var(--bg-elevated); color: var(--text-subtle); }
+        .badge-cancelled { background: var(--danger-soft); color: var(--danger); }
+        .badge-other { background: var(--warning-soft); color: var(--warning); }
+
         .flag-cell { font-size: 16px; line-height: 1; }
-        .motivo-cell { color: #4b5563; font-size: 12px; max-width: 380px; }
-        .flatpickr-day.selected, .flatpickr-day.selected:hover { background: #2563eb; border-color: #2563eb; }
+        .motivo-cell { color: var(--text-secondary); font-size: 12px; max-width: 380px; }
+
+        /* flatpickr theming — pull into the design tokens for dark mode */
+        .flatpickr-calendar { background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-lg); color: var(--text-primary); }
+        .flatpickr-months .flatpickr-month,
+        .flatpickr-current-month,
+        .flatpickr-current-month input.cur-year,
+        .flatpickr-weekdays,
+        span.flatpickr-weekday { color: var(--text-primary); background: var(--bg-card); fill: var(--text-primary); }
+        .flatpickr-day { color: var(--text-primary); }
+        .flatpickr-day.today { border-color: var(--accent); }
+        .flatpickr-day:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+        .flatpickr-day.flatpickr-disabled,
+        .flatpickr-day.prevMonthDay,
+        .flatpickr-day.nextMonthDay { color: var(--text-subtle); }
+        .flatpickr-day.selected,
+        .flatpickr-day.selected:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .flatpickr-months .flatpickr-prev-month,
+        .flatpickr-months .flatpickr-next-month { fill: var(--text-secondary); color: var(--text-secondary); }
+        .flatpickr-months .flatpickr-prev-month:hover svg,
+        .flatpickr-months .flatpickr-next-month:hover svg { fill: var(--text-primary); }
 
         /* Manual property match modal + button */
-        .match-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid #2563eb; background: #fff; color: #2563eb; font-size: 12px; font-weight: 500; cursor: pointer; margin-left: 8px; white-space: nowrap; }
-        .match-btn:hover { background: #eff6ff; }
-        .match-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.42); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-        .match-modal-card { background: #fff; border-radius: 12px; max-width: 620px; width: 92%; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 32px rgba(0,0,0,0.18); }
-        .match-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #e5e7eb; }
+        .match-btn { padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--accent); background: transparent; color: var(--accent); font-size: 12px; font-weight: 500; cursor: pointer; margin-left: 8px; white-space: nowrap; }
+        .match-btn:hover { background: var(--accent-soft); }
+
+        .match-modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .match-modal-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); max-width: 620px; width: 92%; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); color: var(--text-primary); }
+        .match-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); }
         .match-modal-header strong { font-size: 15px; }
-        .match-close { border: none; background: none; font-size: 24px; cursor: pointer; color: #6b7280; line-height: 1; }
-        .match-close:hover { color: #111827; }
+        .match-close { border: none; background: none; font-size: 24px; cursor: pointer; color: var(--text-muted); line-height: 1; }
+        .match-close:hover { color: var(--text-primary); }
         .match-modal-body { padding: 14px 18px; overflow-y: auto; }
-        .match-target { font-size: 13px; color: #4b5563; margin-bottom: 12px; }
+        .match-target { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
         .match-search-row { display: flex; gap: 8px; margin-bottom: 12px; }
-        .match-search-row input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; }
-        .match-search-row input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+        .match-search-row input { flex: 1; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 14px; font-family: inherit; background: var(--bg-input); color: var(--text-primary); }
+        .match-search-row input:focus { outline: none; border-color: var(--border-focus); box-shadow: var(--shadow-ring); }
         .match-results { max-height: 360px; overflow-y: auto; }
-        .match-result { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: background 0.12s, border-color 0.12s; }
-        .match-result:hover { background: #f9fafb; border-color: #2563eb; }
-        .match-result strong { font-size: 14px; }
-        .match-result small { color: #6b7280; display: block; margin-top: 2px; }
+        .match-result { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; cursor: pointer; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); background: var(--bg-elevated); }
+        .match-result:hover { background: var(--bg-hover); border-color: var(--accent); }
+        .match-result strong { font-size: 14px; color: var(--text-primary); }
+        .match-result small { color: var(--text-muted); display: block; margin-top: 2px; }
     </style>
 
     <script type="module">
@@ -448,15 +481,15 @@
             const term = document.getElementById("match-search").value.trim();
             const resultsEl = document.getElementById("match-results");
             if (!term) {
-                resultsEl.innerHTML = "<i style='color:#6b7280;font-size:13px;'>Digite alguma coisa pra buscar (número da casa, rua, nome).</i>";
+                resultsEl.innerHTML = "<i style='color:var(--text-muted);font-size:13px;'>Digite alguma coisa pra buscar (número da casa, rua, nome).</i>";
                 return;
             }
-            resultsEl.innerHTML = "<i style='color:#6b7280;font-size:13px;'>Buscando…</i>";
+            resultsEl.innerHTML = "<i style='color:var(--text-muted);font-size:13px;'>Buscando…</i>";
             try {
                 const data = await jobberQuery("GlobalSearch", SEARCH_QUERY, { searchTerm: term, first: 20 });
                 const nodes = (data?.search?.nodes || []).filter((n) => n.__typename === "Property");
                 if (nodes.length === 0) {
-                    resultsEl.innerHTML = "<i style='color:#6b7280;font-size:13px;'>Nenhuma propriedade encontrada com esse termo.</i>";
+                    resultsEl.innerHTML = "<i style='color:var(--text-muted);font-size:13px;'>Nenhuma propriedade encontrada com esse termo.</i>";
                     return;
                 }
                 window._matchCandidates = nodes;
@@ -468,7 +501,7 @@
                     </div>
                 `).join("");
             } catch (e) {
-                resultsEl.innerHTML = `<i style='color:#dc2626;font-size:13px;'>Erro: ${escapeHtml(e?.message || String(e))}</i>`;
+                resultsEl.innerHTML = `<i style='color:var(--danger);font-size:13px;'>Erro: ${escapeHtml(e?.message || String(e))}</i>`;
             }
         };
 
@@ -807,7 +840,7 @@
             const shown = onlyFlagged ? rows.filter((r) => r.flag !== "✅") : rows;
             const tbody = document.getElementById("verify-tbody");
             if (shown.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:32px;">${onlyFlagged ? "Nenhum flag — tudo limpo no período. 🎉" : "Nenhuma reserva nesse período."}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text-subtle);padding:32px;">${onlyFlagged ? "Nenhum flag — tudo limpo no período. 🎉" : "Nenhuma reserva nesse período."}</td></tr>`;
                 return;
             }
             tbody.innerHTML = shown.map((r) => {
@@ -815,7 +848,7 @@
                     ? `<button class="match-btn" data-mid="${escapeHtml(r.propertyMaproId)}" data-pname="${escapeHtml(r.propertyName)}" onclick="openMatchDialog(this.dataset.mid, this.dataset.pname)">Casar com Jobber</button>`
                     : "";
                 const matchedLine = r.jobberPropertyLabel
-                    ? `<br><small style="color:#6b7280;">→ ${escapeHtml(r.jobberPropertyLabel)}</small>`
+                    ? `<br><small style="color:var(--text-muted);">→ ${escapeHtml(r.jobberPropertyLabel)}</small>`
                     : "";
                 return `
                 <tr class="${rowClass(r.flag)}">
