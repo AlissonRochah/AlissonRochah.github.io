@@ -42,8 +42,11 @@
         .verify-status { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; min-height: 20px; line-height: 1.5; }
         .verify-status.error { color: var(--danger); }
 
-        .verify-filter { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; font-size: 13px; color: var(--text-muted); }
+        .verify-filter { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
         .verify-filter label { cursor: pointer; }
+        .verify-filter input[type="text"] { flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 13px; font-family: inherit; background: var(--bg-input); color: var(--text-primary); }
+        .verify-filter input[type="text"]:focus { outline: none; border-color: var(--border-focus); box-shadow: var(--shadow-ring); }
+        .verify-filter .filter-count { color: var(--text-subtle); font-size: 12px; }
 
         .verify-table-wrap { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-card); }
         .verify-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--text-primary); }
@@ -805,7 +808,21 @@
             }
         };
 
-        window.toggleFilter = function () {
+        // Lower number = higher priority in the default sort.
+        const FLAG_PRIORITY = { "🔴": 0, "🟠": 1, "🟡": 2, "✅": 3 };
+
+        function rowMatchesText(r, q) {
+            if (!q) return true;
+            const haystack = [
+                r.bookingId, r.guest, r.propertyName, r.jobberPropertyLabel,
+                r.jobberJobNumber, r.checkin, r.checkout,
+                r.status, r.paymentStatus, r.integrator,
+                r.flag, r.code, r.motivo, r.matchSource,
+            ].filter(Boolean).join(" ").toLowerCase();
+            return q.toLowerCase().split(/\s+/).filter(Boolean).every((t) => haystack.includes(t));
+        }
+
+        window.rerenderRows = function () {
             renderRows(lastFlags);
         };
 
@@ -837,10 +854,21 @@
 
         function renderRows(rows) {
             const onlyFlagged = document.getElementById("only-flagged")?.checked;
-            const shown = onlyFlagged ? rows.filter((r) => r.flag !== "✅") : rows;
+            const filterText = document.getElementById("row-filter")?.value.trim() || "";
+            let shown = onlyFlagged ? rows.filter((r) => r.flag !== "✅") : rows.slice();
+            if (filterText) shown = shown.filter((r) => rowMatchesText(r, filterText));
+            // Default sort: most severe first; tiebreak by date for predictability.
+            shown.sort((a, b) => {
+                const pa = FLAG_PRIORITY[a.flag] ?? 9;
+                const pb = FLAG_PRIORITY[b.flag] ?? 9;
+                if (pa !== pb) return pa - pb;
+                return String(a.jobDate || a.checkout || "").localeCompare(String(b.jobDate || b.checkout || ""));
+            });
+            const countEl = document.getElementById("row-count");
+            if (countEl) countEl.textContent = rows.length ? `mostrando ${shown.length} de ${rows.length}` : "";
             const tbody = document.getElementById("verify-tbody");
             if (shown.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text-subtle);padding:32px;">${onlyFlagged ? "Nenhum flag — tudo limpo no período. 🎉" : "Nenhuma reserva nesse período."}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text-subtle);padding:32px;">${filterText ? "Nenhum resultado pra esse filtro." : (onlyFlagged ? "Nenhum flag — tudo limpo no período. 🎉" : "Nenhuma reserva nesse período.")}</td></tr>`;
                 return;
             }
             tbody.innerHTML = shown.map((r) => {
@@ -947,7 +975,9 @@
         <div class="verify-status" id="verify-status"></div>
 
         <div class="verify-filter">
-            <label><input type="checkbox" id="only-flagged" onchange="toggleFilter()"> Só mostrar flags (esconder ✅)</label>
+            <input type="text" id="row-filter" placeholder="Filtrar tabela — busca em booking, guest, casa, motivo, código…" oninput="rerenderRows()">
+            <label><input type="checkbox" id="only-flagged" onchange="rerenderRows()"> Só flags (esconder ✅)</label>
+            <span class="filter-count" id="row-count"></span>
         </div>
 
         <!-- Manual property match modal — opened by 'Casar com Jobber' button -->
