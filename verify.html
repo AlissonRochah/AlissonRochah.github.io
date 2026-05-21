@@ -140,14 +140,13 @@
         function initPickers() {
             const fromInput = document.getElementById("checkout-from");
             const toInput = document.getElementById("checkout-to");
-            // Pre-fill the raw input value first so the user sees the defaults even
-            // if flatpickr fails to load (CDN block, slow network, etc.) — then let
-            // flatpickr enhance it with the calendar popup on top.
+            // Default: a single day (today). The check is job-centric — picking
+            // one day at a time keeps the list short and the daily-review fast.
             fromInput.value = formatUs(dateOffset(0));
-            toInput.value = formatUs(dateOffset(14));
+            toInput.value = formatUs(dateOffset(0));
             const common = { dateFormat: "m/d/Y", allowInput: true, disableMobile: true };
             flatpickr(fromInput, { ...common, defaultDate: dateOffset(0) });
-            flatpickr(toInput, { ...common, defaultDate: dateOffset(14) });
+            flatpickr(toInput, { ...common, defaultDate: dateOffset(0) });
         }
 
         // ---------- Jobber bridge ----------
@@ -494,169 +493,158 @@
             window.loadAndCheck();
         };
 
-        function crossCheck(reservations, visits) {
-            // Two indices per visit so we can fall back when street matching misses:
-            //   - by `streetKey(property.street)` (most common, no setup needed)
-            //   - by Jobber's `property.id` (uses the unit-page cache as a bridge)
-            const visitsByStreet = new Map();
-            const visitsByJobberId = new Map();
-            for (const v of visits) {
-                const dated = { ...v, date: dateInFlorida(v.startAt) };
-                const sk = streetKey(propText(v.property));
-                if (sk) {
-                    if (!visitsByStreet.has(sk)) visitsByStreet.set(sk, []);
-                    visitsByStreet.get(sk).push(dated);
-                }
-                const jpId = v.property?.id;
-                if (jpId) {
-                    if (!visitsByJobberId.has(jpId)) visitsByJobberId.set(jpId, []);
-                    visitsByJobberId.get(jpId).push(dated);
-                }
-            }
-
+        // JOB-CENTRIC cross-check. Each row = one BBQ Clean job on the
+        // selected dates, classified against the reservation context. Plus
+        // JOB_FALTANDO rows for reservations checking out in the window with
+        // BBQ marked but no corresponding job. Reservations otherwise don't
+        // generate rows — they're just classifiers.
+        function crossCheck(reservations, visits, fromIso, toIso) {
             const mapping = readJobberMapping();
-            // Pick the visit list for a reservation. Three outcomes:
-            //   street          — matched via streetKey to visits we already saw
-            //   mapping_cache   — cached MAPRO→Jobber id link found, AND that
-            //                     Jobber property has BBQ Clean visits in the window
-            //   mapping_cache_empty — same link exists but NO BBQ Clean visits in
-            //                     window (the casa is matched, just no job yet —
-            //                     this is JOB_FALTANDO, not PROPRIEDADE_SEM_MATCH)
-            //   unmatched       — no streetKey hit and no cache entry at all
-            function visitsForReservation(r) {
-                const sk = streetKey(r.propertyName);
-                if (sk && visitsByStreet.has(sk)) {
-                    const list = visitsByStreet.get(sk);
-                    // Report the Jobber property we matched against so the UI
-                    // can show it ("matched with X").
-                    const sample = list[0]?.property;
-                    return {
-                        source: "street",
-                        list,
-                        jobberPropertyId: sample?.id || "",
-                        jobberPropertyLabel: sample?.street || sample?.name || "",
-                    };
-                }
+            const EMPTY = [];
+
+            // Attach Jobber property info + streetKey to every reservation up front.
+            for (const r of reservations) {
                 const cached = mapping[r.propertyMaproId];
-                if (cached?.propertyId) {
-                    const label = cached.street || cached.propertyName || cached.propertyId;
-                    if (visitsByJobberId.has(cached.propertyId)) {
-                        return {
-                            source: "mapping_cache",
-                            list: visitsByJobberId.get(cached.propertyId),
-                            jobberPropertyId: cached.propertyId,
-                            jobberPropertyLabel: label,
-                        };
-                    }
-                    return {
-                        source: "mapping_cache_empty",
-                        list: [],
-                        jobberPropertyId: cached.propertyId,
-                        jobberPropertyLabel: label,
-                    };
-                }
-                return { source: "unmatched", list: [], jobberPropertyId: "", jobberPropertyLabel: "" };
+                r._jobberPropertyId = cached?.propertyId || "";
+                r._jobberPropertyLabel = cached?.street || cached?.propertyName || "";
+                r._streetKey = streetKey(r.propertyName);
             }
 
-            const accountedVisits = new Set();
-            const rows = [];
-
+            // Index reservations by Jobber property id AND by streetKey, so
+            // a visit can find its candidates either way.
+            const resvByJobberId = new Map();
+            const resvByStreet = new Map();
             for (const r of reservations) {
-                const { source, list: propVisits, jobberPropertyId, jobberPropertyLabel } = visitsForReservation(r);
-                const onCheckout = propVisits.find((v) => v.date === r.checkout && !accountedVisits.has(v.id));
-                if (onCheckout) accountedVisits.add(onCheckout.id);
+                if (r._jobberPropertyId) {
+                    if (!resvByJobberId.has(r._jobberPropertyId)) resvByJobberId.set(r._jobberPropertyId, []);
+                    resvByJobberId.get(r._jobberPropertyId).push(r);
+                }
+                if (r._streetKey) {
+                    if (!resvByStreet.has(r._streetKey)) resvByStreet.set(r._streetKey, []);
+                    resvByStreet.get(r._streetKey).push(r);
+                }
+            }
 
-                const status = (r.status || "").toLowerCase();
-                const isCancelled = status === "cancelled" || status === "canceled" || status === "declined";
+            function candidatesForVisit(v) {
+                const jpId = v.property?.id;
+                if (jpId && resvByJobberId.has(jpId)) return resvByJobberId.get(jpId);
+                const sk = streetKey(propText(v.property));
+                if (sk && resvByStreet.has(sk)) return resvByStreet.get(sk);
+                return EMPTY;
+            }
 
-                let flag = "✅";
-                let code = "OK";
-                let motivo = "";
-                let jobNumber = onCheckout?.job?.jobNumber || "";
+            const rows = [];
+            const claimedCheckouts = new Set(); // reservation.bookingId
 
-                if (isCancelled && onCheckout) {
-                    flag = "🔴";
-                    code = "CANCELOU_RESERVA_E_DEIXOU_JOB";
-                    motivo = `Reserva cancelada mas o BBQ Clean #${jobNumber} continua agendado em ${onCheckout.date}`;
-                } else if (!isCancelled && r.hasBBQGrill && !onCheckout) {
-                    const midStay = propVisits.find((v) => v.date > r.checkin && v.date < r.checkout && !accountedVisits.has(v.id));
-                    if (midStay) {
-                        accountedVisits.add(midStay.id);
-                        jobNumber = midStay.job?.jobNumber || "";
+            // PASS 1 — one row per BBQ Clean job on the dates.
+            for (const v of visits) {
+                const vDate = dateInFlorida(v.startAt);
+                // Only consider visits whose Florida date is in the user window.
+                if (vDate < fromIso || vDate > toIso) continue;
+
+                const jobNumber = v.job?.jobNumber || "";
+                const jobberPropertyLabel = v.property?.street || v.property?.name || "";
+                const jobberPropertyId = v.property?.id || "";
+                const candidates = candidatesForVisit(v);
+
+                const checkoutMatch = candidates.find((r) => r.checkout === vDate);
+                const midStayMatch = !checkoutMatch && candidates.find((r) => r.checkin && r.checkin <= vDate && vDate < r.checkout);
+
+                // Build a row using the matched reservation's data when available.
+                const useResv = checkoutMatch || midStayMatch;
+                const baseFromResv = useResv ? {
+                    bookingId: useResv.bookingId,
+                    guest: useResv.guest,
+                    propertyName: useResv.propertyName,
+                    propertyMaproId: useResv.propertyMaproId,
+                    checkin: useResv.checkin,
+                    checkout: useResv.checkout,
+                    hasBBQGrill: useResv.hasBBQGrill,
+                    hasPoolHeat: useResv.hasPoolHeat,
+                    hasPet: useResv.hasPet,
+                    hasLaundry: useResv.hasLaundry,
+                    amountBBQGrill: useResv.amountBBQGrill,
+                    status: useResv.status,
+                    paymentStatus: useResv.paymentStatus,
+                    integrator: useResv.integrator,
+                    totalReservation: useResv.totalReservation,
+                    totalPaid: useResv.totalPaid,
+                    outstandingAmount: useResv.outstandingAmount,
+                } : {
+                    bookingId: "",
+                    guest: "(orphan)",
+                    propertyName: jobberPropertyLabel,
+                    propertyMaproId: "",
+                    checkin: "",
+                    checkout: vDate,
+                    hasBBQGrill: false,
+                    hasPoolHeat: false, hasPet: false, hasLaundry: false,
+                    amountBBQGrill: 0,
+                    status: "", paymentStatus: "", integrator: "",
+                    totalReservation: 0, totalPaid: 0, outstandingAmount: 0,
+                };
+
+                let flag = "✅", code = "OK", motivo = "";
+                if (checkoutMatch) {
+                    claimedCheckouts.add(checkoutMatch.bookingId);
+                    const s = (checkoutMatch.status || "").toLowerCase();
+                    const cancelled = s === "cancelled" || s === "canceled" || s === "declined";
+                    if (cancelled) {
                         flag = "🔴";
-                        code = "DATA_ERRADA";
-                        motivo = `BBQ Clean #${jobNumber} agendado em ${midStay.date}, dentro da estadia (checkout é ${r.checkout})`;
-                    } else if (source === "unmatched") {
-                        // Couldn't link this MAPRO property to a Jobber property
-                        // at all — different from JOB_FALTANDO. Manual match resolves it.
-                        flag = "🟠";
-                        code = "PROPRIEDADE_SEM_MATCH";
-                        motivo = "Não achei essa casa no Jobber (nem por nome, nem pelo cache de mapeamento). Clica 'Casar com Jobber' pra linkar manualmente.";
+                        code = "CANCELOU_RESERVA_E_DEIXOU_JOB";
+                        motivo = `Reserva cancelada (booking ${checkoutMatch.bookingId}) mas BBQ Clean #${jobNumber} continua agendado pro checkout ${vDate}.`;
+                    } else if (!checkoutMatch.hasBBQGrill) {
+                        flag = "🟡";
+                        code = "ESQUECERAM_DE_MARCAR";
+                        motivo = `BBQ Clean #${jobNumber} agendado pro checkout ${vDate} mas a reserva não tem BBQ marcado em MAPRO.`;
                     } else {
-                        // Property is matched (either by street or via cache) but
-                        // there's no BBQ Clean for it in the window — real missing job.
-                        flag = "🔴";
-                        code = "JOB_FALTANDO";
-                        motivo = source === "mapping_cache_empty"
-                            ? "Casa matchada no Jobber mas nenhum BBQ Clean agendado pra essa reserva."
-                            : `Reserva tem BBQ marcado mas não tem BBQ Clean no Jobber pro checkout (match via ${source}).`;
+                        flag = "✅";
+                        code = "OK";
+                        motivo = `BBQ Clean #${jobNumber} casa com o checkout ${vDate} — tudo certo.`;
                     }
-                } else if (!isCancelled && !r.hasBBQGrill && onCheckout) {
-                    flag = "🟡";
-                    code = "ESQUECERAM_DE_MARCAR";
-                    motivo = `BBQ Clean #${jobNumber} existe no Jobber pro checkout mas a reserva não tem BBQ marcado em MAPRO`;
-                } else if (isCancelled && !onCheckout) {
-                    flag = "✅";
-                    code = "CANCELADA_LIMPA";
-                    motivo = "Reserva cancelada, sem job órfão.";
+                } else if (midStayMatch) {
+                    flag = "🔴";
+                    code = "DATA_ERRADA";
+                    motivo = `BBQ Clean #${jobNumber} em ${vDate} no MEIO da estadia (booking ${midStayMatch.bookingId}: check-in ${midStayMatch.checkin}, checkout ${midStayMatch.checkout}).`;
+                } else {
+                    flag = "🔴";
+                    code = "JOB_ORFAO";
+                    motivo = `BBQ Clean #${jobNumber} em ${vDate} sem reserva ativa nessa casa.`;
                 }
 
                 rows.push({
-                    ...r,
+                    ...baseFromResv,
                     flag, code, motivo,
                     jobberJobNumber: jobNumber,
-                    matchSource: source,
+                    jobDate: vDate,
                     jobberPropertyId,
                     jobberPropertyLabel,
+                    matchSource: checkoutMatch || midStayMatch ? "matched" : "orphan",
                 });
             }
 
-            // Orphan visits — any visit not accounted for during the reservation loop.
-            const allVisitLists = new Set();
-            for (const list of visitsByStreet.values()) allVisitLists.add(list);
-            for (const list of visitsByJobberId.values()) allVisitLists.add(list);
-            const seen = new Set();
-            for (const list of allVisitLists) {
-                for (const v of list) {
-                    if (seen.has(v.id) || accountedVisits.has(v.id)) continue;
-                    seen.add(v.id);
-                    rows.push({
-                        bookingId: "",
-                        guest: "(orphan job)",
-                        propertyName: v.property?.street || "",
-                        propertyMaproId: "",
-                        checkin: "",
-                        checkout: v.date,
-                        hasBBQGrill: false,
-                        hasPoolHeat: false,
-                        hasPet: false,
-                        hasLaundry: false,
-                        amountBBQGrill: 0,
-                        status: "",
-                        paymentStatus: "",
-                        integrator: "",
-                        totalReservation: 0,
-                        totalPaid: 0,
-                        outstandingAmount: 0,
-                        flag: "🔴",
-                        code: "JOB_ORFAO",
-                        motivo: `BBQ Clean #${v.job?.jobNumber || ""} agendado em ${v.date} sem reserva nessa data`,
-                        jobberJobNumber: v.job?.jobNumber || "",
-                        matchSource: "orphan",
-                        jobberPropertyId: v.property?.id || "",
-                        jobberPropertyLabel: v.property?.street || v.property?.name || "",
-                    });
-                }
+            // PASS 2 — reservations checking out in the window, with BBQ marked,
+            // that didn't get claimed by any visit. These are JOB_FALTANDO.
+            for (const r of reservations) {
+                if (claimedCheckouts.has(r.bookingId)) continue;
+                if (!r.hasBBQGrill) continue;
+                if (r.checkout < fromIso || r.checkout > toIso) continue;
+                const s = (r.status || "").toLowerCase();
+                if (s === "cancelled" || s === "canceled" || s === "declined") continue;
+                const hasMapping = !!r._jobberPropertyId;
+                rows.push({
+                    ...r,
+                    flag: hasMapping ? "🔴" : "🟠",
+                    code: hasMapping ? "JOB_FALTANDO" : "PROPRIEDADE_SEM_MATCH",
+                    motivo: hasMapping
+                        ? `Reserva com BBQ + checkout ${r.checkout} — não tem BBQ Clean agendado no Jobber pra esse dia.`
+                        : `Reserva com BBQ + checkout ${r.checkout}, mas a casa não foi linkada no Jobber. Clica "Casar com Jobber".`,
+                    jobberJobNumber: "",
+                    jobDate: "",
+                    jobberPropertyId: r._jobberPropertyId || "",
+                    jobberPropertyLabel: r._jobberPropertyLabel || "",
+                    matchSource: hasMapping ? "mapping_cache_empty" : "unmatched",
+                });
             }
 
             return rows;
@@ -709,15 +697,15 @@
                 const autoMatched = autoMatchProperties(reservations, allJobberProps);
                 console.log(`[verify] Jobber properties: ${allJobberProps.length} · auto-matched ${autoMatched} new pairs`);
 
-                // Visit window has to reach the checkouts of in-progress stays,
-                // not just the user's selected checkout-window. Extend by 60 days
-                // (same lookahead the in-progress reservation query uses).
-                const visitToIso = addDaysIso(toIso, 60);
-                const visits = await fetchBBQVisits(fromIso, visitToIso, (pages, n) => {
+                // The job-centric check only cares about BBQ Cleans on the
+                // user-selected dates — anything outside [from, to] is a different
+                // day's verification. Reservation overlap (in-progress) is still
+                // pulled separately so mid-stay classification works.
+                const visits = await fetchBBQVisits(fromIso, toIso, (pages, n) => {
                     status.textContent = `Jobber: ${allJobberProps.length} props, ${pages} pgs visits, ${n} BBQ Cleans…`;
                 });
 
-                const flags = crossCheck(reservations, visits);
+                const flags = crossCheck(reservations, visits, fromIso, toIso);
                 lastFlags = flags;
 
                 // Diagnostic — open DevTools, run `verifyDebug()` to inspect
