@@ -129,6 +129,14 @@
 
         function dateOnly(iso) { return String(iso || "").slice(0, 10); }
 
+        function addDaysIso(iso, n) {
+            const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (!m) return iso;
+            const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+            d.setUTCDate(d.getUTCDate() + n);
+            return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        }
+
         function initPickers() {
             const fromInput = document.getElementById("checkout-from");
             const toInput = document.getElementById("checkout-to");
@@ -518,23 +526,43 @@
             function visitsForReservation(r) {
                 const sk = streetKey(r.propertyName);
                 if (sk && visitsByStreet.has(sk)) {
-                    return { source: "street", list: visitsByStreet.get(sk) };
+                    const list = visitsByStreet.get(sk);
+                    // Report the Jobber property we matched against so the UI
+                    // can show it ("matched with X").
+                    const sample = list[0]?.property;
+                    return {
+                        source: "street",
+                        list,
+                        jobberPropertyId: sample?.id || "",
+                        jobberPropertyLabel: sample?.street || sample?.name || "",
+                    };
                 }
                 const cached = mapping[r.propertyMaproId];
                 if (cached?.propertyId) {
+                    const label = cached.street || cached.propertyName || cached.propertyId;
                     if (visitsByJobberId.has(cached.propertyId)) {
-                        return { source: "mapping_cache", list: visitsByJobberId.get(cached.propertyId) };
+                        return {
+                            source: "mapping_cache",
+                            list: visitsByJobberId.get(cached.propertyId),
+                            jobberPropertyId: cached.propertyId,
+                            jobberPropertyLabel: label,
+                        };
                     }
-                    return { source: "mapping_cache_empty", list: [] };
+                    return {
+                        source: "mapping_cache_empty",
+                        list: [],
+                        jobberPropertyId: cached.propertyId,
+                        jobberPropertyLabel: label,
+                    };
                 }
-                return { source: "unmatched", list: [] };
+                return { source: "unmatched", list: [], jobberPropertyId: "", jobberPropertyLabel: "" };
             }
 
             const accountedVisits = new Set();
             const rows = [];
 
             for (const r of reservations) {
-                const { source, list: propVisits } = visitsForReservation(r);
+                const { source, list: propVisits, jobberPropertyId, jobberPropertyLabel } = visitsForReservation(r);
                 const onCheckout = propVisits.find((v) => v.date === r.checkout && !accountedVisits.has(v.id));
                 if (onCheckout) accountedVisits.add(onCheckout.id);
 
@@ -583,7 +611,14 @@
                     motivo = "Reserva cancelada, sem job órfão.";
                 }
 
-                rows.push({ ...r, flag, code, motivo, jobberJobNumber: jobNumber, matchSource: source });
+                rows.push({
+                    ...r,
+                    flag, code, motivo,
+                    jobberJobNumber: jobNumber,
+                    matchSource: source,
+                    jobberPropertyId,
+                    jobberPropertyLabel,
+                });
             }
 
             // Orphan visits — any visit not accounted for during the reservation loop.
@@ -618,6 +653,8 @@
                         motivo: `BBQ Clean #${v.job?.jobNumber || ""} agendado em ${v.date} sem reserva nessa data`,
                         jobberJobNumber: v.job?.jobNumber || "",
                         matchSource: "orphan",
+                        jobberPropertyId: v.property?.id || "",
+                        jobberPropertyLabel: v.property?.street || v.property?.name || "",
                     });
                 }
             }
@@ -672,7 +709,11 @@
                 const autoMatched = autoMatchProperties(reservations, allJobberProps);
                 console.log(`[verify] Jobber properties: ${allJobberProps.length} · auto-matched ${autoMatched} new pairs`);
 
-                const visits = await fetchBBQVisits(fromIso, toIso, (pages, n) => {
+                // Visit window has to reach the checkouts of in-progress stays,
+                // not just the user's selected checkout-window. Extend by 60 days
+                // (same lookahead the in-progress reservation query uses).
+                const visitToIso = addDaysIso(toIso, 60);
+                const visits = await fetchBBQVisits(fromIso, visitToIso, (pages, n) => {
                     status.textContent = `Jobber: ${allJobberProps.length} props, ${pages} pgs visits, ${n} BBQ Cleans…`;
                 });
 
@@ -775,12 +816,15 @@
                 const matchBtn = r.code === "PROPRIEDADE_SEM_MATCH"
                     ? `<button class="match-btn" data-mid="${escapeHtml(r.propertyMaproId)}" data-pname="${escapeHtml(r.propertyName)}" onclick="openMatchDialog(this.dataset.mid, this.dataset.pname)">Casar com Jobber</button>`
                     : "";
+                const matchedLine = r.jobberPropertyLabel
+                    ? `<br><small style="color:#6b7280;">→ ${escapeHtml(r.jobberPropertyLabel)}</small>`
+                    : "";
                 return `
                 <tr class="${rowClass(r.flag)}">
                     <td class="flag-cell">${r.flag}</td>
                     <td>${escapeHtml(r.bookingId)}</td>
                     <td>${escapeHtml(r.guest)}</td>
-                    <td>${escapeHtml(r.propertyName)}</td>
+                    <td>${escapeHtml(r.propertyName)}${matchedLine}</td>
                     <td>${escapeHtml(r.checkin)}</td>
                     <td>${escapeHtml(r.checkout)}</td>
                     <td>${yesNoBadge(r.hasBBQGrill)}</td>
@@ -801,7 +845,9 @@
             if (lastFlags.length === 0) return;
             const headers = [
                 "Flag", "Code", "Motivo", "Match Source",
-                "Booking ID", "Guest", "Property", "Property MAPRO ID",
+                "Booking ID", "Guest",
+                "Property (MAPRO)", "Property MAPRO ID",
+                "Matched Jobber Property", "Jobber Property ID",
                 "Check-in", "Check-out",
                 "Has BBQ", "BBQ Amount",
                 "Has Pool Heat", "Has Pet", "Has Laundry",
@@ -811,7 +857,9 @@
             ];
             const rows = lastFlags.map((r) => [
                 r.flag, r.code, r.motivo, r.matchSource || "",
-                r.bookingId, r.guest, r.propertyName, r.propertyMaproId,
+                r.bookingId, r.guest,
+                r.propertyName, r.propertyMaproId,
+                r.jobberPropertyLabel || "", r.jobberPropertyId || "",
                 r.checkin, r.checkout,
                 r.hasBBQGrill ? "Yes" : "No",
                 r.amountBBQGrill || 0,
