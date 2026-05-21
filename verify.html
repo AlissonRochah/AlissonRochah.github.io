@@ -525,11 +525,23 @@
                 }
             }
 
+            function isCancelledStatus(s) {
+                const low = (s || "").toLowerCase();
+                return low === "cancelled" || low === "canceled" || low === "declined";
+            }
+
+            // Active reservations always rank ABOVE cancelled ones when more
+            // than one matches the same (property, date) — so a re-booking
+            // (active) is picked over a leftover cancelled at the same slot.
+            function rankCandidates(list) {
+                return [...list].sort((a, b) => (isCancelledStatus(a.status) ? 1 : 0) - (isCancelledStatus(b.status) ? 1 : 0));
+            }
+
             function candidatesForVisit(v) {
                 const jpId = v.property?.id;
-                if (jpId && resvByJobberId.has(jpId)) return resvByJobberId.get(jpId);
+                if (jpId && resvByJobberId.has(jpId)) return rankCandidates(resvByJobberId.get(jpId));
                 const sk = streetKey(propText(v.property));
-                if (sk && resvByStreet.has(sk)) return resvByStreet.get(sk);
+                if (sk && resvByStreet.has(sk)) return rankCandidates(resvByStreet.get(sk));
                 return EMPTY;
             }
 
@@ -587,8 +599,7 @@
                 let flag = "✅", code = "OK", motivo = "";
                 if (checkoutMatch) {
                     claimedCheckouts.add(checkoutMatch.bookingId);
-                    const s = (checkoutMatch.status || "").toLowerCase();
-                    const cancelled = s === "cancelled" || s === "canceled" || s === "declined";
+                    const cancelled = isCancelledStatus(checkoutMatch.status);
                     if (cancelled) {
                         flag = "🔴";
                         code = "CANCELOU_RESERVA_E_DEIXOU_JOB";
@@ -629,8 +640,7 @@
                 if (claimedCheckouts.has(r.bookingId)) continue;
                 if (!r.hasBBQGrill) continue;
                 if (r.checkout < fromIso || r.checkout > toIso) continue;
-                const s = (r.status || "").toLowerCase();
-                if (s === "cancelled" || s === "canceled" || s === "declined") continue;
+                if (isCancelledStatus(r.status)) continue;
                 const hasMapping = !!r._jobberPropertyId;
                 rows.push({
                     ...r,
