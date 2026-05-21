@@ -142,9 +142,26 @@ const EXTRA_SERVICE_IDS = { bbq: 6969, ph35: 6960, ph75: 6704 };
 
 async function fetchCheckedPropertyIds(serviceId) {
     const html = await maproFetchHtml(`/settings/services/register/${serviceId}`);
-    const re = /<input\s+checked[^>]*id="casa-(\d+)"/g;
+    // Two-step parse: find every <input ...id="casa-N"...> tag (regardless
+    // of attribute order), then keep only the ones that include `checked`
+    // anywhere in the same tag. Original regex required `checked` BEFORE
+    // `id` and silently returned 0 matches whenever MAPRO reordered the
+    // attributes — which made every unit look like it had no BBQ/PH.
+    const tagRe = /<input\b[^>]*\bid=["']?casa-(\d+)["']?[^>]*>/gi;
     const ids = new Set();
-    for (const m of html.matchAll(re)) ids.add(m[1]);
+    for (const m of html.matchAll(tagRe)) {
+        if (/\bchecked\b/i.test(m[0])) ids.add(m[1]);
+    }
+    // If we found nothing, log enough HTML to diagnose without dumping a
+    // megabyte. Helps surface MAPRO markup changes early.
+    if (ids.size === 0) {
+        const inputCount = (html.match(/<input\b/gi) || []).length;
+        const casaCount = (html.match(/\bid=["']?casa-\d+/gi) || []).length;
+        console.warn(
+            `fetchCheckedPropertyIds(${serviceId}) returned 0 ids ` +
+            `(html=${html.length}b, inputs=${inputCount}, casa-ids=${casaCount})`
+        );
+    }
     return ids;
 }
 
