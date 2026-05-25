@@ -87,13 +87,12 @@
             currentUser = user;
             document.getElementById("user-email").innerText = user.email;
 
-            // Channels (Airbnb listing URLs) are refreshed on every page
-            // visit even when the units cache is warm — the user expects
-            // the Green/Red buttons to reflect MAPRO state right now,
-            // not whatever was true 24h ago. Fire-and-forget; the units
-            // list shows instantly, buttons pop in when channels finish.
+            // Channels (Airbnb Green/Red listing URLs) ride inside the
+            // /units response now — when the cache is warm we still kick
+            // off a silent re-fetch so the buttons reflect MAPRO right
+            // now instead of whatever was true 24h ago.
             if (initialCache) {
-                loadChannels();
+                loadUnits(true, /*silent*/ true);
                 return;
             }
 
@@ -106,7 +105,6 @@
             } catch (_) { /* ignore */ }
 
             await loadUnits();
-            loadChannels();
 
             // Warm the gate-access creds cache (24h, in extension storage) if any
             // Champions Gate units are loaded — fire-and-forget.
@@ -115,7 +113,7 @@
             }
         });
 
-        async function loadUnits(forceFresh) {
+        async function loadUnits(forceFresh, silent) {
             const status = document.getElementById("status");
 
             if (!forceFresh) {
@@ -131,8 +129,12 @@
                 }
             }
 
-            status.innerText = "Loading units…";
-            status.className = "units-status loading";
+            // silent mode = background refresh after a cache hit; don't
+            // flash "Loading units…" over the already-rendered list.
+            if (!silent) {
+                status.innerText = "Loading units…";
+                status.className = "units-status loading";
+            }
 
             try {
                 const idToken = await currentUser.getIdToken();
@@ -164,30 +166,6 @@
                 status.innerText = "Network error: " + e.message;
                 status.className = "units-status error";
             }
-        }
-
-        // Fetches the Airbnb listing URLs (Green/Red) for every unit and
-        // merges them onto allUnits[i]._channels. Backed by /api/mapro/
-        // units-channels which scrapes /manage/houses/channels/<id> in
-        // parallel. Runs after units render so the page stays snappy and
-        // the buttons just pop in when ready.
-        async function loadChannels() {
-            try {
-                const idToken = await currentUser.getIdToken();
-                const res = await fetch(proxyUrl + "/api/mapro/units-channels", {
-                    headers: { "Authorization": "Bearer " + idToken },
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                const map = data && data.channels;
-                if (!map) return;
-                for (const u of allUnits) {
-                    const key = String(u.idMAPRO ?? u.key ?? "");
-                    if (map[key]) u._channels = map[key];
-                }
-                writeCache();
-                render();
-            } catch (_) { /* network/auth blip — silent, buttons just don't show */ }
         }
 
         function escapeHtml(s) {
@@ -959,21 +937,7 @@
                    </button>`
                 : "";
 
-            // Airbnb listing buttons — sourced from MAPRO's channels page
-            // (loadChannels). Green = GRN/AIR account, Red = RED/AIR.
-            // Each only renders if MAPRO has that account linked to the
-            // house; a property with only one listing shows one button.
-            const ch = u._channels || {};
-            const greenBtn = ch.green
-                ? `<a class="btn-airbnb btn-airbnb-green" href="${escapeHtml(ch.green)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Airbnb Green ↗</a>`
-                : "";
-            const redBtn = ch.red
-                ? `<a class="btn-airbnb btn-airbnb-red" href="${escapeHtml(ch.red)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Airbnb Red ↗</a>`
-                : "";
-
-            const actionsHtml = (descBtn || gateBtn || greenBtn || redBtn)
-                ? `<div class="unit-details-actions">${descBtn}${gateBtn}${greenBtn}${redBtn}</div>`
-                : "";
+            const actionsHtml = (descBtn || gateBtn) ? `<div class="unit-details-actions">${descBtn}${gateBtn}</div>` : "";
             return `<div class="unit-details">${detailsRows}${actionsHtml}</div>${jobberExtrasHtml(u)}${staysHtml(u)}`;
         }
 
@@ -2815,13 +2779,24 @@
             tbody.innerHTML = filteredUnits.map((u) => {
                 const expanded = expandedKey === u.key;
                 const maproUrl = `https://app.mapro.us/manage/houses/register/${encodeURIComponent(u.idMAPRO || u.key)}`;
+                // Airbnb listing buttons — sourced from MAPRO's channels
+                // page (folded into /units). Green = GRN/AIR account,
+                // Red = RED/AIR. Each renders only when MAPRO has that
+                // account linked, so a one-listing house shows one btn.
+                const ch = u._channels || {};
+                const greenBtn = ch.green
+                    ? `<a href="${escapeHtml(ch.green)}" target="_blank" rel="noopener" class="btn-airbnb btn-airbnb-green" title="Open Green Airbnb listing">Green</a>`
+                    : "";
+                const redBtn = ch.red
+                    ? `<a href="${escapeHtml(ch.red)}" target="_blank" rel="noopener" class="btn-airbnb btn-airbnb-red" title="Open Red Airbnb listing">Red</a>`
+                    : "";
                 return `
                     <tr class="unit-row ${expanded ? "expanded" : ""}" data-key="${escapeHtml(u.key)}">
                         <td class="col-thumb">${imageThumb(u.image)}</td>
                         <td class="col-code">${escapeHtml(u.code)}</td>
                         <td class="col-extras">${extrasHtml(u)}</td>
                         <td><span class="status-pill status-${escapeHtml(u.status)}">${escapeHtml(u.status)}</span></td>
-                        <td class="col-mapro"><a href="${maproUrl}" target="_blank" rel="noopener" class="btn-mapro" title="Open in MAPRO">MAPRO ↗</a></td>
+                        <td class="col-mapro">${greenBtn}${redBtn}<a href="${maproUrl}" target="_blank" rel="noopener" class="btn-mapro" title="Open in MAPRO">MAPRO ↗</a></td>
                     </tr>
                     ${expanded ? `<tr class="unit-row-details"><td colspan="5">${detailsHtml(u)}</td></tr>` : ""}
                 `;

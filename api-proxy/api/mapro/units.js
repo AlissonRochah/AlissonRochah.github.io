@@ -1,6 +1,6 @@
 import { requireBridgeOrUser } from "../_lib/auth.js";
 import { applyCors } from "../_lib/cors.js";
-import { listUnits, listExtras, listResorts, MaproNotLoggedIn } from "../_lib/mapro.js";
+import { listUnits, listExtras, listResorts, listAllChannelLinks, MaproNotLoggedIn } from "../_lib/mapro.js";
 
 export default async function handler(req, res) {
     if (applyCors(req, res)) return;
@@ -40,6 +40,17 @@ export default async function handler(req, res) {
             console.warn("listResorts failed:", e?.message || e);
             return new Map();
         });
+        // Airbnb listing links per house (Green/Red) — folded into /units
+        // so the unit cards can show the channel buttons without a second
+        // round-trip. Hobby plan caps us at 12 serverless functions, so a
+        // dedicated /units-channels endpoint would push us over the limit.
+        // Per-unit failures inside listAllChannelLinks degrade silently.
+        const unitIds = units.map((u) => String(u.idMAPRO ?? u.key ?? "")).filter(Boolean);
+        const channels = await listAllChannelLinks(unitIds, 25).catch((e) => {
+            if (e instanceof MaproNotLoggedIn) throw e;
+            console.warn("listAllChannelLinks failed:", e?.message || e);
+            return new Map();
+        });
         const enriched = units.map((u) => {
             const id = String(u.idMAPRO ?? u.key ?? "");
             const resortName = (u.resort || "").trim();
@@ -50,6 +61,7 @@ export default async function handler(req, res) {
                     ? (extras.ph75.has(id) ? 75 : extras.ph35.has(id) ? 35 : null)
                     : null,
                 resortAddress: resorts.get(resortName) || "",
+                _channels: channels.get(id) || { red: null, green: null },
             };
         });
         res.setHeader("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");

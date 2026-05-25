@@ -470,15 +470,11 @@
     border-color: #10b981;
 }
 
-/* When the Airbnb pill lives in the unit-details actions row (next to
-   Description / Gate Access), match the btn-sm sizing so heights line
-   up instead of looking like a stray sticker. */
-.unit-details-actions .btn-airbnb {
-    display: inline-flex;
-    align-items: center;
-    height: 30px;
-    padding: 0 12px;
-    font-size: 0.78rem;
+/* Green/Red Airbnb listing pills live in the row's last column next
+   to the MAPRO ↗ link — give each a small left gap so they don't
+   smash into one another. Last-child handles the MAPRO btn. */
+.col-mapro .btn-airbnb {
+    margin-right: 4px;
 }
 
 .btn-vrbo {
