@@ -28,7 +28,10 @@
 
         const DEFAULT_PROXY_URL = "https://alisson-rochah-github-io.vercel.app";
         const CACHE_KEY = "masterbotUnitsCache";
-        const CACHE_SCHEMA = 2;
+        // Schema 3 adds `_channels` (Airbnb listing URLs scraped from
+        // MAPRO's channels page) so the Green/Red Airbnb buttons survive
+        // refreshes. Bumping invalidates older caches on first load.
+        const CACHE_SCHEMA = 3;
         const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
         const JOBBER_EXTENSION_ID = "dmaenamjjgeclplnofeoiipddinihhhl";
         const JOBBER_MAPPING_KEY = "masterbotJobberMapping";
@@ -84,7 +87,15 @@
             currentUser = user;
             document.getElementById("user-email").innerText = user.email;
 
-            if (initialCache) return;
+            // Channels (Airbnb listing URLs) are refreshed on every page
+            // visit even when the units cache is warm — the user expects
+            // the Green/Red buttons to reflect MAPRO state right now,
+            // not whatever was true 24h ago. Fire-and-forget; the units
+            // list shows instantly, buttons pop in when channels finish.
+            if (initialCache) {
+                loadChannels();
+                return;
+            }
 
             try {
                 const globalRef = doc(db, "settings", "global");
@@ -95,6 +106,7 @@
             } catch (_) { /* ignore */ }
 
             await loadUnits();
+            loadChannels();
 
             // Warm the gate-access creds cache (24h, in extension storage) if any
             // Champions Gate units are loaded — fire-and-forget.
@@ -152,6 +164,30 @@
                 status.innerText = "Network error: " + e.message;
                 status.className = "units-status error";
             }
+        }
+
+        // Fetches the Airbnb listing URLs (Green/Red) for every unit and
+        // merges them onto allUnits[i]._channels. Backed by /api/mapro/
+        // units-channels which scrapes /manage/houses/channels/<id> in
+        // parallel. Runs after units render so the page stays snappy and
+        // the buttons just pop in when ready.
+        async function loadChannels() {
+            try {
+                const idToken = await currentUser.getIdToken();
+                const res = await fetch(proxyUrl + "/api/mapro/units-channels", {
+                    headers: { "Authorization": "Bearer " + idToken },
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const map = data && data.channels;
+                if (!map) return;
+                for (const u of allUnits) {
+                    const key = String(u.idMAPRO ?? u.key ?? "");
+                    if (map[key]) u._channels = map[key];
+                }
+                writeCache();
+                render();
+            } catch (_) { /* network/auth blip — silent, buttons just don't show */ }
         }
 
         function escapeHtml(s) {
@@ -923,7 +959,21 @@
                    </button>`
                 : "";
 
-            const actionsHtml = (descBtn || gateBtn) ? `<div class="unit-details-actions">${descBtn}${gateBtn}</div>` : "";
+            // Airbnb listing buttons — sourced from MAPRO's channels page
+            // (loadChannels). Green = GRN/AIR account, Red = RED/AIR.
+            // Each only renders if MAPRO has that account linked to the
+            // house; a property with only one listing shows one button.
+            const ch = u._channels || {};
+            const greenBtn = ch.green
+                ? `<a class="btn-airbnb btn-airbnb-green" href="${escapeHtml(ch.green)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Airbnb Green ↗</a>`
+                : "";
+            const redBtn = ch.red
+                ? `<a class="btn-airbnb btn-airbnb-red" href="${escapeHtml(ch.red)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Airbnb Red ↗</a>`
+                : "";
+
+            const actionsHtml = (descBtn || gateBtn || greenBtn || redBtn)
+                ? `<div class="unit-details-actions">${descBtn}${gateBtn}${greenBtn}${redBtn}</div>`
+                : "";
             return `<div class="unit-details">${detailsRows}${actionsHtml}</div>${jobberExtrasHtml(u)}${staysHtml(u)}`;
         }
 
@@ -2792,7 +2842,10 @@
         }
 
         window.applyFilter = applyFilter;
-        window.refreshUnits = () => loadUnits(true);
+        window.refreshUnits = async () => {
+            await loadUnits(true);
+            loadChannels();
+        };
 
         window.openDescription = function (key) {
             const u = filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key);

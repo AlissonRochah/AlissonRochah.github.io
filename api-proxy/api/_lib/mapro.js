@@ -187,6 +187,84 @@ export async function listResorts() {
     return map;
 }
 
+// Parses the "Connected Properties by Channel" table on
+// /manage/houses/channels/<id> and returns the Airbnb listing URLs
+// split by account: { red: url|null, green: url|null }.
+//
+// Account text MAPRO renders is "RU Primary (RED/AIR)" or
+// "RU Secondary (GRN/AIR)" — the RED/AIR vs GRN/AIR token is the
+// canonical Red/Green discriminator (Primary/Secondary is a human
+// label that could change; the AIR token is the integration code).
+function stripHtmlTags(s) {
+    return String(s || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+}
+
+export async function listChannelLinks(unitId) {
+    const html = await maproFetchHtml(`/manage/houses/channels/${unitId}`);
+    // Anchor on the section heading so we don't accidentally parse the
+    // upper "Connections" table (which has ID/Connection/Status, no Link).
+    const headIdx = html.indexOf("Connected Properties by Channel");
+    if (headIdx < 0) {
+        console.warn(`listChannelLinks(${unitId}): heading not found (html=${html.length}b)`);
+        return { red: null, green: null };
+    }
+    const tableStart = html.indexOf("<table", headIdx);
+    if (tableStart < 0) return { red: null, green: null };
+    const tableEnd = html.indexOf("</table>", tableStart);
+    if (tableEnd < 0) return { red: null, green: null };
+    const tableHtml = html.slice(tableStart, tableEnd);
+
+    let red = null, green = null;
+    let airbnbRows = 0;
+    const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+    for (const rm of tableHtml.matchAll(rowRe)) {
+        const row = rm[1];
+        const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((c) => c[1]);
+        if (cells.length < 3) continue;
+        const account = stripHtmlTags(cells[0]);
+        const channel = stripHtmlTags(cells[1]);
+        if (!/airbnb/i.test(channel)) continue;
+        airbnbRows++;
+        const hrefMatch = cells[2].match(/<a\b[^>]*href=["']([^"']+)["']/i);
+        if (!hrefMatch) continue;
+        const link = hrefMatch[1];
+        if (/\bRED\/AIR\b/i.test(account)) red = red || link;
+        else if (/\bGRN\/AIR\b/i.test(account)) green = green || link;
+    }
+    // Found Airbnb rows but failed to attribute them — usually means
+    // MAPRO renamed the account label away from RED/AIR or GRN/AIR.
+    // Log enough to diagnose without dumping the whole HTML.
+    if (airbnbRows > 0 && !red && !green) {
+        console.warn(`listChannelLinks(${unitId}): ${airbnbRows} airbnb rows but no RED/AIR or GRN/AIR match`);
+    }
+    return { red, green };
+}
+
+// Bulk variant — fetches channels for many units in parallel with a
+// concurrency cap, so we don't slam MAPRO. Returns Map<idMAPRO, {red,green}>.
+// Per-unit failures degrade to { red: null, green: null } so one bad
+// page never breaks the whole batch.
+export async function listAllChannelLinks(unitIds, concurrency = 20) {
+    const out = new Map();
+    let idx = 0;
+    async function worker() {
+        while (idx < unitIds.length) {
+            const my = idx++;
+            const id = unitIds[my];
+            try {
+                out.set(String(id), await listChannelLinks(id));
+            } catch (e) {
+                if (e instanceof MaproNotLoggedIn) throw e;
+                console.warn(`listChannelLinks(${id}) failed:`, e?.message || e);
+                out.set(String(id), { red: null, green: null });
+            }
+        }
+    }
+    const workers = Array.from({ length: Math.min(concurrency, unitIds.length) }, worker);
+    await Promise.all(workers);
+    return out;
+}
+
 function inputValue(html, name) {
     const re = new RegExp(`<input[^>]*name="${name}"[^>]*value="([^"]*)"`, "i");
     const m = html.match(re);
@@ -494,6 +572,28 @@ export async function getThreadState(reservationId) {
     const id = encodeURIComponent(String(reservationId || "").trim());
     if (!id) throw new Error("reservationId required");
     return await maproFetchJson(`/api/inbox/v1/refresh_reservation_state?reservation_id=${id}`);
+}
+
+// MAPRO's chatapp fires this GET whenever the user opens a thread —
+// clears `num_unread_messages` server-side so the inbox badge drops.
+// `threadId` is the ULID from inbox state's `thread_id` (distinct from
+// `reservation_id`). Returns whatever MAPRO returns (typically a small
+// JSON ack); we don't inspect it.
+export async function markThreadAsRead(threadId) {
+    const id = encodeURIComponent(String(threadId || "").trim());
+    if (!id) throw new Error("threadId required");
+    return await maproFetchJson(`/api/inbox/v1/mark_thread_as_read?thread_id=${id}`);
+}
+
+// Resolve a reservation ULID to its thread ULID by reading the thread
+// event out of refresh_reservation_state. Used when the caller only
+// has reservation_id (e.g. after a send) and needs thread_id to mark
+// the thread as read.
+export async function getThreadIdForReservation(reservationId) {
+    const state = await getThreadState(reservationId);
+    const events = (state || {}).events || [];
+    const thread = events.find((e) => e && e.datatype === "thread");
+    return thread ? thread.thread_id || null : null;
 }
 
 export async function getUnitStays(key, referenceDate) {
