@@ -87,12 +87,12 @@
             currentUser = user;
             document.getElementById("user-email").innerText = user.email;
 
-            // Channels (Airbnb Green/Red listing URLs) ride inside the
-            // /units response now — when the cache is warm we still kick
-            // off a silent re-fetch so the buttons reflect MAPRO right
-            // now instead of whatever was true 24h ago.
+            // Cache-hit path: paint instantly from localStorage and fire
+            // off a silent /units refresh + channels refresh in the
+            // background so visible data converges to current MAPRO state.
             if (initialCache) {
                 loadUnits(true, /*silent*/ true);
+                loadChannels();
                 return;
             }
 
@@ -105,6 +105,7 @@
             } catch (_) { /* ignore */ }
 
             await loadUnits();
+            loadChannels();
 
             // Warm the gate-access creds cache (24h, in extension storage) if any
             // Champions Gate units are loaded — fire-and-forget.
@@ -155,7 +156,22 @@
                     return;
                 }
                 const data = await res.json();
-                allUnits = Array.isArray(data.units) ? data.units : [];
+                const incoming = Array.isArray(data.units) ? data.units : [];
+                // The fast /units mode doesn't return _channels — keep
+                // whatever channels were already populated (from cache or
+                // an earlier loadChannels) so the Green/Red Airbnb pills
+                // don't flicker out on every refresh while the slow call
+                // re-fetches them.
+                const prevChannels = new Map();
+                for (const u of allUnits) {
+                    const k = String(u.idMAPRO ?? u.key ?? "");
+                    if (u._channels) prevChannels.set(k, u._channels);
+                }
+                for (const u of incoming) {
+                    const k = String(u.idMAPRO ?? u.key ?? "");
+                    if (!u._channels && prevChannels.has(k)) u._channels = prevChannels.get(k);
+                }
+                allUnits = incoming;
                 filteredUnits = allUnits;
                 writeCache();
                 document.getElementById("count").innerText = `${allUnits.length} units`;
@@ -166,6 +182,36 @@
                 status.innerText = "Network error: " + e.message;
                 status.className = "units-status error";
             }
+        }
+
+        // Fetches just the channel info via the slow mode of /units
+        // (?channels=1). Runs in the background after the fast units
+        // load so MAPRO's per-house channel-page scraping (~100 fetches)
+        // never blocks the initial paint. Failures are silent — the
+        // Green/Red Airbnb buttons just don't appear until next try.
+        async function loadChannels() {
+            if (!currentUser) return;
+            try {
+                const idToken = await currentUser.getIdToken();
+                const res = await fetch(proxyUrl + "/api/mapro/units?channels=1", {
+                    headers: { "Authorization": "Bearer " + idToken },
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const units = Array.isArray(data.units) ? data.units : [];
+                const map = new Map();
+                for (const u of units) {
+                    const k = String(u.idMAPRO ?? u.key ?? "");
+                    if (u._channels) map.set(k, u._channels);
+                }
+                if (map.size === 0) return;
+                for (const u of allUnits) {
+                    const k = String(u.idMAPRO ?? u.key ?? "");
+                    if (map.has(k)) u._channels = map.get(k);
+                }
+                writeCache();
+                render();
+            } catch (_) { /* silent — keep whatever _channels are already cached */ }
         }
 
         function escapeHtml(s) {
@@ -2821,6 +2867,7 @@
             await loadUnits(true);
             loadChannels();
         };
+        window.refreshChannels = () => loadChannels();
 
         window.openDescription = function (key) {
             const u = filteredUnits.find((x) => x.key === key) || allUnits.find((x) => x.key === key);

@@ -8,23 +8,33 @@ export class MaproNotLoggedIn extends Error {
     }
 }
 
-async function maproFetchHtml(path) {
+async function maproFetchHtml(path, opts = {}) {
     const cookie = await getMaproCookie();
     if (!cookie) throw new MaproNotLoggedIn();
 
-    const res = await fetch(MAPRO_BASE + path, {
-        method: "GET",
-        redirect: "manual",
-        headers: {
-            "Cookie": cookie,
-            "Accept": "text/html,application/xhtml+xml",
-            "User-Agent": "Mozilla/5.0 (compatible; MasterBotProxy/0.1)",
-        },
-    });
+    // Optional per-request timeout via AbortController. Used by callers
+    // that fan out many requests (channel pages) so a single hung MAPRO
+    // call can't stall the whole batch up to the Vercel function limit.
+    const controller = opts.timeoutMs ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), opts.timeoutMs) : null;
+    try {
+        const res = await fetch(MAPRO_BASE + path, {
+            method: "GET",
+            redirect: "manual",
+            headers: {
+                "Cookie": cookie,
+                "Accept": "text/html,application/xhtml+xml",
+                "User-Agent": "Mozilla/5.0 (compatible; MasterBotProxy/0.1)",
+            },
+            signal: controller ? controller.signal : undefined,
+        });
 
-    if (isMaproAuthFailure(res.status)) throw new MaproNotLoggedIn();
-    if (!res.ok) throw new Error(`MAPRO ${res.status}`);
-    return await res.text();
+        if (isMaproAuthFailure(res.status)) throw new MaproNotLoggedIn();
+        if (!res.ok) throw new Error(`MAPRO ${res.status}`);
+        return await res.text();
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
 }
 
 async function maproFetchJson(path) {
@@ -200,7 +210,10 @@ function stripHtmlTags(s) {
 }
 
 export async function listChannelLinks(unitId) {
-    const html = await maproFetchHtml(`/manage/houses/channels/${unitId}`);
+    // Per-call 6s timeout — channel page is small (<50KB). If MAPRO
+    // stalls on one house, we'd rather kill that one and move on than
+    // let a single hung request eat the whole function's time budget.
+    const html = await maproFetchHtml(`/manage/houses/channels/${unitId}`, { timeoutMs: 6000 });
     // Anchor on the section heading so we don't accidentally parse the
     // upper "Connections" table (which has ID/Connection/Status, no Link).
     const headIdx = html.indexOf("Connected Properties by Channel");
