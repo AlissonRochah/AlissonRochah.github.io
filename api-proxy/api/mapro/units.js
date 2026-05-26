@@ -2,6 +2,11 @@ import { requireBridgeOrUser } from "../_lib/auth.js";
 import { applyCors } from "../_lib/cors.js";
 import { listUnits, listExtras, listResorts, listAllChannelLinks, MaproNotLoggedIn } from "../_lib/mapro.js";
 
+// Default Hobby-plan timeout is 10s, which is tight once we fan out
+// ~100 channel-page fetches. Bumping to 30s gives MAPRO room to breathe
+// under load. (Hobby supports up to 60s via maxDuration.)
+export const maxDuration = 30;
+
 export default async function handler(req, res) {
     if (applyCors(req, res)) return;
     if (req.method !== "GET") {
@@ -44,10 +49,12 @@ export default async function handler(req, res) {
         // so the unit cards can show the channel buttons without a second
         // round-trip. Hobby plan caps us at 12 serverless functions, so a
         // dedicated /units-channels endpoint would push us over the limit.
-        // Per-unit failures inside listAllChannelLinks degrade silently.
+        // listAllChannelLinks now swallows ALL per-unit errors (including
+        // MaproNotLoggedIn from MAPRO rate-limit hiccups) so a flaky
+        // channel page can't masquerade as a session-expired banner —
+        // listUnits already validated the session above.
         const unitIds = units.map((u) => String(u.idMAPRO ?? u.key ?? "")).filter(Boolean);
-        const channels = await listAllChannelLinks(unitIds, 25).catch((e) => {
-            if (e instanceof MaproNotLoggedIn) throw e;
+        const channels = await listAllChannelLinks(unitIds, 12).catch((e) => {
             console.warn("listAllChannelLinks failed:", e?.message || e);
             return new Map();
         });

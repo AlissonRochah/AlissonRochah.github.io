@@ -242,9 +242,13 @@ export async function listChannelLinks(unitId) {
 
 // Bulk variant — fetches channels for many units in parallel with a
 // concurrency cap, so we don't slam MAPRO. Returns Map<idMAPRO, {red,green}>.
-// Per-unit failures degrade to { red: null, green: null } so one bad
-// page never breaks the whole batch.
-export async function listAllChannelLinks(unitIds, concurrency = 20) {
+// ALL per-unit failures degrade to { red: null, green: null }, including
+// MaproNotLoggedIn: under load, MAPRO has been observed returning 401/403
+// on individual requests even when the session cookie is valid (looks
+// like a rate-limit / connection-pool symptom). Re-throwing here used
+// to surface that as a fake "session expired" banner — session validity
+// is already guaranteed by listUnits succeeding upstream of this call.
+export async function listAllChannelLinks(unitIds, concurrency = 12) {
     const out = new Map();
     let idx = 0;
     async function worker() {
@@ -254,7 +258,6 @@ export async function listAllChannelLinks(unitIds, concurrency = 20) {
             try {
                 out.set(String(id), await listChannelLinks(id));
             } catch (e) {
-                if (e instanceof MaproNotLoggedIn) throw e;
                 console.warn(`listChannelLinks(${id}) failed:`, e?.message || e);
                 out.set(String(id), { red: null, green: null });
             }
