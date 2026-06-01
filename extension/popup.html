@@ -9,7 +9,7 @@
       padding: 14px;
       font-family: -apple-system, BlinkMacSystemFont, sans-serif;
     }
-    #draft {
+    button.action {
       width: 100%;
       background: #FF385C;
       color: #fff;
@@ -20,7 +20,13 @@
       font-weight: 600;
       cursor: pointer;
     }
-    #draft:disabled { opacity: 0.6; cursor: default; }
+    button.action:disabled { opacity: 0.6; cursor: default; }
+    #draftAll {
+      margin-top: 8px;
+      background: #fff;
+      color: #FF385C;
+      border: 1.5px solid #FF385C;
+    }
     #status {
       margin-top: 10px;
       font-size: 12px;
@@ -33,7 +39,8 @@
   </style>
 </head>
 <body>
-  <button id="draft" type="button">✦ Draft with Claude</button>
+  <button id="draft" class="action" type="button">✦ Draft this conversation</button>
+  <button id="draftAll" class="action" type="button">✦ Draft all unread</button>
   <div id="status"></div>
   <script src="popup.js"></script>
 </body>
