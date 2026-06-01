@@ -1,0 +1,1079 @@
+openapi: 3.0.3
+info:
+  title: MasterBot Proxy API
+  version: "1.0.0"
+  description: |
+    Backend API consumed by the MasterBot web app and the MasterBot Bridge
+    Chrome extension. Hosted on Vercel as serverless functions.
+
+    The API is mostly a proxy in front of three upstreams: **MAPRO**
+    (`https://app.mapro.us`), **gateaccess.net**, and **portal.proptia.com**.
+    A small admin surface manages the MAPRO session cookie stored in
+    Upstash Redis (the only piece of stateful data the API holds).
+
+    ## Auth
+
+    All endpoints (except the public `GET /api/proptia/add-visitor` health
+    probe) require an `Authorization: Bearer <token>` header. Two schemes
+    are accepted:
+
+    - **firebaseBearer** — a Firebase ID token. Verified with `firebase-admin`.
+      The decoded `email` is used for the admin allowlist on admin routes.
+    - **bridgeOrFirebaseBearer** — same as above, but the literal value of the
+      `BRIDGE_SECRET` env var is also accepted. Used by the Chrome
+      extension's background-script bridge.
+
+    Admin routes additionally require the caller's email to appear in
+    the `ADMIN_EMAILS` env var (comma-separated). Bridge callers bypass
+    the allowlist on `/api/admin/mapro-test` but NOT on `/api/admin/mapro-cookie`.
+
+    ## CORS
+
+    Allowed origins:
+    - `https://alissonrochah.github.io`
+    - `http://localhost:4000`
+    - `http://127.0.0.1:4000`
+
+    Methods: `GET, POST, OPTIONS`. Headers: `Authorization, Content-Type`.
+
+    ## Errors
+
+    All 4xx/5xx responses share the envelope `{ "error": "<message>" }`.
+    Some errors include extra context fields (e.g. `booking`, `ulid`,
+    `stage`, `v`).
+
+    The dedicated **`503 MAPRO_NOT_LOGGED_IN`** code means the cookie stored
+    in Upstash has expired or is missing; the frontend must trigger
+    `POST /api/admin/mapro-cookie` with a fresh cookie to recover.
+
+servers:
+  - url: https://alisson-rochah-github-io.vercel.app
+    description: Production (Vercel)
+  - url: http://localhost:3000
+    description: Local (vercel dev)
+
+tags:
+  - name: mapro
+    description: MAPRO-backed endpoints (units, reservations, inbox, messaging).
+  - name: admin
+    description: Admin-only endpoints (MAPRO cookie management + diagnostics).
+  - name: gate
+    description: gateaccess.net guest registration.
+  - name: proptia
+    description: portal.proptia.com visitor registration (Windsor Island, Solterra).
+
+security:
+  - firebaseBearer: []
+
+paths:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # mapro
+  # ─────────────────────────────────────────────────────────────────────
+
+  /api/mapro/bulk-scan:
+    post:
+      tags: [mapro]
+      summary: Bulk-resolve addresses/codes/resort to MAPRO reservations
+      description: |
+        Resolves a list of addresses, Airbnb confirmation codes, or a whole
+        resort to MAPRO units, then queries MAPRO's calendar for reservations
+        matching the mode (`checkin` = check-ins on the day; `inhouse` =
+        currently in-house) on `date`. Results are split into Airbnb /
+        non-Airbnb / no-reservation / not-found buckets.
+
+        Max 300 items per call.
+      security:
+        - firebaseBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkScanRequest'
+      responses:
+        '200':
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkScanResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+
+  /api/mapro/send-message:
+    post:
+      tags: [mapro]
+      summary: Send a guest channel message
+      description: |
+        Looks up a MAPRO booking by Airbnb confirmation code, resolves the
+        messaging ULID, and posts a channel message via MAPRO's
+        `post_sales_channel_message` endpoint.
+      security:
+        - bridgeOrFirebaseBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmationCode, body]
+              properties:
+                confirmationCode:
+                  type: string
+                  description: Airbnb HM-prefixed confirmation code.
+                  example: HMABC123XY
+                body:
+                  type: string
+                  description: Plain-text message body.
+                  example: "Hi! Your door code is 4321."
+      responses:
+        '200':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, booking, ulid, mapro]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  booking:
+                    $ref: '#/components/schemas/BookingMatch'
+                  ulid:
+                    type: string
+                    description: 26-char reservation ULID.
+                  mapro:
+                    type: object
+                    description: Raw MAPRO ack payload.
+                    additionalProperties: true
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: No matching reservation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500':
+          description: Internal error (includes "no messaging ULID" case)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '502':
+          description: MAPRO upstream rejected the send
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ErrorEnvelope'
+                  - type: object
+                    properties:
+                      booking: { $ref: '#/components/schemas/BookingMatch' }
+                      ulid: { type: string }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+
+  /api/mapro/units:
+    get:
+      tags: [mapro]
+      summary: List MAPRO units with extras and (optionally) Airbnb channel links
+      description: |
+        Returns every MAPRO house with BBQ flag, pool-heater tier (35/75),
+        resort address, and optionally Airbnb Red/Green channel URLs.
+
+        Without `channels=1` the call is fast. With `channels=1` it fetches
+        the channel page for every unit and can take 10–25s.
+
+        Cache: `public, s-maxage=120, stale-while-revalidate=300`.
+      security:
+        - bridgeOrFirebaseBearer: []
+      parameters:
+        - name: channels
+          in: query
+          description: When `"1"`, includes `_channels` (red/green Airbnb links) per unit.
+          required: false
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        '200':
+          description: Unit list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, units]
+                properties:
+                  count: { type: integer }
+                  units:
+                    type: array
+                    items: { $ref: '#/components/schemas/Unit' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+
+  /api/mapro/reservations:
+    get:
+      tags: [mapro]
+      summary: List reservations in a checkout window
+      description: |
+        Pulls normalized reservation rows from MAPRO's `check-reservation`
+        grid. `mode=overlap` (default) also includes stays that are
+        currently in-progress (checkin already happened, checkout in the
+        future). `mode=checkout` only returns rows whose checkout falls
+        inside the window. Cancelled rows are kept.
+
+        Cache: `private, max-age=30`.
+      security:
+        - bridgeOrFirebaseBearer: []
+      parameters:
+        - name: checkoutFrom
+          in: query
+          schema: { type: string, format: date }
+          description: Inclusive lower bound on `checkout`.
+        - name: checkoutTo
+          in: query
+          schema: { type: string, format: date }
+          description: Inclusive upper bound on `checkout`.
+        - name: max
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50000, default: 50000 }
+          description: Total row cap (server pages 500 at a time).
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [overlap, checkout]
+            default: overlap
+      responses:
+        '200':
+          description: Reservation rows
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, reservations]
+                properties:
+                  count: { type: integer }
+                  reservations:
+                    type: array
+                    items: { $ref: '#/components/schemas/Reservation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+
+  /api/mapro/inbox:
+    get:
+      tags: [mapro]
+      summary: Get inbox state (all threads, one thread, or by bookingId)
+      description: |
+        - No query → returns MAPRO's full inbox initial state (~1000 threads).
+        - `reservation_id=<ULID>` → returns one thread's full state.
+        - `bookingId=<numeric>` → resolves to ULID, returns the same shape
+          with a synthetic `_resolved_reservation_id` field injected.
+
+        Response payloads are passed through from MAPRO and not strictly
+        normalized.
+      security:
+        - bridgeOrFirebaseBearer: []
+      parameters:
+        - name: reservation_id
+          in: query
+          schema: { type: string, pattern: '^[0-9A-Z]{26}$' }
+        - name: bookingId
+          in: query
+          schema: { type: string, pattern: '^\d+$' }
+      responses:
+        '200':
+          description: Inbox payload (shape varies)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: No thread for bookingId
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+    post:
+      tags: [mapro]
+      summary: Mark a thread as read
+      description: |
+        Marks a MAPRO inbox thread as read. Accepts either the thread ULID
+        directly, or a reservation ULID (the proxy resolves the thread for you).
+      security:
+        - bridgeOrFirebaseBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [mark_read_thread_id]
+                  properties:
+                    mark_read_thread_id:
+                      type: string
+                      description: 26-char thread ULID.
+                - type: object
+                  required: [mark_read_reservation_id]
+                  properties:
+                    mark_read_reservation_id:
+                      type: string
+                      description: 26-char reservation ULID.
+      responses:
+        '200':
+          description: Marked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, thread_id, mapro]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  thread_id: { type: string }
+                  mapro:
+                    type: object
+                    additionalProperties: true
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Could not resolve reservation → thread
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+
+  /api/mapro/unit-stays:
+    get:
+      tags: [mapro]
+      summary: Active / previous / next stays for one unit
+      description: |
+        Returns the stay currently active on `date`, the previous one, and
+        the next one. When `active` is non-null, `next` is forced to null.
+
+        Cache: `public, s-maxage=300, stale-while-revalidate=600`.
+      security:
+        - firebaseBearer: []
+      parameters:
+        - name: key
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[0-9A-Z]{26}$' }
+          description: MAPRO unit ULID.
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+          description: Reference date (defaults to today).
+      responses:
+        '200':
+          description: Stay slots
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [active, previous, next]
+                properties:
+                  active:   { $ref: '#/components/schemas/StayOrNull' }
+                  previous: { $ref: '#/components/schemas/StayOrNull' }
+                  next:     { $ref: '#/components/schemas/StayOrNull' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+
+  /api/mapro/bulk-send:
+    post:
+      tags: [mapro]
+      summary: Send guest messages in bulk (5 concurrent)
+      description: |
+        Sends up to 200 messages in parallel batches of 5. Per-message
+        errors are returned in `results`, not thrown.
+      security:
+        - firebaseBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sends]
+              properties:
+                sends:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: object
+                    required: [bookingId, body]
+                    properties:
+                      bookingId: { type: string }
+                      body: { type: string }
+      responses:
+        '200':
+          description: Per-message results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      oneOf:
+                        - type: object
+                          required: [bookingId, ok]
+                          properties:
+                            bookingId: { type: string }
+                            ok: { type: boolean, enum: [true] }
+                        - type: object
+                          required: [bookingId, ok, error]
+                          properties:
+                            bookingId: { type: string }
+                            ok: { type: boolean, enum: [false] }
+                            error: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+
+  /api/mapro/unit-address:
+    get:
+      tags: [mapro]
+      summary: Get a unit's formatted address + English description
+      description: |
+        Scrapes MAPRO's `/manage/houses/register/<id>` page for the
+        comma-joined address and the English description textarea.
+
+        Cache: `public, s-maxage=3600, stale-while-revalidate=86400`.
+      security:
+        - firebaseBearer: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: { type: string, pattern: '^\d+$' }
+          description: MAPRO numeric house id.
+      responses:
+        '200':
+          description: Address + description
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, address, description]
+                properties:
+                  id: { type: string }
+                  address: { type: string, example: "123 Main St, Davenport, FL 33837" }
+                  description: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/MaproNotLoggedIn' }
+
+  # ─────────────────────────────────────────────────────────────────────
+  # admin
+  # ─────────────────────────────────────────────────────────────────────
+
+  /api/admin/mapro-test:
+    get:
+      tags: [admin]
+      summary: Diagnostic probe of the stored MAPRO cookie
+      description: |
+        Pulls the MAPRO cookie from KV, hits 5 known MAPRO paths, and
+        reports raw HTTP status + the two competing `casa-N` regex match
+        counts (used during the units extraction tuning).
+
+        Bridge callers bypass the admin allowlist.
+      security:
+        - bridgeOrFirebaseBearer: []
+      responses:
+        '200':
+          description: Probe results
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, stage, error]
+                    properties:
+                      ok: { type: boolean, enum: [false] }
+                      stage: { type: string, example: "kv" }
+                      error: { type: string }
+                  - type: object
+                    required: [cookieLength, cookiePrefix, results]
+                    properties:
+                      cookieLength: { type: integer }
+                      cookiePrefix: { type: string }
+                      results:
+                        type: array
+                        items:
+                          oneOf:
+                            - type: object
+                              required: [path, status, location, bodyLength, inputCount, casaIdCount, oldRegexMatches, newRegexMatches, firstCasaTag, contextSnippet]
+                              properties:
+                                path: { type: string }
+                                status: { type: integer }
+                                location: { type: string, nullable: true }
+                                bodyLength: { type: integer }
+                                inputCount: { type: integer }
+                                casaIdCount: { type: integer }
+                                oldRegexMatches: { type: integer }
+                                newRegexMatches: { type: integer }
+                                firstCasaTag: { type: string, nullable: true }
+                                contextSnippet: { type: string, nullable: true }
+                            - type: object
+                              required: [path, error]
+                              properties:
+                                path: { type: string }
+                                error: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+
+  /api/admin/mapro-cookie:
+    post:
+      tags: [admin]
+      summary: Store a fresh MAPRO session cookie
+      description: |
+        Persists a MAPRO session cookie to Upstash Redis under
+        `mapro:session_cookie`. Every other MAPRO-touching endpoint reads
+        from this key. No bridge bypass here.
+      security:
+        - firebaseBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cookie]
+              properties:
+                cookie:
+                  type: string
+                  minLength: 10
+                  description: Raw `Cookie:` header value from a logged-in MAPRO session.
+      responses:
+        '200':
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+
+  # ─────────────────────────────────────────────────────────────────────
+  # gate
+  # ─────────────────────────────────────────────────────────────────────
+
+  /api/gate/add:
+    post:
+      tags: [gate]
+      summary: Register guests on gateaccess.net
+      description: |
+        Logs in to `gateaccess.net` for the given community and registers
+        one or more guests via the DevExpress automation in
+        `_lib/gate.js`. Optionally seeds the cookie jar with cookies
+        pre-launched from the user's browser. Per-guest errors are
+        captured in the response.
+      security:
+        - firebaseBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [creds, guests]
+              properties:
+                creds:
+                  type: object
+                  required: [communityCode, username, password]
+                  properties:
+                    communityCode: { type: string, description: Must appear in the login dropdown. }
+                    username: { type: string }
+                    password: { type: string, format: password }
+                guests:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/GateGuest' }
+                cookies:
+                  type: array
+                  description: Optional prelaunched browser cookies (name+value pairs).
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: { type: string }
+                      value: { type: string }
+      responses:
+        '200':
+          description: Per-guest results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/GuestResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ─────────────────────────────────────────────────────────────────────
+  # proptia
+  # ─────────────────────────────────────────────────────────────────────
+
+  /api/proptia/add-visitor:
+    get:
+      tags: [proptia]
+      summary: Public health probe
+      description: Returns the function version. No auth required.
+      security: []
+      responses:
+        '200':
+          description: Health probe
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, v]
+                properties:
+                  ok: { type: boolean, enum: [true] }
+                  v: { type: string, example: "fallback-2" }
+    post:
+      tags: [proptia]
+      summary: Register visitors on portal.proptia.com
+      description: |
+        Two flows controlled by per-resort config:
+        - `windsor-island` → "resident" mode (chooser-based).
+        - `solterra` → "org-admin" mode (uses the resident directory DataTable
+          to locate the right Add Visitor link).
+
+        `creds` is optional — falls back to env vars
+        `PROPTIA_WINDSOR_EMAIL`/`PROPTIA_WINDSOR_PASSWORD` or
+        `PROPTIA_SOLTERRA_EMAIL`/`PROPTIA_SOLTERRA_PASSWORD` depending on resort.
+      security:
+        - firebaseBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resort, houseHint, guests]
+              properties:
+                resort:
+                  type: string
+                  enum: [windsor-island, solterra]
+                houseHint:
+                  type: string
+                  description: Address/property substring to match.
+                guests:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/ProptiaGuest' }
+                creds:
+                  type: object
+                  description: Optional — falls back to env vars per resort.
+                  properties:
+                    email: { type: string, format: email }
+                    password: { type: string, format: password }
+      responses:
+        '200':
+          description: Per-guest results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [house, results]
+                properties:
+                  house: { type: string, description: Matched property label. }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/GuestResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+# ───────────────────────────────────────────────────────────────────────
+# components
+# ───────────────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    firebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID Token
+      description: |
+        Firebase ID token verified server-side with `firebase-admin`.
+        The decoded `email` claim is used for the admin allowlist on
+        `/api/admin/*`.
+    bridgeOrFirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID Token OR BRIDGE_SECRET
+      description: |
+        Accepts either a Firebase ID token (as above) OR the literal value
+        of the server-side `BRIDGE_SECRET` env var, used by the MasterBot
+        Bridge Chrome extension.
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: Authenticated but not in `ADMIN_EMAILS`
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    MethodNotAllowed:
+      description: Wrong HTTP method
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    InternalError:
+      description: Unhandled internal error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    MaproNotLoggedIn:
+      description: |
+        Stored MAPRO cookie is missing or expired. The frontend must call
+        `POST /api/admin/mapro-cookie` with a fresh cookie to recover.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+              - type: object
+                properties:
+                  error:
+                    type: string
+                    enum: ["MAPRO_NOT_LOGGED_IN"]
+
+  schemas:
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+      additionalProperties: true
+
+    # ── mapro bulk-scan ──
+
+    BulkScanRequest:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [addresses, codes, resort]
+          default: addresses
+        mode:
+          type: string
+          enum: [checkin, inhouse]
+          default: checkin
+        date:
+          type: string
+          format: date
+          description: Defaults to Florida (America/New_York) today.
+        addresses:
+          type: array
+          maxItems: 300
+          items: { type: string }
+          description: Required when `source=addresses`. "address" header row is filtered out.
+        codes:
+          type: array
+          maxItems: 300
+          items: { type: string }
+          description: Required when `source=codes`.
+        resort:
+          type: string
+          description: Required (non-empty) when `source=resort`.
+
+    BulkScanResponse:
+      type: object
+      required: [day, mode, source, airbnb, notAirbnb, noMatch, notFound]
+      properties:
+        day: { type: string, format: date }
+        mode:
+          type: string
+          enum: [checkin, inhouse, codes]
+        source:
+          type: string
+          enum: [addresses, codes, resort]
+        airbnb:
+          type: array
+          items: { $ref: '#/components/schemas/ScanItem' }
+        notAirbnb:
+          type: array
+          items: { $ref: '#/components/schemas/ScanItem' }
+        noMatch:
+          type: array
+          items:
+            type: object
+            required: [address, unit]
+            properties:
+              address: { type: string }
+              unit: { type: string }
+        notFound:
+          type: array
+          items: { type: string }
+
+    ScanItem:
+      type: object
+      required: [address, unit, guest, checkin, checkout, channel]
+      properties:
+        address: { type: string }
+        unit: { type: string }
+        guest: { type: string }
+        checkin: { type: string, format: date }
+        checkout: { type: string, format: date }
+        channel: { type: string, example: "RED/AIR (Red Airbnb)" }
+        bookingId:
+          type: string
+          nullable: true
+
+    # ── mapro send-message ──
+
+    BookingMatch:
+      type: object
+      required: [bookingId, codReference, guest, checkin, checkout]
+      properties:
+        bookingId: { type: string }
+        codReference: { type: string }
+        guest: { type: string }
+        checkin: { type: string, format: date }
+        checkout: { type: string, format: date }
+
+    # ── mapro units ──
+
+    Unit:
+      type: object
+      description: |
+        Fields from MAPRO's `localData` allowlist plus decorators added by
+        the proxy (`bbq`, `poolHeater`, `resortAddress`, `_channels`).
+        Most fields can be omitted when MAPRO doesn't return them.
+      properties:
+        key: { type: string, description: 26-char ULID. }
+        idMAPRO: { type: string }
+        code: { type: string }
+        title: { type: string }
+        image: { type: string }
+        homeowner: { type: string }
+        responsible: { type: string }
+        cleaner: { type: string }
+        resort: { type: string }
+        address: { type: string }
+        County: { type: string }
+        BedroomCount: { oneOf: [{ type: integer }, { type: string }] }
+        BathroomCount: { oneOf: [{ type: integer }, { type: string }] }
+        MaxOccupancy: { oneOf: [{ type: integer }, { type: string }] }
+        Layoutbeds: { type: string }
+        total_living_area_sqft: { oneOf: [{ type: integer }, { type: string }] }
+        Type: { type: string }
+        Contract: { type: string }
+        status: { type: string }
+        petFriendly: { oneOf: [{ type: string }, { type: boolean }] }
+        wifiNetworkName: { type: string }
+        wifiNetworkPassword: { type: string }
+        gatePassword: { type: string }
+        doorPassword: { type: string }
+        lockboxCode: { type: string }
+        BBQDoorCode: { type: string }
+        cityLicenseNumber: { type: string }
+        TouristTaxAccountNumber: { type: string }
+        ulid:
+          type: string
+          description: "Extracted from menu[0].url (#ULID)."
+        bbq:
+          type: boolean
+          nullable: true
+          description: '`null` when `/settings/services` was unreachable.'
+        poolHeater:
+          type: integer
+          nullable: true
+          enum: [35, 75, null]
+          description: 75 wins over 35.
+        resortAddress:
+          type: string
+          description: Empty string when no resort address is on file.
+        _channels:
+          type: object
+          description: Only present when `?channels=1`.
+          properties:
+            red: { type: string, nullable: true }
+            green: { type: string, nullable: true }
+
+    # ── mapro reservations ──
+
+    Reservation:
+      type: object
+      required:
+        - bookingId
+        - checkin
+        - checkout
+        - hasBBQGrill
+        - amountBBQGrill
+        - hasPoolHeat
+        - amountPoolHeat
+        - hasPet
+        - amountPet
+        - hasLaundry
+        - amountLaundry
+        - hasInsurance
+        - insuranceAmount
+        - hasBookingFee
+        - amountBookingFee
+        - propertyMaproId
+        - propertyName
+        - guest
+        - status
+        - paymentStatus
+        - integrator
+        - totalReservation
+        - totalPaid
+        - outstandingAmount
+      properties:
+        bookingId: { type: string }
+        checkin: { type: string, format: date }
+        checkout: { type: string, format: date }
+        hasBBQGrill: { type: boolean }
+        amountBBQGrill: { type: number }
+        hasPoolHeat: { type: boolean }
+        amountPoolHeat: { type: number }
+        hasPet: { type: boolean }
+        amountPet: { type: number }
+        hasLaundry: { type: boolean }
+        amountLaundry: { type: number }
+        hasInsurance: { type: boolean }
+        insuranceAmount: { type: number }
+        hasBookingFee: { type: boolean }
+        amountBookingFee: { type: number }
+        propertyMaproId: { type: string }
+        propertyName: { type: string }
+        guest: { type: string }
+        status: { type: string, example: "Approved" }
+        paymentStatus: { type: string, example: "Paid out" }
+        integrator: { type: string, example: "RED/AIR (Red Airbnb)" }
+        totalReservation: { type: number }
+        totalPaid: { type: number }
+        outstandingAmount: { type: number }
+
+    # ── mapro unit-stays ──
+
+    Stay:
+      type: object
+      required: [id, guest, channel, ci, co, link, doorCode, confirmation]
+      properties:
+        id:
+          type: string
+          nullable: true
+        guest: { type: string }
+        channel: { type: string }
+        ci: { type: string, description: Check-in (date or `YYYY-MM-DD HH:MM:SS`). }
+        co: { type: string, description: Check-out (date or `YYYY-MM-DD HH:MM:SS`). }
+        link: { type: string, description: Booking page path. }
+        doorCode: { type: string }
+        confirmation: { type: string, description: Channel confirmation code. }
+
+    StayOrNull:
+      description: A Stay object or null when there is no stay in this slot.
+      oneOf:
+        - $ref: '#/components/schemas/Stay'
+        - type: object
+          nullable: true
+
+    # ── gate ──
+
+    GateGuest:
+      type: object
+      required: [lastName]
+      properties:
+        lastName: { type: string }
+        firstName: { type: string }
+        startDate:
+          type: string
+          description: "Accepts `M/D/YYYY` or `MM/DD/YYYY`."
+          example: "5/31/2026"
+        endDate:
+          type: string
+          description: "Accepts `M/D/YYYY` or `MM/DD/YYYY`."
+          example: "6/3/2026"
+
+    # ── proptia ──
+
+    ProptiaGuest:
+      type: object
+      required: [lastName]
+      properties:
+        lastName: { type: string }
+        firstName: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        licensePlate: { type: string }
+        notes: { type: string }
+        startDate:
+          type: string
+          description: "Accepts `M/D/YYYY` or `MM/DD/YYYY`."
+        endDate:
+          type: string
+          description: "Accepts `M/D/YYYY` or `MM/DD/YYYY`."
+
+    # ── shared per-guest result envelope (gate + proptia) ──
+
+    GuestResult:
+      oneOf:
+        - type: object
+          required: [firstName, lastName, ok]
+          properties:
+            firstName: { type: string }
+            lastName: { type: string }
+            ok: { type: boolean, enum: [true] }
+            key: { type: string, description: gate-only — the new guest's record key. }
+            error:
+              type: string
+              nullable: true
+              enum: [null]
+        - type: object
+          required: [firstName, lastName, ok, error]
+          properties:
+            firstName: { type: string }
+            lastName: { type: string }
+            ok: { type: boolean, enum: [false] }
+            error: { type: string }

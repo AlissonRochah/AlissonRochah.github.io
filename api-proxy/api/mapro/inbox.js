@@ -4,30 +4,65 @@ import {
     getInboxState,
     getThreadState,
     getReservationUlid,
+    markThreadAsRead,
+    getThreadIdForReservation,
     MaproNotLoggedIn,
 } from "../_lib/mapro.js";
 
-// One endpoint, three modes (consolidated to stay under Vercel Hobby's
+// One endpoint, several modes (consolidated to stay under Vercel Hobby's
 // 12-function-per-deploy limit):
-//   GET /api/mapro/inbox                         → full inbox state (1000-cap)
-//   GET /api/mapro/inbox?reservation_id=ULID     → one thread + messages
-//   GET /api/mapro/inbox?bookingId=12345         → resolve numeric bookingId
-//                                                  to ULID, then return that
-//                                                  thread + messages. Used to
-//                                                  reach threads outside the
-//                                                  1000-thread inbox cap (older
-//                                                  reservations from /booking/
-//                                                  check-reservation history).
+//   GET  /api/mapro/inbox                         → full inbox state (1000-cap)
+//   GET  /api/mapro/inbox?reservation_id=ULID     → one thread + messages
+//   GET  /api/mapro/inbox?bookingId=12345         → resolve numeric bookingId
+//                                                   to ULID, then return that
+//                                                   thread + messages. Used to
+//                                                   reach threads outside the
+//                                                   1000-thread inbox cap (older
+//                                                   reservations from /booking/
+//                                                   check-reservation history).
+//   POST /api/mapro/inbox  {mark_read_thread_id}      → mark thread as read
+//   POST /api/mapro/inbox  {mark_read_reservation_id} → resolve to thread_id,
+//                                                       then mark as read
 export default async function handler(req, res) {
     if (applyCors(req, res)) return;
-    if (req.method !== "GET") {
-        res.status(405).json({ error: "method not allowed" });
-        return;
-    }
     try {
         await requireBridgeOrUser(req);
     } catch (err) {
         res.status(err.status || 401).json({ error: err.message });
+        return;
+    }
+
+    if (req.method === "POST") {
+        const body = req.body || {};
+        const threadId = String(body.mark_read_thread_id || "").trim();
+        const reservationId = String(body.mark_read_reservation_id || "").trim();
+        if (!threadId && !reservationId) {
+            res.status(400).json({ error: "mark_read_thread_id or mark_read_reservation_id required" });
+            return;
+        }
+        try {
+            let tid = threadId;
+            if (!tid) {
+                tid = await getThreadIdForReservation(reservationId);
+                if (!tid) {
+                    res.status(404).json({ error: `no thread_id for reservation ${reservationId}` });
+                    return;
+                }
+            }
+            const mapro = await markThreadAsRead(tid);
+            res.status(200).json({ ok: true, thread_id: tid, mapro });
+        } catch (err) {
+            if (err instanceof MaproNotLoggedIn) {
+                res.status(503).json({ error: "MAPRO_NOT_LOGGED_IN" });
+                return;
+            }
+            res.status(500).json({ error: err.message || "internal error" });
+        }
+        return;
+    }
+
+    if (req.method !== "GET") {
+        res.status(405).json({ error: "method not allowed" });
         return;
     }
     const reservationId = String(req.query.reservation_id || "").trim();
