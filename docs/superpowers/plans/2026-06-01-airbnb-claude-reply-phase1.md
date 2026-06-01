@@ -10,6 +10,16 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-01-airbnb-claude-reply-design.md`
 
+**Network topology (Tailscale):** The browser + extension run on a *remote*
+computer; the `airbnb-app` brain runs on the Mac `mac` (Tailscale MagicDNS
+`mac.tailda12d3.ts.net`, IP `100.95.35.114`). The extension therefore talks to
+the draft server over Tailscale, not `localhost`. The fetch happens in the
+**background service worker** (extension origin) — so `http://` over Tailscale
+is neither mixed-content nor CORS-blocked (host_permissions grant it). The
+server already binds `0.0.0.0:8787`, so it answers on the Tailscale interface.
+Tasks 0–7 are done on the Mac (where `airbnb-app` and the MasterBot repo live);
+Task 8 is run by the operator on the remote computer after a `git pull`.
+
 **Verified constants (from captured HAR):**
 - Host account id (operator / Master Vacation Homes): `93929916`
 - Airbnb web API key (constant): `d306zoyjsyarp7ifhu67rjxn52tv0t20`
@@ -403,12 +413,17 @@ Expected: JSON with a non-empty `"draft"` written in Alisson's voice (English, n
 **Files:**
 - Modify: `~/Projects/MasterBot/extension/manifest.json`
 
-- [ ] **Step 1: Add the localhost host permission**
+- [ ] **Step 1: Add the draft-server host permissions**
 
-In `manifest.json`, in the `host_permissions` array, add `"http://localhost:8787/*"` after the existing `"https://www.airbnb.com/*"` entry:
+In `manifest.json`, in the `host_permissions` array, add the Tailscale hosts
+after the existing `"https://www.airbnb.com/*"` entry. (Chrome match patterns
+ignore the port, so these cover `:8787`. `localhost` is kept so the same build
+also works when running directly on the Mac.)
 
 ```json
     "https://www.airbnb.com/*",
+    "http://mac.tailda12d3.ts.net/*",
+    "http://100.95.35.114/*",
     "http://localhost:8787/*"
 ```
 
@@ -454,7 +469,15 @@ const AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20";
 const VIADUCT_THREAD_HASH =
   "8a30e768581661887cf9eb7f87b0b9be4b6b935ff2159f1c72e233c303976689";
 const HOST_ACCOUNT_ID = "93929916";
-const DRAFT_SERVER = "http://localhost:8787/api/draft-adhoc";
+// The brain runs on the Mac, reached over Tailscale. MagicDNS resolves from
+// both the remote computer and the Mac itself, so one URL covers every case.
+// Override at runtime without editing code: chrome.storage.local "airbnbDraftBase".
+const DRAFT_BASE_DEFAULT = "http://mac.tailda12d3.ts.net:8787";
+
+async function draftServerUrl() {
+  const { airbnbDraftBase } = await chrome.storage.local.get("airbnbDraftBase");
+  return (airbnbDraftBase || DRAFT_BASE_DEFAULT) + "/api/draft-adhoc";
+}
 
 async function fetchAirbnbThread(numericId) {
   const variables = {
@@ -510,12 +533,12 @@ function mapThreadToPayload(json) {
 async function draftAirbnbThread(numericId) {
   const threadJson = await fetchAirbnbThread(numericId);
   const payload = mapThreadToPayload(threadJson);
-  const res = await fetch(DRAFT_SERVER, {
+  const res = await fetch(await draftServerUrl(), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Draft server ${res.status} — is airbnb-app running on :8787?`);
+  if (!res.ok) throw new Error(`Draft server ${res.status} — is airbnb-app reachable over Tailscale on :8787?`);
   return res.json();
 }
 ```
@@ -668,18 +691,36 @@ git commit -m "feat(ext): Draft with Claude button + composer insert"
 
 ---
 
-## Task 8: End-to-end manual verification (browser)
+## Task 8: End-to-end manual verification (remote computer, over Tailscale)
 
-**Files:** none. There is no JS test harness for this extension, so this glue is verified by hand.
+**Files:** none. There is no JS test harness for this extension, so this glue is
+verified by hand. **Run this task on the remote computer** (the one with the
+Airbnb session), which must be on the same tailnet as the Mac.
 
-- [ ] **Step 1: Reload the unpacked extension**
+- [ ] **Step 1: Get the latest extension onto the remote computer**
 
-In Brave (the operator's session browser; Chrome is identical): `brave://extensions` → enable Developer mode → find "MasterBot Bridge" → click the reload ↻ icon. Confirm version `0.9.1` loads with no errors. (If Chrome, use `chrome://extensions`.)
+On the Mac, push the committed work. On the remote computer:
 
-- [ ] **Step 2: Confirm the local server is up**
+```bash
+cd <path-to>/MasterBot && git pull
+```
 
-Run: `curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8787/api/draft-adhoc -H "content-type: application/json" -d '{"messages":[]}'`
-Expected: `400` (route exists; rejects empty). Anything else means the server didn't restart — redo Task 4 Step 1.
+Then load/reload the unpacked extension. In Brave (the operator's session
+browser; Chrome is identical): `brave://extensions` → enable Developer mode →
+"Load unpacked" → select `MasterBot/extension` (or click reload ↻ if already
+loaded). Confirm it loads with no errors.
+
+- [ ] **Step 2: Confirm the brain is reachable over Tailscale**
+
+From the remote computer:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://mac.tailda12d3.ts.net:8787/api/draft-adhoc -H "content-type: application/json" -d '{"messages":[]}'
+```
+
+Expected: `400` (route exists; rejects empty). If it hangs or refuses: check
+`tailscale status` on both machines, confirm the Mac's `airbnb-app` is running
+(Task 4), and that the Mac isn't asleep.
 
 - [ ] **Step 3: Drive a real thread**
 
@@ -690,7 +731,7 @@ Expected: button shows "Drafting…", then the composer fills with a reply in Al
 - [ ] **Step 4: Check the console on failure**
 
 If it errors: open DevTools on the Airbnb tab (content-script logs) and the service-worker console via `brave://extensions` → MasterBot → "service worker". Common cases:
-- `Draft server … is airbnb-app running on :8787?` → server down (Task 4).
+- `Draft server … reachable over Tailscale on :8787?` → Mac asleep, `airbnb-app` down (Task 4), or not on the tailnet.
 - `Airbnb thread fetch 404 … hash may have rotated` → recapture `ViaductGetThreadAndDataQuery` and update `VIADUCT_THREAD_HASH` in `background.js`.
 - Composer not filled → you didn't click into the message box first (Step 3).
 

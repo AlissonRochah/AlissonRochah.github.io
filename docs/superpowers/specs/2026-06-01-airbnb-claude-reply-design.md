@@ -61,8 +61,17 @@ Handler:
 gracefully when check-in/out are missing (shows `(missing)`), so the timing
 block stays safe.
 
-CORS: granted via the extension's `host_permissions` on `localhost:8787`
+CORS: granted via the extension's `host_permissions` on the draft host
 (background fetch bypasses CORS for granted hosts, same pattern used for MAPRO).
+
+**Network topology (Tailscale):** the browser + extension run on a *remote*
+computer; `airbnb-app` runs on the Mac (`mac.tailda12d3.ts.net` /
+`100.95.35.114`). The extension reaches the brain over Tailscale, not
+`localhost`. The draft fetch runs in the **background service worker**, so
+`http://` over Tailscale is neither mixed-content nor CORS-blocked. The server
+binds `0.0.0.0:8787`, already answering on the Tailscale interface. The server
+URL is overridable at runtime via `chrome.storage.local["airbnbDraftBase"]`,
+defaulting to the Mac's MagicDNS (which resolves from the Mac itself too).
 
 ### 2. Airbnb internal API client (in extension `background.js`)
 
@@ -157,13 +166,16 @@ New/extended content script on `airbnb.com/hosting/messages*`:
 
 ## Manifest changes
 
-Add `http://localhost:8787/*` to `host_permissions`. Add the popup
+Add the draft host to `host_permissions` (`http://mac.tailda12d3.ts.net/*` +
+`http://100.95.35.114/*`, plus `http://localhost:8787/*` for on-Mac use; Chrome
+match patterns ignore the port). Add the popup
 (`action.default_popup`). Keep the existing Airbnb content-script entry; extend
 or add a sibling script for the draft button + auto-fill.
 
 ## Degradation & risks
 
-- **Local server down** → buttons show "start airbnb-app".
+- **Brain unreachable** (Mac asleep / off tailnet / `airbnb-app` down) →
+  buttons show "airbnb-app not reachable over Tailscale".
 - **Persisted-query hashes rotate** on Airbnb client deploys → calls 404.
   v1 hardcodes the current hashes + api key; if Airbnb rotates them, the fix is
   to recapture and update the constants. (Future hardening: sniff the page's
