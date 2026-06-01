@@ -1475,3 +1475,95 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
     })();
     return true;
 });
+
+// ===== Airbnb Claude reply (Phase 1) =====
+const AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20";
+const VIADUCT_THREAD_HASH =
+  "8a30e768581661887cf9eb7f87b0b9be4b6b935ff2159f1c72e233c303976689";
+const HOST_ACCOUNT_ID = "93929916";
+// The brain runs on the Mac, reached over Tailscale. MagicDNS resolves from
+// both the remote computer and the Mac itself, so one URL covers every case.
+// Override at runtime without editing code: chrome.storage.local "airbnbDraftBase".
+const DRAFT_BASE_DEFAULT = "http://mac.tailda12d3.ts.net:8787";
+
+async function draftServerUrl() {
+  const { airbnbDraftBase } = await chrome.storage.local.get("airbnbDraftBase");
+  return (airbnbDraftBase || DRAFT_BASE_DEFAULT) + "/api/draft-adhoc";
+}
+
+async function fetchAirbnbThread(numericId) {
+  const variables = {
+    numRequestedMessages: 50, getThreadState: true, getParticipants: true,
+    getLastReads: true, forceUgcTranslation: false, isNovaLite: false,
+    globalThreadId: btoa("MessageThread:" + numericId), originType: "USER_INBOX",
+    getInboxFields: true, getInboxOnlyFields: false, getMessageFields: true,
+    getThreadOnlyFields: true, skipOldMessagePreviewFields: false,
+  };
+  const extensions = { persistedQuery: { version: 1, sha256Hash: VIADUCT_THREAD_HASH } };
+  const url = `https://www.airbnb.com/api/v3/ViaductGetThreadAndDataQuery/${VIADUCT_THREAD_HASH}`
+    + `?operationName=ViaductGetThreadAndDataQuery&locale=en&currency=USD`
+    + `&variables=${encodeURIComponent(JSON.stringify(variables))}`
+    + `&extensions=${encodeURIComponent(JSON.stringify(extensions))}`;
+  const res = await fetch(url, {
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      "x-airbnb-api-key": AIRBNB_API_KEY,
+      "x-airbnb-graphql-platform": "web",
+      "x-csrf-without-token": "1",
+    },
+  });
+  if (!res.ok) throw new Error(`Airbnb thread fetch ${res.status} (persisted-query hash may have rotated)`);
+  return res.json();
+}
+
+function mapThreadToPayload(json) {
+  const td = json && json.data && json.data.threadData;
+  if (!td) throw new Error("no threadData in Airbnb response");
+  const parts = (td.participants && td.participants.edges || []).map((e) => e.node);
+  const guest = parts.find((n) => n && n.participantRole === "GUEST");
+  const guestName =
+    (guest && guest.enrichedParticipantInfo && guest.enrichedParticipantInfo.name) ||
+    (td.inboxTitle && td.inboxTitle.components && td.inboxTitle.components[0] &&
+      td.inboxTitle.components[0].text) || "Guest";
+  const desc = (td.inboxDescription && td.inboxDescription.components &&
+    td.inboxDescription.components[0] && td.inboxDescription.components[0].text) || "";
+  const listing = desc.includes("·") ? desc.split("·").pop().trim() : "";
+  const tripTag = (td.userThreadTags || []).find((t) => t.userThreadTagName === "trip_stages");
+  const tripStage = (tripTag && tripTag.additionalValues && tripTag.additionalValues[0]) || "";
+  const msgs = (td.messageData && td.messageData.messages || []).map((m) => ({
+    accountType: m.account && m.account.accountType,
+    accountId: m.account && m.account.accountId,
+    createdAtMs: m.createdAtMs,
+    body: (m.hydratedContent && m.hydratedContent.contentType === "TEXT" &&
+      m.hydratedContent.content && m.hydratedContent.content.body) || "",
+    sender_name: (m.account && String(m.account.accountId) === HOST_ACCOUNT_ID) ? "team" : guestName,
+  }));
+  return { guest_name: guestName, listing, trip_stage: tripStage, messages: msgs };
+}
+
+async function draftAirbnbThread(numericId) {
+  const threadJson = await fetchAirbnbThread(numericId);
+  const payload = mapThreadToPayload(threadJson);
+  const res = await fetch(await draftServerUrl(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Draft server ${res.status} — is airbnb-app reachable over Tailscale on :8787?`);
+  return res.json();
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.action === "airbnbDraftThread") {
+    (async () => {
+      try {
+        const out = await draftAirbnbThread(msg.threadId);
+        sendResponse({ ok: true, draft: out.draft, needs_human: out.needs_human });
+      } catch (e) {
+        sendResponse({ ok: false, error: String((e && e.message) || e) });
+      }
+    })();
+    return true; // keep the channel open for the async response
+  }
+});
