@@ -1514,7 +1514,11 @@ async function fetchAirbnbThread(numericId) {
     },
   });
   if (!res.ok) throw new Error(`Airbnb thread fetch ${res.status} (persisted-query hash may have rotated)`);
-  return res.json();
+  const json = await res.json();
+  if (json && json.errors && json.errors.length) {
+    throw new Error(`Airbnb GraphQL: ${json.errors[0].message || "error"} (session expired or hash rotated?)`);
+  }
+  return json;
 }
 
 function mapThreadToPayload(json) {

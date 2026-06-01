@@ -31,12 +31,17 @@
     }
     el.focus();
     if (el.tagName === "TEXTAREA") {
-      el.value = text;
+      // React tracks the value via the native setter; assigning el.value
+      // directly is reverted on re-render. Go through the prototype setter.
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, "value"
+      ).set;
+      setter.call(el, text);
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
     } else {
       const sel = window.getSelection();
-      sel.selectAllChildren(el);
+      if (sel) sel.selectAllChildren(el);
       document.execCommand("insertText", false, text);
     }
   }
