@@ -1,10 +1,10 @@
-// MasterBot — "Draft with Claude" on an open Airbnb host conversation.
-// Reads the thread via background (Airbnb internal API) and inserts the
-// returned draft into the composer the operator last focused. Never sends.
+// MasterBot — "Draft with Claude" for an open Airbnb host conversation.
+// Triggered from the extension popup (popup.js). Reads the thread via
+// background (Airbnb internal API) and inserts the returned draft into the
+// thread's composer. Never sends.
 (function () {
   "use strict";
 
-  const BTN_ID = "masterbot-claude-btn";
   let lastEditable = null;
 
   function isEditable(el) {
@@ -12,6 +12,12 @@
     if (el.tagName === "TEXTAREA") return true;
     if (el.isContentEditable) return true;
     return false;
+  }
+
+  function isVisible(el) {
+    if (!el || !el.getClientRects().length) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
   }
 
   document.addEventListener("focusin", (e) => {
@@ -23,12 +29,23 @@
     return m ? m[1] : null;
   }
 
-  function insertIntoComposer(text) {
-    const el = lastEditable;
-    if (!el) {
-      alert("Click into the Airbnb message box first, then press Draft with Claude.");
-      return;
+  // The popup has no access to the page DOM, so locate the composer here.
+  function findComposer() {
+    if (lastEditable && document.contains(lastEditable) && isVisible(lastEditable)) {
+      return lastEditable;
     }
+    const candidates = Array.prototype.slice
+      .call(document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]'))
+      .filter(isVisible);
+    if (!candidates.length) return null;
+    // Composers sit at the bottom of the thread; prefer the lowest one.
+    candidates.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
+    return candidates[0];
+  }
+
+  function insertIntoComposer(text) {
+    const el = findComposer();
+    if (!el) return false;
     el.focus();
     if (el.tagName === "TEXTAREA") {
       // React tracks the value via the native setter; assigning el.value
@@ -44,48 +61,31 @@
       if (sel) sel.selectAllChildren(el);
       document.execCommand("insertText", false, text);
     }
+    return true;
   }
 
-  function setBtn(state, label) {
-    const btn = document.getElementById(BTN_ID);
-    if (!btn) return;
-    btn.textContent = label;
-    btn.disabled = state === "busy";
-    btn.style.opacity = state === "busy" ? "0.6" : "1";
-  }
-
-  function onClick() {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || msg.action !== "draftInActiveThread") return;
     const id = threadIdFromUrl();
-    if (!id) { alert("Open a conversation first."); return; }
-    setBtn("busy", "Drafting…");
+    if (!id) {
+      sendResponse({ ok: false, error: "Open an Airbnb conversation first." });
+      return;
+    }
     chrome.runtime.sendMessage({ action: "airbnbDraftThread", threadId: id }, (resp) => {
-      setBtn("idle", "✦ Draft with Claude");
       if (!resp || !resp.ok) {
-        alert("Draft failed: " + ((resp && resp.error) || "no response"));
+        sendResponse({ ok: false, error: (resp && resp.error) || "no response" });
         return;
       }
-      const marker = resp.needs_human ? "✨ Claude draft (NEEDS REVIEW)\n\n" : "";
-      insertIntoComposer(marker + resp.draft);
+      // Insert ONLY the draft — never inject review markers; they'd be sent
+      // to the guest. The popup surfaces "needs review" instead.
+      if (!insertIntoComposer(resp.draft)) {
+        sendResponse({ ok: false, error: "Couldn't find the message box on this page." });
+        return;
+      }
+      sendResponse({ ok: true, needs_human: !!resp.needs_human });
     });
-  }
+    return true; // keep the channel open for the async draft
+  });
 
-  function ensureButton() {
-    if (document.getElementById(BTN_ID)) return;
-    const btn = document.createElement("button");
-    btn.id = BTN_ID;
-    btn.type = "button";
-    btn.textContent = "✦ Draft with Claude";
-    btn.style.cssText =
-      "position:fixed; right:20px; bottom:90px; z-index:2147483647;" +
-      "background:#FF385C; color:#fff; border:none; border-radius:22px;" +
-      "padding:10px 16px; font-size:13px; font-weight:600; cursor:pointer;" +
-      "box-shadow:0 4px 14px rgba(0,0,0,0.25); font-family:-apple-system,sans-serif;";
-    btn.addEventListener("click", onClick);
-    document.documentElement.appendChild(btn);
-  }
-
-  // The inbox is a SPA; re-assert the button as the user navigates threads.
-  ensureButton();
-  setInterval(ensureButton, 1500);
-  console.log("[MasterBot] Claude draft button loaded on", location.pathname);
+  console.log("[MasterBot] Claude draft ready on", location.pathname);
 })();

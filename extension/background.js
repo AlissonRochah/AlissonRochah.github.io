@@ -1550,12 +1550,26 @@ function mapThreadToPayload(json) {
 async function draftAirbnbThread(numericId) {
   const threadJson = await fetchAirbnbThread(numericId);
   const payload = mapThreadToPayload(threadJson);
-  const res = await fetch(await draftServerUrl(), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Draft server ${res.status} — is airbnb-app reachable over Tailscale on :8787?`);
+  let res;
+  try {
+    res = await fetch(await draftServerUrl(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    // fetch only rejects on a genuine connection failure — the one case
+    // where the Tailscale/server-reachability hint is actually relevant.
+    throw new Error(`Can't reach the draft server — is airbnb-app running and reachable over Tailscale on :8787? (${e.message})`);
+  }
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json()).detail || ""; } catch (_) {}
+    if (res.status === 400 && /no messages/i.test(detail)) {
+      throw new Error("This conversation has no text messages to draft a reply from (system-only or empty thread).");
+    }
+    throw new Error(`Draft server ${res.status}${detail ? ": " + detail : ""}`);
+  }
   return res.json();
 }
 

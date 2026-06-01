@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 240px;
+      margin: 0;
+      padding: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    #draft {
+      width: 100%;
+      background: #FF385C;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 11px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #draft:disabled { opacity: 0.6; cursor: default; }
+    #status {
+      margin-top: 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #444;
+      min-height: 16px;
+    }
+    #status.review { color: #B45309; font-weight: 600; }
+    #status.error { color: #B91C1C; }
+  </style>
+</head>
+<body>
+  <button id="draft" type="button">✦ Draft with Claude</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
