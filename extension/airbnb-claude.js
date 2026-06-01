@@ -44,14 +44,22 @@
   }
 
   function findComposer() {
+    // Airbnb's composer is a contenteditable="plaintext-only" div with a known
+    // id — target it directly. Fall back to the last-focused field, then any
+    // visible editable (lowest on the page — composers sit at the bottom).
+    const known = document.querySelector(
+      '#message_input, [data-testid="messaging-composebar"]'
+    );
+    if (known && isVisible(known)) return known;
     if (lastEditable && document.contains(lastEditable) && isVisible(lastEditable)) {
       return lastEditable;
     }
     const candidates = Array.prototype.slice
-      .call(document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]'))
+      .call(document.querySelectorAll(
+        'textarea, [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'
+      ))
       .filter(isVisible);
     if (!candidates.length) return null;
-    // Composers sit at the bottom of the thread; prefer the lowest one.
     candidates.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
     return candidates[0];
   }
@@ -160,20 +168,19 @@
     if (dotObserver) dotObserver.disconnect();
     try {
       document.querySelectorAll("." + DOT_CLASS).forEach((d) => d.remove());
-      const links = document.querySelectorAll('a[href*="/messages/"]');
-      const seen = new Set();
-      links.forEach((a) => {
-        const m = (a.getAttribute("href") || "").match(/\/messages\/(\d+)/);
+      // Each inbox row is <div id="inbox_list_<threadId>">; the row's <a> has
+      // href="#", so the id attribute is the only thread handle. The visible
+      // name lives in a sibling element inside that container, not in the <a>.
+      const rows = document.querySelectorAll('[id^="inbox_list_"]');
+      rows.forEach((row) => {
+        const m = (row.id || "").match(/inbox_list_(\d+)/);
         if (!m) return;
-        const id = m[1];
-        if (seen.has(id)) return; // dot a thread once even if it has many links
-        const info = drafts[id];
+        const info = drafts[m[1]];
         if (!info) return;
-        seen.add(id);
         const dot = makeDot(info.status);
-        const nameEl = findNameEl(a, info.title);
+        const nameEl = findNameEl(row, info.title);
         if (nameEl && nameEl.parentNode) nameEl.parentNode.insertBefore(dot, nameEl);
-        else a.insertBefore(dot, a.firstChild);
+        else row.insertBefore(dot, row.firstChild);
       });
     } finally {
       if (dotObserver) dotObserver.observe(document.body, { childList: true, subtree: true });
