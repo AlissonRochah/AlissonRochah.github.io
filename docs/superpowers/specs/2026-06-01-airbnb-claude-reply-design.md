@@ -75,7 +75,7 @@ plus the constant web headers observed in the HAR:
 | Purpose | Operation | Notes |
 |---|---|---|
 | List unanswered threads | `ViaductInboxData` | `variables.threadTagFilters = [{userThreadTagName:"unread"}]`; paginate via `variables.beforeCursor`. |
-| Full thread + messages | `ViaductGetThreadAndDataQuery` | `data.threadData.messages.edges[].node`; paginate `messages` for full history. |
+| Full thread + messages | `ViaductGetThreadAndDataQuery` | Full history is `data.threadData.messageData.messages[]` (NOT `messages.edges`, which is just the latest-message preview). Set `variables.numRequestedMessages` (web uses 50) + `getMessageFields:true`; paginate older via `messageData.hasOlder` / `syncCursor`. |
 | Lightweight freshness re-check | `GetInboxThreadById` | cheaper than full thread fetch. |
 | Reservation check-in/out (optional) | `HostReservationDetailsQuery` | `checkInDate` / `checkOutDate` / `listingName`. |
 
@@ -88,11 +88,15 @@ Each operation is a persisted query: URL carries
 - `listing` + dates ← parse `inboxDescription` ("Jul 22 – 27 · 1075 OP LW"),
   cheap and already in the list payload. Precise check-in/out times only via
   `HostReservationDetailsQuery` when the timing block needs them.
-- `messages[]` ← `messages.edges[].node`: `body` = `contentPreview.content`,
+- `messages[]` ← `data.threadData.messageData.messages[]` (chronological):
+  `body` = `hydratedContent.content.body` (present when
+  `hydratedContent.contentType == TEXT`),
   `sent_on_utc` = `createdAtMs` → UTC string,
-  `is_incoming` = 1 when the message account's participant role is GUEST,
-  0 when it's the host account (id `93929916`). Skip pure-system messages
-  (`accountType` = `SERVICE` / `EXTERNAL_SERVICE`).
+  `is_incoming` = 1 when `account.accountId` is the guest's (any `USER`
+  account that is not the host `93929916`), 0 when it is the host account.
+  Skip system messages (`account.accountType == SERVICE`, e.g. the
+  `BULLETIN` "Booking confirmed" notice) — keep them only as optional
+  context markers, never as guest/host turns.
 - Thread id: `node.id` is base64 of `MessageThread:<num>`; the `<num>` is the
   cache key and matches the thread id in the on-screen URL.
 - `trip_stage` ← the `trip_stages` user thread tag's `additionalValues[0]`
