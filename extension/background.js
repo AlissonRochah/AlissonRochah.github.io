@@ -1487,9 +1487,13 @@ const HOST_ACCOUNT_ID = "93929916";
 //   chrome.storage.local.set({airbnbDraftBase: "http://<mac>.<tailnet>.ts.net:8787"})
 const DRAFT_BASE_DEFAULT = "http://localhost:8787";
 
-async function draftServerUrl() {
+async function draftServerBase() {
   const { airbnbDraftBase } = await chrome.storage.local.get("airbnbDraftBase");
-  return (airbnbDraftBase || DRAFT_BASE_DEFAULT) + "/api/draft-adhoc";
+  return airbnbDraftBase || DRAFT_BASE_DEFAULT;
+}
+
+async function draftServerUrl() {
+  return (await draftServerBase()) + "/api/draft-adhoc";
 }
 
 async function fetchAirbnbThread(numericId) {
@@ -1579,6 +1583,7 @@ const INBOX_HASH =
   "3890d462940a5f123c9048c8d623d0ce5d5bc0d5e7072eefb2a46d4041d31a49";
 const DRAFTS_KEY = "airbnbDrafts";
 const BATCH_CONCURRENCY = 3;
+let batchCancel = false;
 
 // Returns [{ numericId, title }] for unread host-inbox threads.
 async function fetchUnreadInbox() {
@@ -1644,6 +1649,7 @@ async function patchDraft(numericId, fields) {
 }
 
 async function draftAllUnread() {
+  batchCancel = false;
   const threads = await fetchUnreadInbox();
   // Seed every thread as queued so the dots appear immediately.
   const drafts = await getDrafts();
@@ -1655,6 +1661,7 @@ async function draftAllUnread() {
   let idx = 0;
   async function worker() {
     while (idx < threads.length) {
+      if (batchCancel) return;
       const t = threads[idx++];
       await patchDraft(t.numericId, { status: "drafting" });
       try {
@@ -1711,6 +1718,43 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       try {
         const total = await draftAllUnread();
         sendResponse({ ok: true, total });
+      } catch (e) {
+        sendResponse({ ok: false, error: String((e && e.message) || e) });
+      }
+    })();
+    return true; // keep the channel open for the async response
+  }
+  if (msg && msg.action === "cancelBatch") {
+    (async () => {
+      batchCancel = true;
+      // Drop threads that never started so their gray dots clear; leave
+      // drafting/ready/failed alone (those represent real work).
+      const drafts = await getDrafts();
+      let removed = 0;
+      for (const k of Object.keys(drafts)) {
+        if (drafts[k] && drafts[k].status === "queued") { delete drafts[k]; removed++; }
+      }
+      await chrome.storage.local.set({ [DRAFTS_KEY]: drafts });
+      sendResponse({ ok: true, removed });
+    })();
+    return true;
+  }
+  if (msg && msg.action === "sendFeedback") {
+    (async () => {
+      try {
+        const res = await fetch((await draftServerBase()) + "/api/feedback", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            note: msg.note, reservation_id: msg.reservation_id || "",
+            draft: msg.draft || "", guest_name: msg.guest_name || "",
+          }),
+        });
+        if (!res.ok) {
+          let d = ""; try { d = (await res.json()).detail || ""; } catch (_) {}
+          throw new Error(`Feedback ${res.status}${d ? ": " + d : ""}`);
+        }
+        sendResponse({ ok: true });
       } catch (e) {
         sendResponse({ ok: false, error: String((e && e.message) || e) });
       }

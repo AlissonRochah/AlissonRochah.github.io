@@ -227,6 +227,21 @@
 
   const NOTES_BTN_ID = "masterbot-notes-btn";
   const NOTES_PANEL_ID = "masterbot-notes-panel";
+  const NOTES_CONTENT_ID = "masterbot-notes-content";
+
+  function closeNotesPanel() {
+    const p = document.getElementById(NOTES_PANEL_ID);
+    if (p) { p.dataset.open = "0"; p.style.display = "none"; }
+  }
+
+  // Click anywhere outside the panel (and not on its toggle button) closes it.
+  document.addEventListener("mousedown", (e) => {
+    const p = document.getElementById(NOTES_PANEL_ID);
+    if (!p || p.dataset.open !== "1") return;
+    const btn = document.getElementById(NOTES_BTN_ID);
+    if (p.contains(e.target) || (btn && btn.contains(e.target))) return;
+    closeNotesPanel();
+  }, true);
 
   function ensureNotesButton() {
     const qr = document.querySelector(
@@ -268,12 +283,77 @@
     p.id = NOTES_PANEL_ID;
     p.dataset.open = "0";
     p.style.cssText =
-      "position:fixed;z-index:2147483647;display:none;width:300px;max-height:50vh;" +
+      "position:fixed;z-index:2147483647;display:none;width:300px;max-height:60vh;" +
       "overflow:auto;background:#1f2123;color:#e7e7e7;border-radius:12px;padding:14px;" +
       "box-shadow:0 8px 30px rgba(0,0,0,.4);font-family:-apple-system,sans-serif;" +
       "font-size:13px;line-height:1.45;";
+
+    const content = document.createElement("div");
+    content.id = NOTES_CONTENT_ID;
+    p.appendChild(content);
+
+    // Persistent feedback form — kept outside the content div so a storage
+    // refresh (e.g. a batch still drafting) never wipes what's being typed.
+    const fb = document.createElement("div");
+    fb.style.cssText = "margin-top:12px;border-top:1px solid #3a3d40;padding-top:10px;";
+    const fbLabel = document.createElement("div");
+    fbLabel.style.cssText = "font-size:11px;color:#9aa0a6;margin-bottom:6px;";
+    fbLabel.textContent = "Teach Claude — what should it do differently?";
+    const ta = document.createElement("textarea");
+    ta.rows = 3;
+    ta.placeholder = "e.g. Don't offer early check-in here, this property never allows it.";
+    ta.style.cssText =
+      "width:100%;box-sizing:border-box;background:#15171a;color:#e7e7e7;" +
+      "border:1px solid #3a3d40;border-radius:8px;padding:8px;font-size:12px;" +
+      "resize:vertical;font-family:inherit;";
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:8px;";
+    const send = document.createElement("button");
+    send.type = "button";
+    send.textContent = "Send feedback";
+    send.style.cssText =
+      "background:#FF385C;color:#fff;border:none;border-radius:8px;padding:7px 12px;" +
+      "font-size:12px;font-weight:600;cursor:pointer;";
+    const stat = document.createElement("span");
+    stat.style.cssText = "font-size:11px;color:#9aa0a6;";
+    send.addEventListener("click", () => submitFeedback(ta, send, stat));
+    row.appendChild(send);
+    row.appendChild(stat);
+    fb.appendChild(fbLabel);
+    fb.appendChild(ta);
+    fb.appendChild(row);
+    p.appendChild(fb);
+
     document.documentElement.appendChild(p);
     return p;
+  }
+
+  async function submitFeedback(ta, send, stat) {
+    const note = (ta.value || "").trim();
+    if (!note) { stat.style.color = "#F59E0B"; stat.textContent = "Write a note first."; return; }
+    const id = threadIdFromUrl();
+    const drafts = await getDrafts();
+    const info = (id && drafts[id]) || {};
+    send.disabled = true;
+    stat.style.color = "#9aa0a6";
+    stat.textContent = "Saving…";
+    chrome.runtime.sendMessage({
+      action: "sendFeedback",
+      note,
+      reservation_id: id || "",
+      draft: info.draft || "",
+      guest_name: info.title || "",
+    }, (resp) => {
+      send.disabled = false;
+      if (chrome.runtime.lastError || !resp || !resp.ok) {
+        stat.style.color = "#EF4444";
+        stat.textContent = (resp && resp.error) ? resp.error : "Failed to save.";
+        return;
+      }
+      stat.style.color = "#10B981";
+      stat.textContent = "✓ Saved";
+      ta.value = "";
+    });
   }
 
   async function toggleNotesPanel() {
@@ -291,11 +371,12 @@
   }
 
   async function refreshNotesPanel() {
-    const p = document.getElementById(NOTES_PANEL_ID);
-    if (!p) return;
+    const content = document.getElementById(NOTES_CONTENT_ID);
+    if (!content) return;
     const id = threadIdFromUrl();
     const drafts = await getDrafts();
     const info = id ? drafts[id] : null;
+    const p = content;
     p.textContent = "";
     if (!info || (info.status !== "ready" && info.status !== "review")) {
       const empty = document.createElement("div");
