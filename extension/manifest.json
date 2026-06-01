@@ -34,8 +34,7 @@
     "https://docs.google.com/*",
     "https://*.googleusercontent.com/*",
     "https://www.airbnb.com/*",
-    "http://mac.tailda12d3.ts.net/*",
-    "http://100.95.35.114/*",
+    "http://*.ts.net/*",
     "http://localhost:8787/*"
   ],
   "content_scripts": [

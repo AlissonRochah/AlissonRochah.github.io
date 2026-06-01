@@ -11,14 +11,18 @@
 **Spec:** `docs/superpowers/specs/2026-06-01-airbnb-claude-reply-design.md`
 
 **Network topology (Tailscale):** The browser + extension run on a *remote*
-computer; the `airbnb-app` brain runs on the Mac `mac` (Tailscale MagicDNS
-`mac.tailda12d3.ts.net`, IP `100.95.35.114`). The extension therefore talks to
-the draft server over Tailscale, not `localhost`. The fetch happens in the
-**background service worker** (extension origin) — so `http://` over Tailscale
-is neither mixed-content nor CORS-blocked (host_permissions grant it). The
-server already binds `0.0.0.0:8787`, so it answers on the Tailscale interface.
-Tasks 0–7 are done on the Mac (where `airbnb-app` and the MasterBot repo live);
-Task 8 is run by the operator on the remote computer after a `git pull`.
+computer; the `airbnb-app` brain runs on the Mac, reached over Tailscale at its
+MagicDNS `<mac>.<tailnet>.ts.net:8787`. The extension talks to the draft server
+over Tailscale, not `localhost`. The fetch happens in the **background service
+worker** (extension origin) — so `http://` over Tailscale is neither
+mixed-content nor CORS-blocked (host_permissions grant it). The server already
+binds `0.0.0.0:8787`, so it answers on the Tailscale interface. To keep the
+specific private address out of the public repo, the shipped default is
+`http://localhost:8787` and the real Tailscale address is set per-machine at
+runtime via `chrome.storage.local["airbnbDraftBase"]`; host permission is
+granted generically with `http://*.ts.net/*`. Tasks 0–7 are done on the Mac
+(where `airbnb-app` and the MasterBot repo live); Task 8 is run by the operator
+on the remote computer after a `git pull` (and the one-time storage setup).
 
 **Verified constants (from captured HAR):**
 - Host account id (operator / Master Vacation Homes): `93929916`
@@ -415,15 +419,16 @@ Expected: JSON with a non-empty `"draft"` written in Alisson's voice (English, n
 
 - [ ] **Step 1: Add the draft-server host permissions**
 
-In `manifest.json`, in the `host_permissions` array, add the Tailscale hosts
-after the existing `"https://www.airbnb.com/*"` entry. (Chrome match patterns
-ignore the port, so these cover `:8787`. `localhost` is kept so the same build
-also works when running directly on the Mac.)
+In `manifest.json`, in the `host_permissions` array, add a generic Tailscale
+host pattern after the existing `"https://www.airbnb.com/*"` entry. (`*.ts.net`
+covers any Tailscale MagicDNS host without naming the specific one — keeping the
+private address out of the public repo. Chrome match patterns ignore the port,
+so it covers `:8787`. `localhost` is kept so the same build also works when
+running directly on the Mac.)
 
 ```json
     "https://www.airbnb.com/*",
-    "http://mac.tailda12d3.ts.net/*",
-    "http://100.95.35.114/*",
+    "http://*.ts.net/*",
     "http://localhost:8787/*"
 ```
 
@@ -469,10 +474,11 @@ const AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20";
 const VIADUCT_THREAD_HASH =
   "8a30e768581661887cf9eb7f87b0b9be4b6b935ff2159f1c72e233c303976689";
 const HOST_ACCOUNT_ID = "93929916";
-// The brain runs on the Mac, reached over Tailscale. MagicDNS resolves from
-// both the remote computer and the Mac itself, so one URL covers every case.
-// Override at runtime without editing code: chrome.storage.local "airbnbDraftBase".
-const DRAFT_BASE_DEFAULT = "http://mac.tailda12d3.ts.net:8787";
+// The brain runs on the Mac. Default targets localhost (works when the
+// browser is on the Mac itself). To reach it from another computer over
+// Tailscale, set the address once on that machine — it overrides this:
+//   chrome.storage.local.set({airbnbDraftBase: "http://<mac>.<tailnet>.ts.net:8787"})
+const DRAFT_BASE_DEFAULT = "http://localhost:8787";
 
 async function draftServerUrl() {
   const { airbnbDraftBase } = await chrome.storage.local.get("airbnbDraftBase");
@@ -710,32 +716,45 @@ browser; Chrome is identical): `brave://extensions` → enable Developer mode �
 "Load unpacked" → select `MasterBot/extension` (or click reload ↻ if already
 loaded). Confirm it loads with no errors.
 
-- [ ] **Step 2: Confirm the brain is reachable over Tailscale**
+- [ ] **Step 2: One-time setup — point the extension at the Mac over Tailscale**
 
-From the remote computer:
+The shipped default is `http://localhost:8787`, so on the remote computer you
+must tell the extension the Mac's Tailscale address once. On `brave://extensions`
+→ MasterBot Bridge → "service worker" (opens the worker console), run (using the
+Mac's real MagicDNS name):
+
+```js
+chrome.storage.local.set({ airbnbDraftBase: "http://<mac>.<tailnet>.ts.net:8787" })
+```
+
+This persists until you change it. (On the Mac itself, skip this — localhost works.)
+
+- [ ] **Step 3: Confirm the brain is reachable over Tailscale**
+
+From the remote computer (substitute the Mac's MagicDNS name):
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" -X POST http://mac.tailda12d3.ts.net:8787/api/draft-adhoc -H "content-type: application/json" -d '{"messages":[]}'
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://<mac>.<tailnet>.ts.net:8787/api/draft-adhoc -H "content-type: application/json" -d '{"messages":[]}'
 ```
 
 Expected: `400` (route exists; rejects empty). If it hangs or refuses: check
 `tailscale status` on both machines, confirm the Mac's `airbnb-app` is running
 (Task 4), and that the Mac isn't asleep.
 
-- [ ] **Step 3: Drive a real thread**
+- [ ] **Step 4: Drive a real thread**
 
 Open `https://www.airbnb.com/hosting/messages/` and click into any conversation with guest messages. Click into the reply box once (so the composer is the last-focused field), then click the red **✦ Draft with Claude** button (bottom-right).
 
 Expected: button shows "Drafting…", then the composer fills with a reply in Alisson's voice (English, no em-dash). Nothing is sent.
 
-- [ ] **Step 4: Check the console on failure**
+- [ ] **Step 5: Check the console on failure**
 
 If it errors: open DevTools on the Airbnb tab (content-script logs) and the service-worker console via `brave://extensions` → MasterBot → "service worker". Common cases:
-- `Draft server … reachable over Tailscale on :8787?` → Mac asleep, `airbnb-app` down (Task 4), or not on the tailnet.
+- `Draft server … reachable over Tailscale on :8787?` → Mac asleep, `airbnb-app` down (Task 4), the `airbnbDraftBase` storage value not set (Step 2), or not on the tailnet.
 - `Airbnb thread fetch 404 … hash may have rotated` → recapture `ViaductGetThreadAndDataQuery` and update `VIADUCT_THREAD_HASH` in `background.js`.
-- Composer not filled → you didn't click into the message box first (Step 3).
+- Composer not filled → you didn't click into the message box first (Step 4).
 
-- [ ] **Step 5: Bump the extension version**
+- [ ] **Step 6: Bump the extension version**
 
 In `manifest.json`, change `"version": "0.9.1"` to `"version": "0.10.0"`, then:
 

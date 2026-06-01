@@ -1481,10 +1481,11 @@ const AIRBNB_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20";
 const VIADUCT_THREAD_HASH =
   "8a30e768581661887cf9eb7f87b0b9be4b6b935ff2159f1c72e233c303976689";
 const HOST_ACCOUNT_ID = "93929916";
-// The brain runs on the Mac, reached over Tailscale. MagicDNS resolves from
-// both the remote computer and the Mac itself, so one URL covers every case.
-// Override at runtime without editing code: chrome.storage.local "airbnbDraftBase".
-const DRAFT_BASE_DEFAULT = "http://mac.tailda12d3.ts.net:8787";
+// The brain runs on the Mac. Default targets localhost (works when the
+// browser is on the Mac itself). To reach it from another computer over
+// Tailscale, set the address once on that machine — it overrides this:
+//   chrome.storage.local.set({airbnbDraftBase: "http://<mac>.<tailnet>.ts.net:8787"})
+const DRAFT_BASE_DEFAULT = "http://localhost:8787";
 
 async function draftServerUrl() {
   const { airbnbDraftBase } = await chrome.storage.local.get("airbnbDraftBase");

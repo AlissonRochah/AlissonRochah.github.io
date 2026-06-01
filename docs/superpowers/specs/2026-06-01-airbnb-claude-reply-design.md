@@ -65,13 +65,15 @@ CORS: granted via the extension's `host_permissions` on the draft host
 (background fetch bypasses CORS for granted hosts, same pattern used for MAPRO).
 
 **Network topology (Tailscale):** the browser + extension run on a *remote*
-computer; `airbnb-app` runs on the Mac (`mac.tailda12d3.ts.net` /
-`100.95.35.114`). The extension reaches the brain over Tailscale, not
-`localhost`. The draft fetch runs in the **background service worker**, so
-`http://` over Tailscale is neither mixed-content nor CORS-blocked. The server
-binds `0.0.0.0:8787`, already answering on the Tailscale interface. The server
-URL is overridable at runtime via `chrome.storage.local["airbnbDraftBase"]`,
-defaulting to the Mac's MagicDNS (which resolves from the Mac itself too).
+computer; `airbnb-app` runs on the Mac, reached over Tailscale at its MagicDNS
+`<mac>.<tailnet>.ts.net:8787`. The draft fetch runs in the **background
+service worker**, so `http://` over Tailscale is neither mixed-content nor
+CORS-blocked. The server binds `0.0.0.0:8787`, already answering on the
+Tailscale interface. To keep the specific private address out of the (public)
+repo, the shipped default is `http://localhost:8787`; the real Tailscale
+address is supplied per-machine at runtime via
+`chrome.storage.local["airbnbDraftBase"]` (a one-time setup step on the remote
+computer). Host permission is granted generically via `http://*.ts.net/*`.
 
 ### 2. Airbnb internal API client (in extension `background.js`)
 
@@ -166,9 +168,10 @@ New/extended content script on `airbnb.com/hosting/messages*`:
 
 ## Manifest changes
 
-Add the draft host to `host_permissions` (`http://mac.tailda12d3.ts.net/*` +
-`http://100.95.35.114/*`, plus `http://localhost:8787/*` for on-Mac use; Chrome
-match patterns ignore the port). Add the popup
+Add the draft host to `host_permissions` generically (`http://*.ts.net/*` to
+cover any Tailscale MagicDNS host without naming the specific one, plus
+`http://localhost:8787/*` for on-Mac use; Chrome match patterns ignore the
+port). Add the popup
 (`action.default_popup`). Keep the existing Airbnb content-script entry; extend
 or add a sibling script for the draft button + auto-fill.
 
