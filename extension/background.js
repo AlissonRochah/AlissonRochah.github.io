@@ -1663,6 +1663,9 @@ async function draftAllUnread() {
           status: out.needs_human ? "review" : "ready",
           draft: out.draft || "",
           needs_human: !!out.needs_human,
+          confidence: out.confidence,
+          internal_note: out.internal_note,
+          reasoning: out.reasoning,
           inserted: false,
         });
       } catch (e) {
@@ -1685,6 +1688,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       try {
         const out = await draftAirbnbThread(msg.threadId);
+        // Store the full result so the in-thread notes panel can show the
+        // confidence / internal note even for a one-off single-thread draft.
+        await patchDraft(msg.threadId, {
+          status: out.needs_human ? "review" : "ready",
+          draft: out.draft || "",
+          needs_human: !!out.needs_human,
+          confidence: out.confidence,
+          internal_note: out.internal_note,
+          reasoning: out.reasoning,
+          inserted: true,
+        });
         sendResponse({ ok: true, draft: out.draft, needs_human: out.needs_human });
       } catch (e) {
         sendResponse({ ok: false, error: String((e && e.message) || e) });

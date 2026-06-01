@@ -223,19 +223,144 @@
     }
   }
 
+  // ----- In-thread "Claude notes" panel (confidence / internal note) -----
+
+  const NOTES_BTN_ID = "masterbot-notes-btn";
+  const NOTES_PANEL_ID = "masterbot-notes-panel";
+
+  function ensureNotesButton() {
+    const qr = document.querySelector(
+      '[data-testid="compose-bar-button-messaging__open_quick_replies"]'
+    );
+    if (!qr) return;                                   // not viewing a thread
+    if (document.getElementById(NOTES_BTN_ID)) return; // already injected
+    const wrapper = qr.closest("div");
+    const toolbar = wrapper && wrapper.parentElement;
+    if (!toolbar) return;
+    const holder = document.createElement("div");
+    holder.style.cssText = "display:flex;align-items:center;";
+    const btn = document.createElement("button");
+    btn.id = NOTES_BTN_ID;
+    btn.type = "button";
+    btn.title = "Claude notes for this conversation";
+    btn.setAttribute("aria-label", "Claude notes");
+    btn.style.cssText =
+      "display:flex;align-items:center;justify-content:center;width:36px;height:36px;" +
+      "border:none;background:transparent;cursor:pointer;border-radius:50%;color:#222;";
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M4 4h16v12H7l-3 3z"/><path d="M8 9h8M8 12h5"/></svg>';
+    btn.addEventListener("click", (e) => { e.preventDefault(); toggleNotesPanel(); });
+    holder.appendChild(btn);
+    toolbar.appendChild(holder);
+  }
+
+  function starBar(conf) {
+    const n = Math.max(0, Math.min(5, parseInt(conf, 10) || 0));
+    return "★★★★★".slice(0, n) + "☆☆☆☆☆".slice(0, 5 - n);
+  }
+
+  function buildNotesPanel() {
+    let p = document.getElementById(NOTES_PANEL_ID);
+    if (p) return p;
+    p = document.createElement("div");
+    p.id = NOTES_PANEL_ID;
+    p.dataset.open = "0";
+    p.style.cssText =
+      "position:fixed;z-index:2147483647;display:none;width:300px;max-height:50vh;" +
+      "overflow:auto;background:#1f2123;color:#e7e7e7;border-radius:12px;padding:14px;" +
+      "box-shadow:0 8px 30px rgba(0,0,0,.4);font-family:-apple-system,sans-serif;" +
+      "font-size:13px;line-height:1.45;";
+    document.documentElement.appendChild(p);
+    return p;
+  }
+
+  async function toggleNotesPanel() {
+    const p = buildNotesPanel();
+    if (p.dataset.open === "1") { p.dataset.open = "0"; p.style.display = "none"; return; }
+    await refreshNotesPanel();
+    const btn = document.getElementById(NOTES_BTN_ID);
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      p.style.left = Math.max(8, Math.min(window.innerWidth - 308, r.right - 300)) + "px";
+      p.style.bottom = (window.innerHeight - r.top + 8) + "px";
+    }
+    p.dataset.open = "1";
+    p.style.display = "block";
+  }
+
+  async function refreshNotesPanel() {
+    const p = document.getElementById(NOTES_PANEL_ID);
+    if (!p) return;
+    const id = threadIdFromUrl();
+    const drafts = await getDrafts();
+    const info = id ? drafts[id] : null;
+    p.textContent = "";
+    if (!info || (info.status !== "ready" && info.status !== "review")) {
+      const empty = document.createElement("div");
+      empty.style.color = "#9aa0a6";
+      empty.textContent = (info && info.status === "failed")
+        ? ("Draft failed: " + (info.error || "unknown"))
+        : "No Claude notes yet. Run a draft for this conversation.";
+      p.appendChild(empty);
+      return;
+    }
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;gap:10px;margin-bottom:10px;font-weight:600;";
+    if (info.confidence != null) {
+      const c = document.createElement("span");
+      c.style.color = "#d9c46a";
+      c.textContent = starBar(info.confidence) + "  conf " + info.confidence + "/5";
+      head.appendChild(c);
+    }
+    if (info.needs_human) {
+      const nh = document.createElement("span");
+      nh.style.color = "#F59E0B";
+      nh.textContent = "⚠ needs human";
+      head.appendChild(nh);
+    }
+    if (head.childNodes.length) p.appendChild(head);
+
+    const box = document.createElement("div");
+    box.style.cssText =
+      "background:#15110a;border:1px solid #4a3a16;border-radius:8px;padding:10px;color:#e7b765;";
+    const label = document.createElement("div");
+    label.style.cssText = "font-size:10px;letter-spacing:.08em;color:#b08a3e;margin-bottom:6px;";
+    label.textContent = "INTERNAL NOTE";
+    box.appendChild(label);
+    const note = document.createElement("div");
+    note.style.whiteSpace = "pre-wrap";
+    note.textContent = info.internal_note || "(none)";
+    box.appendChild(note);
+    p.appendChild(box);
+
+    if (info.reasoning) {
+      const why = document.createElement("div");
+      why.style.cssText = "margin-top:10px;color:#9aa0a6;font-size:12px;";
+      why.textContent = info.reasoning;
+      p.appendChild(why);
+    }
+  }
+
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes[DRAFTS_KEY]) {
       scheduleRender();
       maybeAutoInsert();
+      const p = document.getElementById(NOTES_PANEL_ID);
+      if (p && p.dataset.open === "1") refreshNotesPanel();
     }
   });
 
   // The inbox is a SPA — react to thread navigation without a reload.
   let lastPath = "";
   setInterval(() => {
+    ensureNotesButton();
     if (location.pathname !== lastPath) {
       lastPath = location.pathname;
       lastInsertedId = null;
+      const p = document.getElementById(NOTES_PANEL_ID);
+      if (p) { p.dataset.open = "0"; p.style.display = "none"; }
       maybeAutoInsert();
       scheduleRender();
     }
@@ -243,5 +368,6 @@
 
   scheduleRender();
   maybeAutoInsert();
+  ensureNotesButton();
   console.log("[MasterBot] Claude draft ready on", location.pathname);
 })();
