@@ -40,6 +40,7 @@ Request body (built by the extension from Airbnb API data):
 {
   "guest_name": "Nicole",
   "listing": "1075 OP LW",
+  "trip_stage": "RESERVATION_REQUESTS",
   "reservation": { "checkin": "2026-07-22 16:00:00", "checkout": "2026-07-27 10:00:00" },
   "messages": [
     { "is_incoming": 1, "sender_name": "Nicole", "body": "What time is check-in?", "sent_on_utc": "2026-06-01 14:30:00" },
@@ -94,6 +95,14 @@ Each operation is a persisted query: URL carries
   (`accountType` = `SERVICE` / `EXTERNAL_SERVICE`).
 - Thread id: `node.id` is base64 of `MessageThread:<num>`; the `<num>` is the
   cache key and matches the thread id in the on-screen URL.
+- `trip_stage` ← the `trip_stages` user thread tag's `additionalValues[0]`
+  (`ACTIVE_REQUESTS` / `RESERVATION_REQUESTS` = inquiry / request-to-book,
+  `CURRENTLY_HOSTING`, `UPCOMING_RESERVATIONS`, `CANCELED_RESERVATIONS`). All
+  threads share `messageThreadType: HOME_BOOKING`, so this tag is the real
+  lifecycle signal. Passed through so the prompt can tailor the reply
+  (an inquiry with *requested* dates reads very differently from a guest
+  who is currently hosting). For inquiries, `reservation` dates are the
+  guest's **requested** dates, not a confirmed stay.
 
 ### 3. Extension UI (minimal popup)
 
@@ -107,6 +116,8 @@ Plus a tiny progress readout ("12 / 40 drafted").
 
 In `background.js`, on "Draft all":
 1. Page through `ViaductInboxData` (unread filter) to collect pending threads.
+   Skip threads whose `trip_stages` tag is `CANCELED_RESERVATIONS` (no point
+   replying to a canceled reservation's notice).
 2. For each thread (sequential, robust):
    a. Fetch full messages via `ViaductGetThreadAndDataQuery`.
    b. Build the payload, `POST /api/draft-adhoc`.
