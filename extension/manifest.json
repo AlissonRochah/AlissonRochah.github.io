@@ -33,7 +33,10 @@
     "https://gateaccess.net/*",
     "https://docs.google.com/*",
     "https://*.googleusercontent.com/*",
-    "https://www.airbnb.com/*"
+    "https://www.airbnb.com/*",
+    "http://mac.tailda12d3.ts.net/*",
+    "http://100.95.35.114/*",
+    "http://localhost:8787/*"
   ],
   "content_scripts": [
     {
@@ -52,6 +55,11 @@
       "js": ["airbnb-slash.js"],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": ["https://www.airbnb.com/hosting/messages/*"],
+      "js": ["airbnb-claude.js"],
+      "run_at": "document_idle"
     }
   ],
   "externally_connectable": {
