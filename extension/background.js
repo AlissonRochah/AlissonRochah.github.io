@@ -1579,63 +1579,9 @@ async function draftAirbnbThread(numericId) {
 
 // ----- Batch: draft every unread inbox thread -----
 
-const INBOX_HASH =
-  "3890d462940a5f123c9048c8d623d0ce5d5bc0d5e7072eefb2a46d4041d31a49";
 const DRAFTS_KEY = "airbnbDrafts";
 const BATCH_CONCURRENCY = 3;
 let batchCancel = false;
-
-// Returns [{ numericId, title }] for unread host-inbox threads.
-async function fetchUnreadInbox() {
-  const variables = {
-    getParticipants: true, numRequestedThreads: 50, numPriorityThreads: 20,
-    getPriorityInbox: false, useUserThreadTag: true,
-    userId: btoa("Viewer:" + HOST_ACCOUNT_ID), originType: "USER_INBOX",
-    threadVisibility: "UNARCHIVED",
-    threadTagFilters: [{ userThreadTagName: "unread" }],
-    priorityThreadTagFilters: [
-      { userThreadTagName: "unread" }, { userThreadTagName: "priority" },
-    ],
-    query: null, getLastReads: false, getThreadState: true,
-    getInboxFields: true, getInboxOnlyFields: true, getMessageFields: false,
-    getThreadOnlyFields: true, skipOldMessagePreviewFields: false,
-  };
-  const extensions = { persistedQuery: { version: 1, sha256Hash: INBOX_HASH } };
-  const url = `https://www.airbnb.com/api/v3/ViaductInboxData/${INBOX_HASH}`
-    + `?operationName=ViaductInboxData&locale=en&currency=USD`
-    + `&variables=${encodeURIComponent(JSON.stringify(variables))}`
-    + `&extensions=${encodeURIComponent(JSON.stringify(extensions))}`;
-  const res = await fetch(url, {
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      "x-airbnb-api-key": AIRBNB_API_KEY,
-      "x-airbnb-graphql-platform": "web",
-      "x-csrf-without-token": "1",
-    },
-  });
-  if (!res.ok) throw new Error(`Inbox fetch ${res.status} (persisted-query hash may have rotated)`);
-  const json = await res.json();
-  if (json && json.errors && json.errors.length) {
-    throw new Error(`Airbnb GraphQL: ${json.errors[0].message || "error"} (session expired or hash rotated?)`);
-  }
-  const edges =
-    (((json.data || {}).node || {}).messagingInbox || {}).inboxItems &&
-    json.data.node.messagingInbox.inboxItems.edges || [];
-  const out = [];
-  for (const ed of edges) {
-    const n = ed && ed.node;
-    if (!n || !n.id) continue;
-    let decoded = "";
-    try { decoded = atob(n.id); } catch (_) {}
-    const m = decoded.match(/MessageThread:(\d+)/);
-    if (!m) continue;
-    const comps = (n.inboxTitle && n.inboxTitle.components) || [];
-    const title = (comps[0] && comps[0].text) || "Guest";
-    out.push({ numericId: m[1], title });
-  }
-  return out;
-}
 
 async function getDrafts() {
   const o = await chrome.storage.local.get(DRAFTS_KEY);
@@ -1648,9 +1594,10 @@ async function patchDraft(numericId, fields) {
   await chrome.storage.local.set({ [DRAFTS_KEY]: drafts });
 }
 
-async function draftAllUnread() {
+// threads: [{ numericId, title }] enumerated from the inbox DOM by the
+// content script (account-agnostic — no viewer-id needed).
+async function draftThreads(threads) {
   batchCancel = false;
-  const threads = await fetchUnreadInbox();
   // Seed every thread as queued so the dots appear immediately.
   const drafts = await getDrafts();
   for (const t of threads) {
@@ -1713,10 +1660,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return true; // keep the channel open for the async response
   }
-  if (msg && msg.action === "draftAllUnread") {
+  if (msg && msg.action === "draftThreads") {
     (async () => {
       try {
-        const total = await draftAllUnread();
+        const total = await draftThreads(msg.threads || []);
         sendResponse({ ok: true, total });
       } catch (e) {
         sendResponse({ ok: false, error: String((e && e.message) || e) });

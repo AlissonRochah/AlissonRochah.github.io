@@ -89,20 +89,28 @@ btnAll.addEventListener("click", async () => {
     return;
   }
 
-  chrome.runtime.sendMessage({ action: "draftAllUnread" }, (resp) => {
-    btnAll.disabled = false;
-    if (chrome.runtime.lastError) {
-      setStatus("Background error — reload the extension.", "error");
+  // The content script enumerates unread rows from the inbox DOM (works on
+  // any logged-in account), then the background drafts them.
+  chrome.tabs.sendMessage(tab.id, { action: "listUnread" }, (lr) => {
+    if (chrome.runtime.lastError || !lr || !lr.ok) {
+      btnAll.disabled = false;
+      setStatus("Reload the Airbnb tab, then try again.", "error");
       return;
     }
-    if (!resp || !resp.ok) {
-      setStatus(resp && resp.error ? resp.error : "Scan failed.", "error");
+    const threads = lr.threads || [];
+    if (!threads.length) {
+      btnAll.disabled = false;
+      setStatus("No unread conversations visible. Scroll the inbox to load more.");
       return;
     }
-    if (!resp.total) {
-      setStatus("No unread conversations found.");
-      return;
-    }
-    setStatus(`Drafting ${resp.total} unread — watch the dots in the list. You can close this.`);
+    chrome.runtime.sendMessage({ action: "draftThreads", threads }, (resp) => {
+      btnAll.disabled = false;
+      if (chrome.runtime.lastError || !resp || !resp.ok) {
+        setStatus(resp && resp.error ? resp.error : "Draft failed.", "error");
+        return;
+      }
+      setStatus(`Drafting ${resp.total} unread — watch the dots. You can close this.`);
+      renderSummary();
+    });
   });
 });

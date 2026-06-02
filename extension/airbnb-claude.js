@@ -90,6 +90,40 @@
     return o[DRAFTS_KEY] || {};
   }
 
+  // ----- Enumerate unread threads from the inbox DOM -----
+  // Account-agnostic: reads the rows already on screen, so it works no matter
+  // which Airbnb account is logged in (the inbox API needs the viewer's id).
+
+  function listUnreadThreads() {
+    const rows = document.querySelectorAll('[id^="inbox_list_"]');
+    const out = [];
+    const seen = new Set();
+    rows.forEach((row) => {
+      const m = (row.id || "").match(/inbox_list_(\d+)/);
+      if (!m) return;
+      const id = m[1];
+      if (seen.has(id)) return;
+      // The row's <a> screen-reader label reads "Unread Conversation with
+      // <name>. Last message ..." on unread rows (just "Conversation with…"
+      // when read). Use it to detect unread AND pull the guest name.
+      const sr = row.querySelector("a span");
+      const label = (sr && sr.textContent || "").trim();
+      if (!/^Unread\b/.test(label)) return;
+      seen.add(id);
+      let title = "Guest";
+      const tm = label.match(/Conversation with (.+?)\.\s/);
+      if (tm) title = tm[1].trim();
+      out.push({ numericId: id, title });
+    });
+    return out;
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || msg.action !== "listUnread") return;
+    sendResponse({ ok: true, threads: listUnreadThreads() });
+    return false;
+  });
+
   // ----- Single thread (popup "Draft this conversation") -----
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
