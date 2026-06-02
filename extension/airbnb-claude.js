@@ -210,7 +210,9 @@
         const m = (row.id || "").match(/inbox_list_(\d+)/);
         if (!m) return;
         const info = drafts[m[1]];
-        if (!info) return;
+        // Drop the dot once the draft has been inserted — it served its
+        // purpose; the notes panel still keeps the details.
+        if (!info || info.inserted) return;
         const dot = makeDot(info.status);
         const nameEl = findNameEl(row, info.title);
         if (nameEl && nameEl.parentNode) nameEl.parentNode.insertBefore(dot, nameEl);
