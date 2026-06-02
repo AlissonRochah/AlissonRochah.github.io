@@ -17,7 +17,10 @@ async function renderSummary() {
   const o = await chrome.storage.local.get("airbnbDrafts");
   const drafts = o.airbnbDrafts || {};
   const c = { queued: 0, drafting: 0, ready: 0, review: 0, failed: 0 };
-  Object.values(drafts).forEach((d) => { if (c[d.status] != null) c[d.status]++; });
+  Object.values(drafts).forEach((d) => {
+    if (d.inserted) return; // already handled — don't count (matches the dots)
+    if (c[d.status] != null) c[d.status]++;
+  });
   const total = c.queued + c.drafting + c.ready + c.review + c.failed;
   if (!total) { summaryEl.textContent = ""; return; }
   summaryEl.textContent =
