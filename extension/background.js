@@ -1548,7 +1548,13 @@ function mapThreadToPayload(json) {
       m.hydratedContent.content && m.hydratedContent.content.body) || "",
     sender_name: (m.account && String(m.account.accountId) === HOST_ACCOUNT_ID) ? "team" : guestName,
   }));
-  return { guest_name: guestName, listing, trip_stage: tripStage, messages: msgs };
+  // The booking's confirmation code (when the thread has a reservation) lets
+  // the server pull full MAPRO context — dates, door code, availability.
+  const confirmationCode =
+    (td.threadContent && td.threadContent.detailPanel &&
+      td.threadContent.detailPanel.sidebarParams &&
+      td.threadContent.detailPanel.sidebarParams.confirmationCode) || "";
+  return { guest_name: guestName, listing, trip_stage: tripStage, confirmation_code: confirmationCode, messages: msgs };
 }
 
 async function draftAirbnbThread(numericId) {
