@@ -19,24 +19,11 @@
     failed: "#FF1A1A",   // red   — no text / error (vivid)
   };
 
-  let lastEditable = null;
-
-  function isEditable(el) {
-    if (!el) return false;
-    if (el.tagName === "TEXTAREA") return true;
-    if (el.isContentEditable) return true;
-    return false;
-  }
-
   function isVisible(el) {
     if (!el || !el.getClientRects().length) return false;
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   }
-
-  document.addEventListener("focusin", (e) => {
-    if (isEditable(e.target)) lastEditable = e.target;
-  }, true);
 
   function threadIdFromUrl() {
     const m = location.pathname.match(/\/messages\/(\d+)/);
@@ -44,24 +31,14 @@
   }
 
   function findComposer() {
-    // Airbnb's composer is a contenteditable="plaintext-only" div with a known
-    // id — target it directly. Fall back to the last-focused field, then any
-    // visible editable (lowest on the page — composers sit at the bottom).
-    const known = document.querySelector(
+    // STRICTLY the Airbnb message composer (a contenteditable="plaintext-only"
+    // div with a known id). Never fall back to other editable fields — the
+    // host "Your notes" textarea is also editable and was catching inserts.
+    // If it isn't mounted yet, return null so insertWhenReady keeps retrying.
+    const el = document.querySelector(
       '#message_input, [data-testid="messaging-composebar"]'
     );
-    if (known && isVisible(known)) return known;
-    if (lastEditable && document.contains(lastEditable) && isVisible(lastEditable)) {
-      return lastEditable;
-    }
-    const candidates = Array.prototype.slice
-      .call(document.querySelectorAll(
-        'textarea, [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'
-      ))
-      .filter(isVisible);
-    if (!candidates.length) return null;
-    candidates.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
-    return candidates[0];
+    return (el && isVisible(el)) ? el : null;
   }
 
   function insertIntoComposer(text) {
