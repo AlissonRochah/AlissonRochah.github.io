@@ -4,6 +4,7 @@ const btn = document.getElementById("draft");
 const btnAll = document.getElementById("draftAll");
 const btnRefresh = document.getElementById("refresh");
 const btnCancel = document.getElementById("cancel");
+const btnReset = document.getElementById("reset");
 const statusEl = document.getElementById("status");
 const summaryEl = document.getElementById("summary");
 
@@ -24,6 +25,17 @@ async function renderSummary() {
 }
 
 btnRefresh.addEventListener("click", renderSummary);
+
+btnReset.addEventListener("click", () => {
+  chrome.runtime.sendMessage({ action: "resetDrafts" }, (resp) => {
+    if (chrome.runtime.lastError || !resp || !resp.ok) {
+      setStatus("Couldn't reset.", "error");
+      return;
+    }
+    setStatus("Reset — all drafts and dots cleared.");
+    renderSummary();
+  });
+});
 
 btnCancel.addEventListener("click", () => {
   chrome.runtime.sendMessage({ action: "cancelBatch" }, (resp) => {

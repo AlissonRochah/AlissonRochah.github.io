@@ -1671,6 +1671,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return true; // keep the channel open for the async response
   }
+  if (msg && msg.action === "resetDrafts") {
+    (async () => {
+      batchCancel = true; // stop any running batch
+      await chrome.storage.local.remove(DRAFTS_KEY);
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
   if (msg && msg.action === "cancelBatch") {
     (async () => {
       batchCancel = true;
