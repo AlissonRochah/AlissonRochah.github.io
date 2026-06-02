@@ -15,8 +15,8 @@
     queued: "#9CA3AF",   // gray  — waiting in line
     drafting: "#F59E0B", // amber — drafting now (pulses)
     ready: "#10B981",    // green — ready
-    review: "#F97316",   // orange — ready, Claude flagged for review
-    failed: "#EF4444",   // red   — no text / error
+    review: "#3B82F6",   // blue  — ready, just give it a closer look
+    failed: "#FF1A1A",   // red   — no text / error (vivid)
   };
 
   let lastEditable = null;
@@ -433,8 +433,8 @@
     }
     if (info.needs_human) {
       const nh = document.createElement("span");
-      nh.style.color = "#F59E0B";
-      nh.textContent = "⚠ needs human";
+      nh.style.color = "#3B82F6";
+      nh.textContent = "👁 needs a look";
       head.appendChild(nh);
     }
     if (head.childNodes.length) p.appendChild(head);

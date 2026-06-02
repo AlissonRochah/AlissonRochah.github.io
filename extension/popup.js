@@ -83,7 +83,7 @@ btn.addEventListener("click", async () => {
       return;
     }
     if (resp.needs_human) {
-      setStatus("⚠ Draft inserted — review carefully before sending.", "review");
+      setStatus("👁 Draft inserted — give it a look before sending.", "review");
     } else {
       setStatus("✓ Draft inserted in the composer.");
     }
